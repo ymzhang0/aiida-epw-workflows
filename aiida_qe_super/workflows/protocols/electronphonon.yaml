@@ -1,0 +1,53 @@
+default_inputs:
+    clean_workdir: True
+    qpoints_distance: 0.5
+    kpoints_factor: 2
+    interpolation_factor: 2
+    ph_base:
+        ph:
+            settings:
+                PREPARE_FOR_EPW: True
+            parameters:
+                INPUTPH:
+                    electron_phonon: interpolated
+                    el_ph_sigma: 0.02
+                    el_ph_nsigma: 10
+                    trans: True
+    q2r_base:
+        q2r:
+            metadata:
+                options:
+                    resources:
+                        num_machines: 1
+                    max_wallclock_seconds: 43200  # Twelve hours
+            parameters:
+                INPUT:
+                    zasr: 'simple'
+                    la2F: True
+    matdyn_base:
+        matdyn:
+            metadata:
+                options:
+                    resources:
+                        num_machines: 1
+                    max_wallclock_seconds: 43200  # Twelve hours
+            parameters:
+                INPUT:
+                    asr: 'simple'
+                    la2F: True
+                    dos: True
+                    ndos: 200
+            kpoints:
+                - 30
+                - 30
+                - 30
+default_protocol: moderate
+protocols:
+    moderate:
+        description: 'Protocol to perform a electron-phonon calculation at normal precision at moderate computational cost.'
+    precise:
+        description: 'Protocol to perform a electron-phonon calculation at high precision at higher computational cost.'
+        qpoints_distance: 0.3
+    fast:
+        description: 'Protocol to perform a electron-phonon calculation at low precision at minimal computational cost for testing purposes.'
+        qpoints_distance: 1.1

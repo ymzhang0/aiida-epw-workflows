@@ -1,0 +1,39 @@
+default_inputs:
+  clean_workdir: True
+  interpolation_distance: 0.1
+  epw:
+    metadata:
+      options:
+        resources:
+          num_machines: 1
+        max_wallclock_seconds: 43200  # Twelve hours
+        withmpi: True
+    parameters:
+      INPUTEPW:
+        a2f: True
+        assume_metal: True
+        degaussq: 0.05
+        degaussw: 0.05
+        delta_qsmear: 0.05
+        elecselfen: False
+        elph: True
+        epbwrite: False
+        epbread: False
+        epwwrite: False
+        epwread: True
+        fsthick: 10
+        phonselfen: True
+        temps: 50
+        vme: 'dipole'
+        wannierize: False
+        # etf_mem: 1
+default_protocol: moderate
+protocols:
+  moderate:
+    description: 'Protocol to perform a electron-phonon calculation at normal precision at moderate computational cost.'
+  precise:
+    description: 'Protocol to perform a electron-phonon calculation at high precision at higher computational cost.'
+    interpolation_distance: 0.05
+  fast:
+    description: 'Protocol to perform a electron-phonon calculation at low precision at minimal computational cost for testing purposes.'
+    interpolation_distance: 0.5
