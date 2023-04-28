@@ -156,6 +156,8 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
             message='The electron-phonon `PhBaseWorkChain` sub process failed')
         spec.exit_code(404, 'ERROR_SUB_PROCESS_FAILED_WANNIER90',
             message='The `Wannier90BandsWorkChain` sub process failed')
+        spec.exit_code(405, 'ERROR_SUB_PROCESS_FAILED_EPW'
+            message='The `EpwWorkChain` sub process failed')
 
     @classmethod
     def get_protocol_filepath(cls):
@@ -330,6 +332,14 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         self.report(f'launching `epw` {calcjob_node.pk}')
 
         return ToContext(calcjob_epw=calcjob_node)
+
+    def inspect_epw(self):
+        """Verify that the `epw.x` calculation finished successfully."""
+        calcjob = self.ctx.calcjob_epw
+
+        if not calcjob.is_finished_ok:
+            self.report(f'`EpwCalculation` failed with exit status {calcjob.exit_status}')
+            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_EPW
 
     def results(self):
         """Add the most important results to the outputs of the work chain."""

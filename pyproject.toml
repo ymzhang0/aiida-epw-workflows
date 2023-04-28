@@ -23,10 +23,7 @@ classifiers = [
 keywords = ["aiida", "plugin"]
 requires-python = ">=3.7"
 dependencies = [
-    "aiida-core>=1.6.5,<2.0.0",
-    "sqlalchemy<1.4",
-    "psycopg2-binary<2.9",
-    "voluptuous"
+    "aiida-core~=2.3",
 ]
 
 [project.urls]

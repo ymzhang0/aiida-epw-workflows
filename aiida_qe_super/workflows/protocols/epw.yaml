@@ -37,7 +37,7 @@ default_inputs:
         epwread: False
         fsthick: 100
         phonselfen: False
-        temps: 300
+        temps: '300'
         vme: 'dipole'
         wannierize: False
 default_protocol: moderate

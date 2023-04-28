@@ -1,19 +1,35 @@
 # -*- coding: utf-8 -*-
-"""Utility methods for the superconductivity analysis."""
-
+"""Parsers for the various superconductivity outputs."""
 import numpy
-from numpy.typing import ArrayLike
-import scipy
 
-eV_to_Kelvin = 11604.518121550082
 Ry2eV =  13.605662285137
 
-def allen_dynes(lambo, omega_log, mu_star):
-    """Calculate the Allen-Dynes critical temperature Tc."""
-    if lambo - mu_star * (1 + 0.62 * lambo) < 0:
-        return 0
-    else:
-        return omega_log * numpy.exp(-1.04 * (1 + lambo) / (lambo - mu_star * (1 + 0.62 * lambo))) / 1.2
+def parse_epw_a2f(file_content):
+
+    parsed_data = {}
+
+    a2f, footer = file_content.split('\n Integrated el-ph coupling')
+
+    a2f_array = numpy.array([l.split() for l in a2f.split('\n')], dtype=float)
+    parsed_data['frequency'] = a2f_array[:, 0]
+    parsed_data['a2f'] = a2f_array[:, 1:]
+
+    footer = footer.split('\n')
+    parsed_data['lambda'] = numpy.array(footer[1].strip('# ').split(), dtype=float)
+    parsed_data['phonon_smearing'] = numpy.array(footer[3].strip('# ').split(), dtype=float)
+
+    key_property_dict = {
+        'Electron smearing (eV)': 'electron_smearing',
+        'Fermi window (eV)': 'fermi_window',
+        'Summed el-ph coupling': 'summed_elph_coupling'
+    }
+    for line in footer:
+        for key, property in key_property_dict.items():
+            if key in line:
+                parsed_data[property] = float(line.split()[-1])
+
+    return parsed_data
+
 
 def parse_a2F(file_content):
     """Parse a Quantum ESPRESSO ``.a2F`` file containing the spectral function."""
@@ -59,18 +75,3 @@ def parse_lambda(file_content):
             )
 
     return elph_data
-
-
-def calculate_lambda_omega(frequency: ArrayLike, spectrum: ArrayLike) -> tuple:
-    """Calculate lambda and omega_log from the parsed a2F spectrum.
-
-    :param frequency: Frequency array on which the a2F spectrum is defined.
-    :param spectrum: a2F spectral function values.
-
-    :returns: Tuple of the calculated lambda and omega_log values.
-    """
-    lambda_ = 2 * scipy.integrate.trapezoid(spectrum / frequency, frequency)  # unitless
-    omega_log = numpy.exp(2 / lambda_ * scipy.integrate.trapezoid(spectrum / frequency * numpy.log(frequency), frequency))  # eV
-    omega_log = omega_log * eV_to_Kelvin
-
-    return lambda_, omega_log

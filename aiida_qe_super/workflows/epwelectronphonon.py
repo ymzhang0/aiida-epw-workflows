@@ -88,9 +88,6 @@ This run can be done in a different folder but you need to soft link a number of
 """
 from pathlib import Path
 
-from aiida_shell.engine.launchers.shell_job import prepare_code
-from aiida_shell.calculations.shell import ShellJob
-
 from aiida import orm
 from aiida.common import AttributeDict
 

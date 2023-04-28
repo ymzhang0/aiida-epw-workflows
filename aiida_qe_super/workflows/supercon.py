@@ -45,13 +45,6 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         spec.input('epw_folder', valid_type=orm.RemoteStashFolderData)
         spec.input('interpolation_distance', valid_type=(orm.Float, orm.List))
 
-        spec.outline(
-            cls.generate_reciprocal_points,
-            cls.restart_epw,
-            cls.results
-        )
-        spec.output('epw_folder', valid_type=orm.RemoteData)
-
         spec.expose_inputs(
             EpwCalculation, namespace='epw', exclude=(
                 'parent_folder_ph', 'parent_folder_nscf', 'kfpoints', 'qfpoints'
@@ -60,6 +53,14 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
                 'help': 'Inputs for the `EpwCalculation`.'
             }
         )
+
+        spec.outline(
+            cls.generate_reciprocal_points,
+            cls.restart_epw,
+            cls.results
+        )
+        spec.output('epw_folder', valid_type=orm.RemoteData)
+
 
     @classmethod
     def get_protocol_filepath(cls):
@@ -127,6 +128,17 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         inputs.parent_folder_epw = self.inputs.epw_folder
         inputs.kfpoints = self.ctx.inter_points
         inputs.qfpoints = self.ctx.inter_points
+
+        settings = inputs.settings.get_dict()
+        temps = inputs.parameters['INPUTEPW'].get('temps', 300)
+        nstemp = inputs.parameters['INPUTEPW'].get('nstemp', 1)
+
+        if nstemp == 1:
+            temp_list = temps.split()
+        else:
+            raise ValueError('`nstemp` not yet implemented.')
+
+        settings['ADDITIONAL_RETRIEVE_LIST'] = [f'{EpwCalculation._PREFIX}.a2f.01.{temp}.000' for temp in temp_list]
 
         inputs.metadata.call_link_label = 'epw'
 
