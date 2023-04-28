@@ -15,8 +15,9 @@ default_inputs:
         stash:
           source_list:
             - crystal.fmt
-            - epwdata.fmt
             - dmedata.fmt
+            - epwdata.fmt
+            - selecq.fmt
             - vmedata.fmt
             - aiida.kgmap
             - aiida.kmap
@@ -26,18 +27,16 @@ default_inputs:
     parameters:
       INPUTEPW:
         a2f: False
-        assume_metal: True
         degaussq: 0.05
         degaussw: 0.2
-        elecselfen: True
         elph: True
-        epbwrite: True
         epbread: False
-        epwwrite: True
+        epbwrite: True
         epwread: False
+        epwwrite: True
         fsthick: 100
         phonselfen: False
-        temps: '300'
+        temps: 300
         vme: 'dipole'
         wannierize: False
 default_protocol: moderate

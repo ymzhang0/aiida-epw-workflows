@@ -150,13 +150,14 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
             cls.run_ph,
             cls.inspect_ph,
             cls.run_epw,
+            cls.inspect_epw,
             cls.results,
         )
         spec.exit_code(403, 'ERROR_SUB_PROCESS_FAILED_PHONON',
             message='The electron-phonon `PhBaseWorkChain` sub process failed')
         spec.exit_code(404, 'ERROR_SUB_PROCESS_FAILED_WANNIER90',
             message='The `Wannier90BandsWorkChain` sub process failed')
-        spec.exit_code(405, 'ERROR_SUB_PROCESS_FAILED_EPW'
+        spec.exit_code(405, 'ERROR_SUB_PROCESS_FAILED_EPW',
             message='The `EpwWorkChain` sub process failed')
 
     @classmethod
@@ -304,10 +305,13 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         nscf_base_wc =  self.ctx.workchain_w90_bands.base.links.get_outgoing(link_label_filter='nscf').first().node
         inputs.parent_folder_nscf = nscf_base_wc.outputs.remote_folder
 
+        fine_points = orm.KpointsData()
+        fine_points.set_kpoints_mesh([1, 1, 1])
+
         inputs.kpoints = self.ctx.kpoints
-        inputs.kfpoints = self.ctx.kpoints
+        inputs.kfpoints = fine_points
         inputs.qpoints = self.ctx.qpoints
-        inputs.qfpoints = self.ctx.qpoints        
+        inputs.qfpoints = fine_points      
 
         wannier90_wc =  self.ctx.workchain_w90_bands.base.links.get_outgoing(link_label_filter='wannier90').first().node
         wannier_ukk_path = Path(wannier90_wc.outputs.remote_folder.get_remote_path(), 'aiida.ukk')

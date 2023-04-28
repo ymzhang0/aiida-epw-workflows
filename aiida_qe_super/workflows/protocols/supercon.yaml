@@ -1,7 +1,13 @@
 default_inputs:
-  clean_workdir: True
-  interpolation_distance: 0.1
-  epw:
+  clean_workdir: False
+  interpolation_distance:
+    - 0.5
+    - 0.4
+    - 0.3
+    - 0.2
+    - 0.1
+  convergence_threshold: 5
+  epw_interp:
     metadata:
       options:
         resources:
@@ -10,23 +16,75 @@ default_inputs:
         withmpi: True
     parameters:
       INPUTEPW:
-        a2f: True
-        assume_metal: True
-        degaussq: 0.05
-        degaussw: 0.05
-        delta_qsmear: 0.05
-        elecselfen: False
+        broyden_beta: 0.4
+        conv_thr_iaxis: 0.01
+        degaussq: 0.5
+        degaussw: 0.1
+        eliashberg: True
         elph: True
-        epbwrite: False
+        ep_coupling: True
         epbread: False
-        epwwrite: False
+        epbwrite: False
+        ephwrite: True
+        eps_acustic: 1
         epwread: True
-        fsthick: 10
-        phonselfen: True
-        temps: 50
+        epwwrite: False
+        etf_mem: 1
+        fsthick: 0.8
+        liso: True
+        laniso: False
+        limag: True
+        lpade: True
+        mp_mesh_k: True
+        muc: 0.13
+        nqstep: 500
+        nsiter: 1
+        nstemp: 1
+        restart: True
+        selecqread: False
+        temps: 10.0
         vme: 'dipole'
         wannierize: False
-        # etf_mem: 1
+        wscut: 0.5
+  epw_final:
+    metadata:
+      options:
+        resources:
+          num_machines: 1
+        max_wallclock_seconds: 43200  # Twelve hours
+        withmpi: True
+    parameters:
+      INPUTEPW:
+        conv_thr_iaxis: 0.01
+        degaussq: 0.5
+        degaussw: 0.1
+        elecselfen: False
+        eliashberg: True
+        ep_coupling: False
+        epbread: False
+        epbwrite: False
+        ephwrite: False
+        epwread: True
+        epwwrite: False
+        eps_acustic: 1  # cm^{-1}
+        etf_mem: 1
+        fsthick: 0.8
+        laniso: False
+        limag: True
+        liso: True
+        mp_mesh_k: True
+        muc: 0.13
+        nqstep: 500
+        nsiter: 500
+        nstemp: 40
+        restart: True
+        selecqread:  False
+        tc_linear: True
+        tc_linear_solver: 'power'   
+        temps: 1 40
+        vme: 'dipole'
+        wannierize: False
+        wscut: 0.5
 default_protocol: moderate
 protocols:
   moderate:

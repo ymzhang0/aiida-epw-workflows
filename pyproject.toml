@@ -59,6 +59,8 @@ docs = [
 [project.entry-points.'aiida.workflows']
 'quantumespresso.super.electronphonon' = 'aiida_qe_super.workflows.electronphonon:ElectronPhononWorkChain'
 'quantumespresso.super.epwelectronphonon' = 'aiida_qe_super.workflows.epwelectronphonon:EpwElectronPhononWorkChain'
+'quantumespresso.super.epw' = 'aiida_qe_super.workflows.epw:EpwWorkChain'
+'quantumespresso.super.supercon' = 'aiida_qe_super.workflows.supercon.SuperConWorkChain'
 
 [tool.flit.module]
 name = "aiida_qe_super"
