@@ -136,7 +136,9 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         if isinstance(inputs['interpolation_distance'], float):
             builder.interpolation_distance = orm.Float(inputs['interpolation_distance'])
         if isinstance(inputs['interpolation_distance'], list):
-            builder.interpolation_distance = orm.List(inputs['interpolation_distance'])
+            qpoints_distance = parent_epw.inputs.qpoints_distance
+            interpolation_distance = [v for v in inputs['interpolation_distance'] if v < qpoints_distance / 2]
+            builder.interpolation_distance = orm.List(interpolation_distance)
 
         builder.convergence_threshold = orm.Float(inputs['convergence_threshold'])
         builder.always_run_final = orm.Bool(inputs.get('always_run_final', False))

@@ -63,11 +63,12 @@ class EpwWorkChainController(FromGroupSubmissionController):
             electronic_type=self.electronic_type,
             spin_type=self.spin_type,
         )
+
         # HARDCODED CRAP FOR NOW
         options = {
             'max_wallclock_seconds': 1800,
-            'account': 'mr32',
-            # 'queue_name': 'debug'
+            'account': 'project_465000106',
+            'queue_name': 'small'
         }
         pp_resources = {
             'num_machines': 1,
@@ -85,12 +86,16 @@ class EpwWorkChainController(FromGroupSubmissionController):
         builder.w90_bands.pw2wannier90.pw2wannier90.metadata.options['resources'] = pp_resources
         builder.w90_bands.wannier90.wannier90.metadata.options.update(options)
 
-        builder.clean_workdir = orm.Bool(False)
+        builder.clean_workdir = orm.Bool(True)
         builder.kpoints_factor = orm.Int(2)
 
+        # w90_script = orm.RemoteData(
+        #     remote_path='/users/mbercx/code/epw_julia/chk2ukk.jl',
+        #     computer=orm.load_computer('eiger')
+        # )
         w90_script = orm.RemoteData(
-            remote_path='/users/mbercx/code/epw_julia/chk2ukk.jl',
-            computer=orm.load_computer('eiger')
+            remote_path='/pfs/lustrep3/projappl/project_465000106/juqiao/epw_julia/chk2ukk.jl',
+            computer=orm.load_computer('lumi')
         )
         builder.w90_chk_to_ukk_script = w90_script
 
