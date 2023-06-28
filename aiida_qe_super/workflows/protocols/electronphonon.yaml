@@ -36,7 +36,7 @@ default_inputs:
                     asr: 'simple'
                     la2F: True
                     dos: True
-                    ndos: 200
+                    deltaE: 0.1
             kpoints:
                 - 30
                 - 30

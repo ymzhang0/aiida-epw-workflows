@@ -2,6 +2,8 @@
 """Parsers for the various superconductivity outputs."""
 import numpy
 
+from .calculators import allen_dynes
+
 Ry2eV =  13.605662285137
 
 def parse_epw_a2f(file_content):
