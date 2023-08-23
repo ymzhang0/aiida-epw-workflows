@@ -113,7 +113,8 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         spec.input('structure', valid_type=orm.StructureData)
         spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(False))
         spec.input('qpoints_distance', valid_type=orm.Float, default=lambda: orm.Float(0.5))
-        spec.input('kpoints_factor', valid_type=orm.Int, default=lambda: orm.Int(2))
+        spec.input('kpoints_distance_scf', valid_type=orm.Float, default=lambda: orm.Float(0.15))
+        spec.input('kpoints_factor_nscf', valid_type=orm.Int, default=lambda: orm.Int(2))
         spec.input('w90_chk_to_ukk_script', valid_type=(orm.RemoteData, orm.SinglefileData))
 
         spec.expose_inputs(
@@ -183,7 +184,10 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         w90_bands_inputs = inputs.get('w90_bands', {})
         pseudo_family = w90_bands_inputs.pop('pseudo_family', None)
         w90_bands = Wannier90BandsWorkChain.get_builder_from_protocol(
-            structure=structure, codes=codes, run_open_grid=False, pseudo_family=pseudo_family,
+            structure=structure,
+            codes=codes,
+            run_open_grid=False,
+            pseudo_family=pseudo_family,
             overrides=w90_bands_inputs
         )
         w90_bands.pop('structure', None)
@@ -200,7 +204,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         epw_inputs = inputs.get('epw', None)
 
         epw_builder.parameters = orm.Dict(epw_inputs['parameters'])
-        
+
         if 'target_base' not in epw_builder.metadata['options']['stash']:
             epw_computer = codes['epw'].computer
             if epw_computer.transport_type == 'core.local':
@@ -216,6 +220,8 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
 
         builder = cls.get_builder()
         builder.qpoints_distance = orm.Float(inputs['qpoints_distance'])
+        builder.kpoints_distance_scf = orm.Float(inputs['kpoints_distance_scf'])
+        builder.kpoints_factor_nscf = orm.Int(inputs['kpoints_factor_nscf'])
         builder.structure = structure
         builder.w90_bands = w90_bands
         builder.ph_base = ph_base
@@ -236,14 +242,23 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
             }
         }
         qpoints = create_kpoints_from_distance(**inputs)  # pylint: disable=unexpected-keyword-arg
+        inputs = {
+            'structure': self.inputs.structure,
+            'distance': self.inputs.kpoints_distance_scf,
+            'force_parity': self.inputs.get('kpoints_force_parity', orm.Bool(False)),
+            'metadata': {
+                'call_link_label': 'create_kpoints_scf_from_distance'
+            }
+        }
+        kpoints_scf = create_kpoints_from_distance(**inputs)
 
         qpoints_mesh = qpoints.get_kpoints_mesh()[0]
-        kpoints = orm.KpointsData()
-        kpoints_mesh = [v * self.inputs.kpoints_factor.value for v in qpoints_mesh]
-        kpoints.set_kpoints_mesh(kpoints_mesh)
+        kpoints_nscf = orm.KpointsData()
+        kpoints_nscf.set_kpoints_mesh([v * self.inputs.kpoints_factor_nscf.value for v in qpoints_mesh])
 
         self.ctx.qpoints = qpoints
-        self.ctx.kpoints = kpoints
+        self.ctx.kpoints_scf = kpoints_scf
+        self.ctx.kpoints_nscf = kpoints_nscf
 
     def run_wannier90(self):
         """Run the wannier90 workflow."""
@@ -258,7 +273,8 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         append_text += f'\njulia {self.inputs.w90_chk_to_ukk_script.get_remote_path()} aiida.chk aiida.ukk'
         inputs.wannier90.wannier90.metadata.options.append_text = append_text
 
-        set_kpoints(inputs, self.ctx.kpoints, Wannier90BandsWorkChain)
+        set_kpoints(inputs, self.ctx.kpoints_nscf, Wannier90BandsWorkChain)
+        inputs['scf']['kpoints'] = self.ctx.kpoints_scf
 
         workchain_node = self.submit(Wannier90BandsWorkChain, **inputs)
         self.report(f'launching wannier90 work chain {workchain_node.pk}')
@@ -308,7 +324,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         fine_points = orm.KpointsData()
         fine_points.set_kpoints_mesh([1, 1, 1])
 
-        inputs.kpoints = self.ctx.kpoints
+        inputs.kpoints = self.ctx.kpoints_nscf
         inputs.kfpoints = fine_points
         inputs.qpoints = self.ctx.qpoints
         inputs.qfpoints = fine_points      

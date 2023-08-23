@@ -4,11 +4,12 @@ from typing import Optional
 
 from aiida_quantumespresso.common.types import SpinType, ElectronicType
 from aiida_quantumespresso.workflows.pw.relax import PwRelaxWorkChain
+from sympy import N
 
 from aiida_submission_controller import FromGroupSubmissionController
 
 from aiida_qe_super.workflows.epw import EpwWorkChain
-
+from aiida_quantumespresso.workflows.protocols.utils import recursive_merge
 
 class EpwWorkChainController(FromGroupSubmissionController):
     """A SubmissionController for submitting `ElectronPhononWorkChain`s."""
@@ -55,26 +56,44 @@ class EpwWorkChainController(FromGroupSubmissionController):
         }
         codes = {key: orm.load_code(code_label) for key, code_label in codes.items()}
 
+        overrides = copy.deepcopy(self.overrides)
+
+        w90_scf_overrides = overrides.get('w90_bands', {}).pop('scf', {})
+        w90_nscf_overrides = overrides.get('w90_bands', {}).pop('nscf', {})
+
         builder = process_class.get_builder_from_protocol(
             codes=codes,
             structure=structure,
             protocol=self.protocol,
-            overrides=copy.deepcopy(self.overrides),
+            overrides=overrides,
             electronic_type=self.electronic_type,
             spin_type=self.spin_type,
         )
-
         # HARDCODED CRAP FOR NOW
         options = {
             'max_wallclock_seconds': 1800,
             'account': 'project_465000106',
-            'queue_name': 'small'
+            'queue_name': 'debug'
         }
         pp_resources = {
             'num_machines': 1,
             'num_mpiprocs_per_machine': 8,
             'num_cores_per_machine': 8,
         }
+        # MORE CRAP SINCE JUNFENG's work chains don't work with overrides
+        scf_params = builder.w90_bands.scf.pw.parameters.get_dict()
+        scf_params = recursive_merge(
+            scf_params,
+            w90_scf_overrides.get('pw', {}).get('parameters')
+        )
+        builder.w90_bands.scf.pw.parameters = orm.Dict(scf_params)
+        nscf_params = builder.w90_bands.nscf.pw.parameters.get_dict()
+        nscf_params = recursive_merge(
+            nscf_params,
+            w90_nscf_overrides.get('pw', {}).get('parameters')
+        )
+        builder.w90_bands.nscf.pw.parameters = orm.Dict(nscf_params)
+
         builder.w90_bands.scf.pw.metadata.options.update(options)
         builder.w90_bands.scf.pw.parallelization = orm.Dict({'npool': 8})
         builder.w90_bands.nscf.pw.metadata.options.update(options)

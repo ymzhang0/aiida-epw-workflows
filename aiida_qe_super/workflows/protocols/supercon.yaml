@@ -77,7 +77,7 @@ default_inputs:
         laniso: False
         limag: True
         liso: True
-        mp_mesh_k: True
+        # mp_mesh_k: True
         muc: 0.13
         nqstep: 500
         nsiter: 500

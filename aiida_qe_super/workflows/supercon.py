@@ -36,7 +36,10 @@ from scipy.interpolate import interp1d
 @calcfunction
 def calculate_tc(max_eigenvalue: orm.XyData) -> orm.Float:
     me_array = max_eigenvalue.get_array('max_eigenvalue')
-    return orm.Float(float(interp1d(me_array[:, 1], me_array[:, 0])(1.0)))
+    try:
+        return orm.Float(float(interp1d(me_array[:, 1], me_array[:, 0])(1.0)))
+    except ValueError:
+        return orm.Float(40.0)
 
 class SuperConWorkChain(ProtocolMixin, WorkChain):
     """Work chain to compute the electron-phonon coupling."""
@@ -101,7 +104,9 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         return files(protocols) / 'supercon.yaml'
 
     @classmethod
-    def get_builder_from_protocol(cls, epw_code, parent_epw, protocol=None, overrides=None, **kwargs):
+    def get_builder_from_protocol(
+            cls, epw_code, parent_epw, protocol=None, overrides=None, scon_epw_code=None, **kwargs
+        ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
 
         :TODO:
@@ -111,7 +116,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         builder = cls.get_builder()
 
         epw_source = parent_epw.base.links.get_outgoing(link_label_filter='epw').first().node
-    
+
         for epw_namespace in ('epw_interp', 'epw_final'):
 
             epw_inputs = inputs.get(epw_namespace, None)
@@ -122,7 +127,12 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
                 parameters['INPUTEPW']['bands_skipped'] = epw_source.inputs.parameters['INPUTEPW'].get('bands_skipped')
 
             epw_builder = EpwCalculation.get_builder()
-            epw_builder.code = epw_code
+
+            if epw_namespace == 'epw_interp' and scon_epw_code is not None:
+                epw_builder.code = scon_epw_code
+            else:
+                epw_builder.code = epw_code
+
             epw_builder.kpoints = epw_source.inputs.kpoints
             epw_builder.qpoints = epw_source.inputs.qpoints
 
@@ -130,9 +140,9 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             epw_builder.metadata = epw_inputs['metadata']
             if 'settings' in epw_inputs:
                 epw_builder.settings = orm.Dict(epw_inputs['settings'])
-            
+
             builder[epw_namespace]= epw_builder
-        
+
         if isinstance(inputs['interpolation_distance'], float):
             builder.interpolation_distance = orm.Float(inputs['interpolation_distance'])
         if isinstance(inputs['interpolation_distance'], list):
@@ -165,8 +175,9 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
 
     def should_run_conv(self):
         """Check if the convergence loop should continue or not."""
-        if  'convergence_threshold' in self.inputs:
+        if 'convergence_threshold' in self.inputs:
             try:
+                self.ctx.epw_interp[-3].outputs.output_parameters['allen_dynes']  # This is to check that we have at least 3 allen-dynes
                 prev_allen_dynes = self.ctx.epw_interp[-2].outputs.output_parameters['allen_dynes']
                 new_allen_dynes = self.ctx.epw_interp[-1].outputs.output_parameters['allen_dynes']
                 self.ctx.is_converged = (
@@ -180,11 +191,6 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         else:
             self.report('No `convergence_threshold` input was provided, convergence automatically achieved.')
             self.ctx.is_converged = True
-
-        try:
-            self.report(self.ctx.final_interp.get_kpoints_mesh())
-        except:
-            pass
 
         return len(self.ctx.interpolation_list) > 0 and not self.ctx.is_converged
 
@@ -237,7 +243,11 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             # return self.exit_codes.ERROR_SUB_PROCESS_EPW_INTERP
         else:
             self.ctx.final_interp = self.ctx.inter_points
-            self.report(f"Allen-Dynes: {epw_calculation.outputs.output_parameters['allen_dynes']}")
+            try:
+                self.report(f"Allen-Dynes: {epw_calculation.outputs.output_parameters['allen_dynes']}")
+            except KeyError:
+                self.report(f"Could not find Allen-Dynes temperature in parsed output parameters!")
+
             if self.ctx.degaussq is None:
                 frequency = epw_calculation.outputs.a2f.get_array('frequency')
                 self.ctx.degaussq = frequency[-1] / 100
