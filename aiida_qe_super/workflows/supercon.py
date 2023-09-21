@@ -185,7 +185,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
                     < self.inputs.convergence_threshold
                 )
                 self.report(f'Checking convergence: old {prev_allen_dynes}; new {new_allen_dynes} -> Converged = {self.ctx.is_converged.value}')
-            except (AttributeError, IndexError):
+            except (AttributeError, IndexError, KeyError):
                 self.report('Not enough data to check convergence.')
 
         else:
