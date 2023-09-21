@@ -17,18 +17,11 @@ class SuperConWorkChainController(FromGroupSubmissionController):
     protocol = "moderate"
     overrides: Optional[dict] = None
 
-    _process_class = SuperConWorkChain
-
-    @staticmethod
-    def get_extra_unique_keys():
-        """Return a tuple of the keys of the unique extras that will be used to uniquely identify your workchains."""
-        return ("formula_hill", "number_of_sites", "source_db", "source_id")
-
     def get_inputs_and_processclass_from_extras(self, extras_values, dry_run=False):
         """Return inputs and process class for the submission of this specific process."""
         parent_node = self.get_parent_node_from_extras(extras_values)
 
-        builder = self._process_class.get_builder_from_protocol(
+        builder = SuperConWorkChain.get_builder_from_protocol(
             epw_code=orm.load_code(self.epw_code),
             parent_epw=parent_node,
             overrides=copy.deepcopy(self.overrides)
