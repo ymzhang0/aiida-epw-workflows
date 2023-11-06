@@ -217,7 +217,11 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         inputs.kfpoints = self.ctx.inter_points
         inputs.qfpoints = self.ctx.inter_points
 
-        settings = inputs.settings.get_dict()
+        try:
+            settings = inputs.settings.get_dict()
+        except AttributeError:
+            settings = {}
+
         settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.a2f']
         inputs.settings = orm.Dict(settings)
 
@@ -269,7 +273,11 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         inputs.kfpoints = self.ctx.final_interp
         inputs.qfpoints = self.ctx.final_interp
 
-        settings = inputs.settings.get_dict()
+        try:
+            settings = inputs.settings.get_dict()
+        except AttributeError:
+            settings = {}
+
         settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.a2f']
         inputs.settings = orm.Dict(settings)
 
