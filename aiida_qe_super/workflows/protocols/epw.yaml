@@ -3,6 +3,23 @@ default_inputs:
   qpoints_distance: 0.5
   kpoints_distance_scf: 0.15
   kpoints_factor_nscf: 2
+  # To set for the NSCF step of the Wannier90 work chain
+  # One can either use `nscf` mode or `bands` mode. For the `nscf` mode,
+  # the `nosym` and `noinv` must be set to True to avoid pw.x automatically
+  # adds more (symmetry-equivalent) kpoints to the user-specified kpoints.
+  # For the `bands` mode, pw.x will use exactly what the user provided.
+  # In addition, it seems epw.x has some problem when restarting from a
+  # pw.x calculation with `nosym` and `noinv` set to True, therefore, we
+  # switch to the `bands` mode.
+  w90_bands:
+    nscf:
+      pw:
+        parameters:
+          SYSTEM:
+            nosym: False
+            noinv: False
+          CONTROL:
+            calculation: bands
   ph_base:
     ph:
       settings:
