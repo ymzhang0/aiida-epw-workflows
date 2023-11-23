@@ -25,7 +25,7 @@ requires-python = ">=3.7"
 dependencies = [
     "aiida-core~=2.3",
     "aiida-quantumespresso @ git+https://github.com/mbercx/aiida-quantumespresso.git@support/epw",
-    "aiida-wannier90-workflows @ git+https://github.com/mbercx/aiida-wannier90-workflows.git@support/super"
+    "aiida-wannier90-workflows @ git+https://github.com/aiidateam/aiida-wannier90-workflows.git@main"
 ]
 
 [project.urls]
