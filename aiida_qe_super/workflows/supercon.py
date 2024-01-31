@@ -117,6 +117,11 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
 
         epw_source = parent_epw.base.links.get_outgoing(link_label_filter='epw').first().node
 
+        if epw_source.inputs.code.computer.hostname != epw_code.computer.hostname:
+            raise ValueError(
+                'The `epw_code` must be configured on the same computer as that where the `parent_epw` was run.'
+            )
+
         for epw_namespace in ('epw_interp', 'epw_final'):
 
             epw_inputs = inputs.get(epw_namespace, None)
