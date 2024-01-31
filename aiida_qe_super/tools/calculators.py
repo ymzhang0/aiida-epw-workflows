@@ -5,7 +5,7 @@ import numpy
 from numpy.typing import ArrayLike
 import scipy
 
-eV_to_Kelvin = 11604.518121550082
+meV_to_Kelvin = 11.604518121550082
 
 
 def allen_dynes(lambo, omega_log, mu_star):
@@ -19,13 +19,13 @@ def allen_dynes(lambo, omega_log, mu_star):
 def calculate_lambda_omega(frequency: ArrayLike, spectrum: ArrayLike) -> tuple:
     """Calculate lambda and omega_log from the parsed a2F spectrum.
 
-    :param frequency: Frequency array on which the a2F spectrum is defined.
+    :param frequency: Frequency array on which the a2F spectrum is defined [meV].
     :param spectrum: a2F spectral function values.
 
     :returns: Tuple of the calculated lambda and omega_log values.
     """
     lambda_ = 2 * scipy.integrate.trapezoid(spectrum / frequency, frequency)  # unitless
     omega_log = numpy.exp(2 / lambda_ * scipy.integrate.trapezoid(spectrum / frequency * numpy.log(frequency), frequency))  # eV
-    omega_log = omega_log * eV_to_Kelvin
+    omega_log = omega_log * meV_to_Kelvin
 
     return lambda_, omega_log
