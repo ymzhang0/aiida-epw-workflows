@@ -133,7 +133,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         spec.inputs['w90_bands'].validator = validate_inputs_bands
         spec.expose_inputs(
             PhBaseWorkChain, namespace='ph_base', exclude=(
-                'clean_workdir', 'ph.parent_folder', 'ph.qpoints'
+                'clean_workdir', 'ph.parent_folder', 'qpoints', 'qpoints_distance'
             ),
             namespace_options={
                 'help': 'Inputs for the `PwBaseWorkChain` that does the `ph.x` calculation.'
@@ -224,7 +224,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         args = (codes['ph'], None, protocol)
         ph_base = PhBaseWorkChain.get_builder_from_protocol(*args, overrides=inputs.get('ph_base', None), **kwargs)
         ph_base.pop('clean_workdir', None)
-        ph_base.ph.pop('qpoints')
+        ph_base.pop('qpoints_distance')
 
         epw_builder = EpwCalculation.get_builder()
 
@@ -326,7 +326,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         scf_base_wc = self.ctx.workchain_w90_bands.base.links.get_outgoing(link_label_filter='scf').first().node
         inputs.ph.parent_folder = scf_base_wc.outputs.remote_folder
 
-        inputs.ph.qpoints = self.ctx.qpoints
+        inputs.qpoints = self.ctx.qpoints
 
         inputs.metadata.call_link_label = 'ph_base'
         workchain_node = self.submit(PhBaseWorkChain, **inputs)
