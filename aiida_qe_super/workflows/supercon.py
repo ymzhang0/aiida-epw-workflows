@@ -27,11 +27,13 @@ def stash_to_remote(stash_data: orm.RemoteStashFolderData) -> orm.RemoteData:
 
     return remote_data
 
+
 @calcfunction
 def split_list(list_node: orm.List) -> dict:
     return {f'el_{no}': orm.Float(el) for no, el in enumerate(list_node.get_list())}
 
 from scipy.interpolate import interp1d
+
 
 @calcfunction
 def calculate_tc(max_eigenvalue: orm.XyData) -> orm.Float:
@@ -40,6 +42,7 @@ def calculate_tc(max_eigenvalue: orm.XyData) -> orm.Float:
         return orm.Float(float(interp1d(me_array[:, 1], me_array[:, 0])(1.0)))
     except ValueError:
         return orm.Float(40.0)
+
 
 class SuperConWorkChain(ProtocolMixin, WorkChain):
     """Work chain to compute the electron-phonon coupling."""
@@ -105,7 +108,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
 
     @classmethod
     def get_builder_from_protocol(
-            cls, epw_code, parent_epw, protocol=None, overrides=None, scon_epw_code=None, **kwargs
+            cls, epw_code, parent_epw, protocol=None, overrides=None, scon_epw_code=None, epw_folder=None, **kwargs
         ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
 
@@ -117,10 +120,16 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
 
         epw_source = parent_epw.base.links.get_outgoing(link_label_filter='epw').first().node
 
-        if epw_source.inputs.code.computer.hostname != epw_code.computer.hostname:
-            raise ValueError(
-                'The `epw_code` must be configured on the same computer as that where the `parent_epw` was run.'
-            )
+        if epw_folder is None:
+
+            if epw_source.inputs.code.computer.hostname != epw_code.computer.hostname:
+                raise ValueError(
+                    'The `epw_code` must be configured on the same computer as that where the `parent_epw` was run.'
+                )
+            epw_folder = parent_epw.outputs.epw_folder
+        else:
+            # TODO: Add check to make sure epw_folder is on same computer as epw_code
+            pass
 
         for epw_namespace in ('epw_interp', 'epw_final'):
 
@@ -158,7 +167,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         builder.convergence_threshold = orm.Float(inputs['convergence_threshold'])
         builder.always_run_final = orm.Bool(inputs.get('always_run_final', False))
         builder.structure = parent_epw.inputs.structure
-        builder.epw_folder = parent_epw.outputs.epw_folder
+        builder.epw_folder = epw_folder
         # builder.epw_folder = epw_source.outputs.remote_folder
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
