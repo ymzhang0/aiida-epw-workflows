@@ -66,6 +66,40 @@ def create_xticks_bands(bands: orm.BandsData) -> Tuple[list, list]:
     return xticks, xtick_labels
 
 
+def plot_bands(bands: orm.BandsData, axis=None, reference_energy=0, seekpath_params=None, **kwargs):
+    """Plot a band structure."""
+
+    if axis is None:
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6), sharex=True)
+        fig.patch.set_facecolor('white')
+    else:
+        ax = axis
+
+    if seekpath_params is not None:
+        xticks, xtick_labels = create_xticks(seekpath_params)
+    else:
+        try:
+            xticks, xtick_labels = create_xticks_bands(bands)
+        except IndexError:
+            xticks = []
+            xtick_labels = []
+
+    if len(xticks) > 0:
+        ax.set_xticks(xticks, xtick_labels)
+
+    for tick in xticks:
+        ax.axvline(tick, color='k')
+
+    for band in bands.get_bands().transpose():
+        ax.plot(band - reference_energy, **kwargs)
+        
+    ax.axhline(0, color='k', linestyle='--')
+
+    if axis is None:
+        return plt
+
+
 def plot_bands_comparison(bands_qe, bands_w90, fermi_qe, fermi_w90, axis=None):
 
     xticks, xtick_labels = create_xticks_bands(bands_w90)
@@ -109,7 +143,8 @@ def plot_bands_comparison(bands_qe, bands_w90, fermi_qe, fermi_w90, axis=None):
     ax.set_yticks([-10, -5, 0, 5, 10, 15], [-10, -5, '$E_F$', 5, 10, 15])
     ax.set_ylim([-10, 10])
 
-    return plt
+    if axis is None:
+        return plt
 
 
 def check_wannier_optimize(w90_optimize_workchain, filename=None):
@@ -127,7 +162,6 @@ def check_wannier_optimize(w90_optimize_workchain, filename=None):
 
 
 def check_wannier_bands(w90_bands_workchain, bands_workchain_qe, filename=None):
-
 
     bands_w90 = w90_bands_workchain.outputs.band_structure
     bands_qe = bands_workchain_qe.outputs.band_structure
