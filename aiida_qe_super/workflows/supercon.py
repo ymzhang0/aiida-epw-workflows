@@ -136,6 +136,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             epw_inputs = inputs.get(epw_namespace, None)
 
             parameters = epw_inputs['parameters']
+            parameters["INPUTEPW"]["use_ws"] = epw_source.inputs.parameters["INPUTEPW"].get("use_ws", False)
             parameters['INPUTEPW']['nbndsub'] = epw_source.inputs.parameters['INPUTEPW']['nbndsub']
             if 'bands_skipped' in epw_source.inputs.parameters['INPUTEPW']:
                 parameters['INPUTEPW']['bands_skipped'] = epw_source.inputs.parameters['INPUTEPW'].get('bands_skipped')
