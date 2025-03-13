@@ -5,10 +5,10 @@ build-backend = "flit_core.buildapi"
 
 [project]
 # See https://www.python.org/dev/peps/pep-0621/
-name = "aiida-qe-super"
-dynamic = ["version"]  # read from aiida_qe_super/__init__.py
-description = "AiiDA plugin with work chains for superconductivity research."
-authors = [{name = "Marnik Bercx", email = "marnik.bercx@epfl.ch"}]
+name = "aiida-supercon"
+dynamic = ["version"]
+description = "AiiDA plugin package with work chains for superconductivity research."
+authors = [{name = "Marnik Bercx", email = "marnik.bercx@psi.ch"}]
 
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://github.com/mbercx/aiida-qe-super"
+Source = "https://github.com/mbercx/aiida-supercon"
 
 [project.optional-dependencies]
 dev = [
@@ -49,13 +49,13 @@ dev = [
 [project.entry-points."aiida.cmdline.data"]
 
 [project.entry-points.'aiida.workflows']
-'quantumespresso.super.electronphonon' = 'aiida_qe_super.workflows.electronphonon:ElectronPhononWorkChain'
-'quantumespresso.super.epwelectronphonon' = 'aiida_qe_super.workflows.epwelectronphonon:EpwElectronPhononWorkChain'
-'quantumespresso.super.epw' = 'aiida_qe_super.workflows.epw:EpwWorkChain'
-'quantumespresso.super.supercon' = 'aiida_qe_super.workflows.supercon.SuperConWorkChain'
+'quantumespresso.super.electronphonon' = 'aiida_supercon.workflows.electronphonon:ElectronPhononWorkChain'
+'quantumespresso.super.epwelectronphonon' = 'aiida_supercon.workflows.epwelectronphonon:EpwElectronPhononWorkChain'
+'quantumespresso.super.epw' = 'aiida_supercon.workflows.epw:EpwWorkChain'
+'quantumespresso.super.supercon' = 'aiida_supercon.workflows.supercon.SuperConWorkChain'
 
 [tool.flit.module]
-name = "aiida_qe_super"
+name = "aiida_supercon"
 
 [tool.pylint.format]
 max-line-length = 125
@@ -83,7 +83,7 @@ filterwarnings = [
 [tool.coverage.run]
 # Configuration of [coverage.py](https://coverage.readthedocs.io)
 # reporting which lines of your plugin are covered by tests
-source=["aiida_qe_super"]
+source=["aiida_supercon"]
 
 [tool.isort]
 # Configuration of [isort](https://isort.readthedocs.io)
