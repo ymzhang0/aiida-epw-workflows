@@ -363,10 +363,11 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
             else:
                 raise ValueError('Qpoints information not found in PhBaseWorkChain inputs')
             
-            if all(k == 2 * q for k, q in zip(self.ctx.kpoints_nscf.get_kpoints_mesh(), self.ctx.qpoints.get_kpoints_mesh())):
-
-            return False
-        
+            if all(q != 0 and k % q == 0 for k, q in zip(self.ctx.kpoints_nscf.get_kpoints_mesh(), self.ctx.qpoints.get_kpoints_mesh())):
+                self.report('Kpoints mesh of the Wannier90 calculation is a multiple of the qpoints mesh of the Ph calculation.')
+            
+            else:
+                raise ValueError('Kpoints mesh of the Wannier90 calculation is not a multiple of the qpoints mesh of the Ph calculation.')
         else:
             self.report('PhBaseWorkChain not provided or failed, will run it again.')
             return True
