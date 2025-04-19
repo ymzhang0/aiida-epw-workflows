@@ -91,17 +91,18 @@ from pathlib import Path
 from aiida import orm
 from aiida.common import AttributeDict
 
-from aiida.engine import WorkChain, ToContext
+from aiida.engine import WorkChain, ToContext, if_, while_
 from aiida_quantumespresso.workflows.ph.base import PhBaseWorkChain
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
 from aiida_quantumespresso.calculations.epw import EpwCalculation
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
 
-from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
+from aiida_wannier90_workflows.workflows import Wannier90BaseWorkChain, Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
 from aiida_wannier90_workflows.workflows.bands import validate_inputs as validate_inputs_bands
 from aiida_wannier90_workflows.utils.workflows.builder.setter import set_kpoints
 from aiida_wannier90_workflows.common.types import WannierProjectionType
+
 
 class EpwWorkChain(ProtocolMixin, WorkChain):
     """Main work chain to start calculating properties using EPW.
@@ -121,6 +122,12 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         spec.input('kpoints_distance_scf', valid_type=orm.Float, default=lambda: orm.Float(0.15))
         spec.input('kpoints_factor_nscf', valid_type=orm.Int, default=lambda: orm.Int(2))
         spec.input('w90_chk_to_ukk_script', valid_type=(orm.RemoteData, orm.SinglefileData))
+
+        spec.input('parent_ph_folder', valid_type=(orm.RemoteStashFolderData, orm.RemoteData), required=False,
+            help='PhBaseWorkChain, if provided, will be skipped')
+
+        spec.input('parent_w90_folder', valid_type=(orm.RemoteStashFolderData, orm.RemoteData), required=False,
+            help='Wannier90BandsWorkChain or Wannier90OptimizeWorkChain, if provided, will be skipped')
 
         spec.expose_inputs(
             Wannier90OptimizeWorkChain, namespace='w90_bands', exclude=(
@@ -152,10 +159,14 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
 
         spec.outline(
             cls.generate_reciprocal_points,
-            cls.run_wannier90,
-            cls.inspect_wannier90,
-            cls.run_ph,
-            cls.inspect_ph,
+            if_(cls.should_run_wannier90)(
+                cls.run_wannier90,
+                cls.inspect_wannier90,
+            ),
+            if_(cls.should_run_ph)(
+                cls.run_ph,
+                cls.inspect_ph,
+            ),
             cls.run_epw,
             cls.inspect_epw,
             cls.results,
@@ -178,6 +189,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
     def get_builder_from_protocol(cls, codes, structure, protocol=None, overrides=None,
                                   wannier_projection_type=WannierProjectionType.ATOMIC_PROJECTORS_QE,
                                   reference_bands=None, bands_kpoints=None,
+                                  parent_w90_folder=None, parent_ph_folder=None,
                                   **kwargs):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
 
@@ -252,7 +264,11 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         builder.kpoints_factor_nscf = orm.Int(inputs['kpoints_factor_nscf'])
         builder.structure = structure
         builder.w90_bands = w90_bands
+        if parent_w90_folder:
+            builder.parent_w90_folder = parent_w90_folder
         builder.ph_base = ph_base
+        if parent_ph_folder:
+            builder.parent_ph_folder = parent_ph_folder
         builder.epw = epw_builder
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
@@ -287,6 +303,73 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         self.ctx.qpoints = qpoints
         self.ctx.kpoints_scf = kpoints_scf
         self.ctx.kpoints_nscf = kpoints_nscf
+
+    def should_run_wannier90(self):
+        """Check if the wannier90 workflow should be run."""
+
+        ## The parent_w90_folder is created by Wannier90Calculation, which is a child process
+        ## of Wannier90BaseWorkChain. Wannier90BaseWorkChain is also a child process.
+        # If One use 'SCDM' projection, its caller is a Wannier90BandsWorkChain 
+        # If One use 'PDWF' projection, its caller is a Wannier90OptimizeWorkChain
+        if (
+            self.inputs.parent_w90_folder and
+            self.inputs.parent_w90_folder.creator.caller.is_finished_ok and 
+            self.inputs.parent_w90_folder.creator.caller.process_class is Wannier90BaseWorkChain
+        ):
+            self.report(
+                f'Wannier90BaseWorkChain[{self.inputs.parent_w90_folder.creator.caller.pk}] finished successfully, will skip it.'
+                )
+            
+            ## We should get the kpoints from the Wannier90Calculation
+            mp_grid = self.inputs.parent_w90_folder.creator.inputs.parameters['mp_grid']
+            kpoints_nscf = orm.KpointsData()
+            kpoints_nscf.set_kpoints_mesh(mp_grid)
+            self.ctx.kpoints_nscf = kpoints_nscf
+
+            ## workchain_w90_bands is the top level wannier90 workchain. 
+
+            self.ctx.workchain_w90_bands = self.inputs.parent_w90_folder.creator.caller.caller
+            return False
+        else:
+            self.report(
+                'Wannier90BandsWorkChain/Wannier90OptimizeWorkChain not provided or failed, will run it again.'
+                )
+            return True
+
+    def should_run_ph(self):
+        """Check if the phonon workflow should be run."""
+        if (
+            self.inputs.parent_ph_folder and
+            self.inputs.parent_ph_folder.creator.caller.is_finished_ok and
+            self.inputs.parent_ph_folder.creator.caller.process_class is PhBaseWorkChain
+        ):
+            self.report(f'PhBaseWorkChain[{self.inputs.parent_ph_folder.creator.caller.pk}] finished successfully, will skip it.')
+            self.ctx.workchain_ph = self.inputs.parent_ph_folder.creator.caller
+
+            if hasattr(self.ctx.workchain_ph.inputs, 'qpoints'):
+                self.ctx.qpoints = self.ctx.workchain_ph.outputs.qpoints
+            elif hasattr(self.ctx.workchain_ph.inputs, 'qpoints_distance'):
+                inputs = {
+                    'structure': self.inputs.structure,
+                    'distance': self.ctx.workchain_ph.inputs.qpoints_distance,
+                    'force_parity': self.ctx.workchain_ph.inputs.get('kpoints_force_parity', orm.Bool(False)),
+                    'metadata': {
+                        'call_link_label': 'create_qpoints_from_distance'
+                    }
+                }
+                qpoints = create_kpoints_from_distance(**inputs) 
+                self.ctx.qpoints = qpoints
+
+            else:
+                raise ValueError('Qpoints information not found in PhBaseWorkChain inputs')
+            
+            if all(k == 2 * q for k, q in zip(self.ctx.kpoints_nscf.get_kpoints_mesh(), self.ctx.qpoints.get_kpoints_mesh())):
+
+            return False
+        
+        else:
+            self.report('PhBaseWorkChain not provided or failed, will run it again.')
+            return True
 
     def run_wannier90(self):
         """Run the wannier90 workflow."""
@@ -348,6 +431,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
 
         inputs.parent_folder_ph = self.ctx.workchain_ph.outputs.remote_folder
 
+        self.report(f'parent_ph: {self.ctx.workchain_ph.outputs.remote_folder.get_remote_path()}')
         nscf_base_wc =  self.ctx.workchain_w90_bands.base.links.get_outgoing(link_label_filter='nscf').first().node
         inputs.parent_folder_nscf = nscf_base_wc.outputs.remote_folder
 
@@ -356,7 +440,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
 
         inputs.kpoints = self.ctx.kpoints_nscf
         inputs.kfpoints = fine_points
-        inputs.qpoints = self.ctx.qpoints
+        inputs.qpoints = self.ctx.workchain_ph.inputs.qpoints
         inputs.qfpoints = fine_points      
 
         parameters = inputs.parameters.get_dict()
@@ -368,12 +452,16 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
 
         parameters['INPUTEPW']['nbndsub'] = wannier_params['num_wann']
         inputs.parameters = orm.Dict(parameters)
-
-        if 'projwfc' in self.inputs.w90_bands:
-            w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90__remote_folder
+        # if 'projwfc' in self.inputs.w90_bands:
+        #     w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90__remote_folder
+        # else:
+        #     w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90_optimal__remote_folder
+        if self.ctx.workchain_w90_bands.inputs.optimize_disproj:
+            w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90_optimal.remote_folder
         else:
-            w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90_optimal__remote_folder
+            w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90.remote_folder
 
+        self.report(f'w90_remote_data: {w90_remote_data.get_remote_path()}')
         wannier_chk_path = Path(w90_remote_data.get_remote_path(), 'aiida.chk')
         nscf_xml_path = Path(self.ctx.workchain_w90_bands.outputs.nscf.remote_folder.get_remote_path(), 'out/aiida.xml')
 
