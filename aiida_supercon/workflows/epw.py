@@ -347,12 +347,12 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
             self.ctx.workchain_ph = self.inputs.parent_ph_folder.creator.caller
 
             if hasattr(self.ctx.workchain_ph.inputs, 'qpoints'):
-                self.ctx.qpoints = self.ctx.workchain_ph.outputs.qpoints
+                self.ctx.qpoints = self.ctx.workchain_ph.inputs.qpoints
             elif hasattr(self.ctx.workchain_ph.inputs, 'qpoints_distance'):
                 inputs = {
                     'structure': self.inputs.structure,
                     'distance': self.ctx.workchain_ph.inputs.qpoints_distance,
-                    'force_parity': self.ctx.workchain_ph.inputs.get('kpoints_force_parity', orm.Bool(False)),
+                    'force_parity': getattr(self.ctx.workchain_ph.inputs, 'qpoints_force_parity', orm.Bool(False)),
                     'metadata': {
                         'call_link_label': 'create_qpoints_from_distance'
                     }
@@ -363,11 +363,13 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
             else:
                 raise ValueError('Qpoints information not found in PhBaseWorkChain inputs')
             
-            if all(q != 0 and k % q == 0 for k, q in zip(self.ctx.kpoints_nscf.get_kpoints_mesh(), self.ctx.qpoints.get_kpoints_mesh())):
-                self.report('Kpoints mesh of the Wannier90 calculation is a multiple of the qpoints mesh of the Ph calculation.')
+            self.report(f'Qpoints of the old PhBaseWorkChain: {self.ctx.qpoints.get_kpoints_mesh()[0]} with shift {self.ctx.qpoints.get_kpoints_mesh()[1]}')
+            self.report(f'Kpoints of the old Wannier90BaseWorkChain: {self.ctx.kpoints_nscf.get_kpoints_mesh()[0]} with shift {self.ctx.kpoints_nscf.get_kpoints_mesh()[1]}')
+            if all(q != 0 and k % q == 0 for k, q in zip(self.ctx.kpoints_nscf.get_kpoints_mesh()[0], self.ctx.qpoints.get_kpoints_mesh()[0])):
+                self.report('Kpoints of the Wannier90BaseWorkChain is a multiple of the qpoints of the PhBaseWorkChain.')
             
             else:
-                raise ValueError('Kpoints mesh of the Wannier90 calculation is not a multiple of the qpoints mesh of the Ph calculation.')
+                raise ValueError('Kpoints of the Wannier90BaseWorkChain is not compatible with the qpoints of the PhBaseWorkChain.')
         else:
             self.report('PhBaseWorkChain not provided or failed, will run it again.')
             return True
@@ -432,7 +434,6 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
 
         inputs.parent_folder_ph = self.ctx.workchain_ph.outputs.remote_folder
 
-        self.report(f'parent_ph: {self.ctx.workchain_ph.outputs.remote_folder.get_remote_path()}')
         nscf_base_wc =  self.ctx.workchain_w90_bands.base.links.get_outgoing(link_label_filter='nscf').first().node
         inputs.parent_folder_nscf = nscf_base_wc.outputs.remote_folder
 
@@ -457,12 +458,15 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         #     w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90__remote_folder
         # else:
         #     w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90_optimal__remote_folder
-        if self.ctx.workchain_w90_bands.inputs.optimize_disproj:
+        if (
+            hasattr(self.ctx.workchain_w90_bands.inputs, 'optimize_disproj') 
+            and 
+            self.ctx.workchain_w90_bands.inputs.optimize_disproj
+            ):
             w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90_optimal.remote_folder
         else:
             w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90.remote_folder
 
-        self.report(f'w90_remote_data: {w90_remote_data.get_remote_path()}')
         wannier_chk_path = Path(w90_remote_data.get_remote_path(), 'aiida.chk')
         nscf_xml_path = Path(self.ctx.workchain_w90_bands.outputs.nscf.remote_folder.get_remote_path(), 'out/aiida.xml')
 
