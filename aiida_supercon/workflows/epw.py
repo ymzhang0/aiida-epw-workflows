@@ -1,6 +1,22 @@
 # -*- coding: utf-8 -*-
 """Work chain to compute the electron-phonon coupling.
 
+This work chain is refined to accept the parent folders of the Wannier90 and Phonon work chains.
+
+Firstly it will validate the parent folders.
+
+- If the phonon parent folders are valid, it will use the qpoints from the phonon parent folders.
+
+Then it will check if the wannier90 parent folders are valid. 
+
+- If so, it will check if the kpoints of the wannier90 work chain are compatible with the qpoints of the phonon work chain. 
+
+- If they are not compatible, it will re-generate the kpoints of the wannier90 work chain based on the qpoints of the phonon work chain. Then it will re-run the wannier90 work chain.
+
+- If the wannier90 parent folders are not valid, it will run the wannier90 work chain from scratch.
+
+If none of the parent folders are provided or are not valid, it will run the Wannier90 and Phonon work chains from scratch.
+
 The first step is to compute the electron-phonon (dvscf) on a coarse grid. I think 0.3A^-1 q-point grid should be good but you can use the same k-point grid (as opposed to twice) so it should be cheaper. This step should be done only once
 
 For this step you need to run 
@@ -81,7 +97,7 @@ ln -s ../epw8-conv1/save (Is basically the save folder from step 1)
 
 epw.x < epw2.in
 epw2.in
- 
+
 and basically here you can change the fine grid in epw2.in to converge things
 This run can be done in a different folder but you need to soft link a number of files from the previous calculation 2.
 
@@ -99,7 +115,7 @@ from aiida_quantumespresso.calculations.epw import EpwCalculation
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
 
 from aiida_wannier90_workflows.workflows import Wannier90BaseWorkChain, Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
-from aiida_wannier90_workflows.workflows.bands import validate_inputs as validate_inputs_bands
+from aiida_wannier90_workflows.workflows.optimize import validate_inputs as validate_inputs_bands
 from aiida_wannier90_workflows.utils.workflows.builder.setter import set_kpoints
 from aiida_wannier90_workflows.common.types import WannierProjectionType
 
@@ -158,6 +174,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         spec.output('epw_folder', valid_type=orm.RemoteStashFolderData)
 
         spec.outline(
+            cls.validate_parent_folders,
             cls.generate_reciprocal_points,
             if_(cls.should_run_wannier90)(
                 cls.run_wannier90,
@@ -186,11 +203,13 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         return files(protocols) / 'epw.yaml'
 
     @classmethod
-    def get_builder_from_protocol(cls, codes, structure, protocol=None, overrides=None,
-                                  wannier_projection_type=WannierProjectionType.ATOMIC_PROJECTORS_QE,
-                                  reference_bands=None, bands_kpoints=None,
-                                  parent_w90_folder=None, parent_ph_folder=None,
-                                  **kwargs):
+    def get_builder_from_protocol(
+        cls, codes, structure, protocol=None, overrides=None,
+        wannier_projection_type=WannierProjectionType.ATOMIC_PROJECTORS_QE,
+        reference_bands=None, bands_kpoints=None,
+        parent_w90_folder=None, parent_ph_folder=None,
+        **kwargs
+        ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
 
         :param structure: the ``StructureData`` instance to use.
@@ -202,41 +221,53 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         """
         inputs = cls.get_protocol_inputs(protocol, overrides)
 
-        w90_bands_inputs = inputs.get('w90_bands', {})
-        pseudo_family = w90_bands_inputs.pop('pseudo_family', None)
-
-        if wannier_projection_type == WannierProjectionType.ATOMIC_PROJECTORS_QE:
-            if reference_bands is None:
-                raise ValueError(f'reference_bands must be specified for {wannier_projection_type}')
+        builder = cls.get_builder()
+        builder.structure = structure
+        
+        # Check if the wannier90 workflow should be run from scratch
+        
+        if not parent_w90_folder:
+            w90_bands_inputs = inputs.get('w90_bands', {})
+            pseudo_family = w90_bands_inputs.pop('pseudo_family', None)
+                
             w90_bands = Wannier90OptimizeWorkChain.get_builder_from_protocol(
                 structure=structure,
                 codes=codes,
                 pseudo_family=pseudo_family,
                 overrides=w90_bands_inputs,
+                projection_type=wannier_projection_type,
                 reference_bands=reference_bands,
                 bands_kpoints=bands_kpoints,
             )
-            w90_bands.separate_plotting = False
-            # pop useless inputs, otherwise the builder validation will fail
-            # at validating empty inputs
-            w90_bands.pop("projwfc", None)
-        elif wannier_projection_type == WannierProjectionType.SCDM:
-            w90_bands = Wannier90BandsWorkChain.get_builder_from_protocol(
-                structure=structure,
-                codes=codes,
-                pseudo_family=pseudo_family,
-                overrides=w90_bands_inputs,
-            )
+            w90_bands.pop('structure', None)
+            w90_bands.pop('open_grid', None)
+            
+            if wannier_projection_type == WannierProjectionType.ATOMIC_PROJECTORS_QE:
+                w90_bands.pop('projwfc', None)
+
+            builder.w90_bands = w90_bands
+            builder.kpoints_distance_scf = orm.Float(inputs['kpoints_distance_scf'])
+            builder.kpoints_factor_nscf = orm.Int(inputs['kpoints_factor_nscf'])
+            
         else:
-            raise ValueError(f'Unsupported wannier_projection_type: {wannier_projection_type}')
+            builder.parent_w90_folder = parent_w90_folder
 
-        w90_bands.pop('structure', None)
-        w90_bands.pop('open_grid', None)
-
-        args = (codes['ph'], None, protocol)
-        ph_base = PhBaseWorkChain.get_builder_from_protocol(*args, overrides=inputs.get('ph_base', None), **kwargs)
-        ph_base.pop('clean_workdir', None)
-        ph_base.pop('qpoints_distance')
+        # Check if the phonon workflow should be run from scratch
+        if not parent_ph_folder:
+            ph_base_inputs = inputs.get('ph_base', {})
+            ph_base = PhBaseWorkChain.get_builder_from_protocol(
+                codes['ph'],
+                None, 
+                protocol, 
+                overrides=ph_base_inputs, 
+                **kwargs)
+            
+            ph_base.pop('clean_workdir', None)
+            ph_base.pop('qpoints_distance')
+            builder.ph_base = ph_base
+            builder.qpoints_distance = orm.Float(inputs['qpoints_distance'])
+        else:
+            builder.parent_ph_folder = parent_ph_folder
 
         epw_builder = EpwCalculation.get_builder()
 
@@ -258,124 +289,158 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         epw_builder.metadata = epw_inputs['metadata']
         epw_builder.settings = orm.Dict(epw_inputs['settings'])
 
-        builder = cls.get_builder()
-        builder.qpoints_distance = orm.Float(inputs['qpoints_distance'])
-        builder.kpoints_distance_scf = orm.Float(inputs['kpoints_distance_scf'])
-        builder.kpoints_factor_nscf = orm.Int(inputs['kpoints_factor_nscf'])
-        builder.structure = structure
-        builder.w90_bands = w90_bands
-        if parent_w90_folder:
-            builder.parent_w90_folder = parent_w90_folder
-        builder.ph_base = ph_base
-        if parent_ph_folder:
-            builder.parent_ph_folder = parent_ph_folder
         builder.epw = epw_builder
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
         return builder
 
+
+    def validate_parent_folders(self):
+        """Validate the parent folders."""
+        
+        ## TODO: Check if the parent folders are CLEANED
+        
+        is_w90_parent_folder_valid = False
+        is_ph_parent_folder_valid = False
+
+        parent_ph_folder = self.inputs.get('parent_ph_folder', None)
+        if (
+            parent_ph_folder and
+            (not parent_ph_folder.is_cleaned) and
+            parent_ph_folder.creator.caller.is_finished_ok and
+            parent_ph_folder.creator.caller.process_class is PhBaseWorkChain
+        ):
+            self.report(f'PhBaseWorkChain[{parent_ph_folder.creator.caller.pk}] finished successfully.')
+            self.ctx.workchain_ph = parent_ph_folder.creator.caller
+            is_ph_parent_folder_valid = True
+
+        else:
+            self.report('PhBaseWorkChain not provided or failed, will run it again.')
+            is_ph_parent_folder_valid = False
+
+        parent_w90_folder = self.inputs.get('parent_w90_folder', None)
+        
+        if (
+            parent_w90_folder and
+            (not parent_w90_folder.is_cleaned) and
+            parent_w90_folder.creator.caller.is_finished_ok and 
+            parent_w90_folder.creator.caller.process_class is Wannier90BaseWorkChain
+        ):
+            self.report(f'Wannier90BaseWorkChain[{parent_w90_folder.creator.caller.pk}] finished successfully.')
+            is_w90_parent_folder_valid = True
+            self.ctx.workchain_w90_bands = parent_w90_folder.creator.caller.caller
+        else:
+            self.report('Wannier90BaseWorkChain not provided or failed, will run it again.')
+            is_w90_parent_folder_valid = False
+            
+        ## TODO: what if there w90 provided but ph not?
+        
+        if is_ph_parent_folder_valid and is_w90_parent_folder_valid:
+            compatibility, _ = check_kq_compatibility(self.ctx.kpoints_nscf, self.ctx.qpoints)
+            if compatibility:
+                self.report('Kpoints of the Wannier90BaseWorkChain is a multiple of the qpoints of the PhBaseWorkChain.')
+                is_w90_parent_folder_valid = True
+            else:
+                self.report('Kpoints of the Wannier90BaseWorkChain is not a multiple of the qpoints of the PhBaseWorkChain.')
+                self.report("Rerun Wannier90WorkChain with kpoints based on given PhBaseWorkChain qpoints.")
+                is_w90_parent_folder_valid = False
+
+        self.ctx.is_w90_parent_folder_valid = is_w90_parent_folder_valid
+        self.ctx.is_ph_parent_folder_valid = is_ph_parent_folder_valid
+
+        self.report(f'is_w90_parent_folder_valid: {self.ctx.is_w90_parent_folder_valid}')
+        self.report(f'is_ph_parent_folder_valid: {self.ctx.is_ph_parent_folder_valid}')
+        
     def generate_reciprocal_points(self):
         """Generate the qpoints and kpoints meshes for the `ph.x` and `pw.x` calculations."""
 
-        inputs = {
-            'structure': self.inputs.structure,
-            'distance': self.inputs.qpoints_distance,
-            'force_parity': self.inputs.get('kpoints_force_parity', orm.Bool(False)),
-            'metadata': {
-                'call_link_label': 'create_qpoints_from_distance'
-            }
-        }
-        qpoints = create_kpoints_from_distance(**inputs)  # pylint: disable=unexpected-keyword-arg
-        inputs = {
-            'structure': self.inputs.structure,
-            'distance': self.inputs.kpoints_distance_scf,
-            'force_parity': self.inputs.get('kpoints_force_parity', orm.Bool(False)),
-            'metadata': {
-                'call_link_label': 'create_kpoints_scf_from_distance'
-            }
-        }
-        kpoints_scf = create_kpoints_from_distance(**inputs)
+        if self.ctx.is_ph_parent_folder_valid:
+            if hasattr(self.ctx.workchain_ph.inputs, 'qpoints'):
+                qpoints = self.ctx.workchain_ph.inputs.qpoints
+            elif hasattr(self.ctx.workchain_ph.inputs, 'qpoints_distance'):
+                inputs = {
+                    'structure': self.inputs.structure,
+                    'distance': self.ctx.workchain_ph.inputs.qpoints_distance,
+                    'force_parity': self.ctx.workchain_ph.inputs.get('kpoints_force_parity', orm.Bool(False)),
+                    'metadata': {
+                        'call_link_label': 're-create_qpoints_from_distance'
+                    }
+                }
+                qpoints = create_kpoints_from_distance(**inputs) 
+            else:
+                raise ValueError('No qpoints or qpoints_distance provided!')
+        else:
+            if hasattr(self.inputs, 'qpoints'):
+                qpoints = self.inputs.qpoints
+            elif hasattr(self.inputs, 'qpoints_distance'):
+                inputs = {
+                    'structure': self.inputs.structure,
+                    'distance': self.inputs.qpoints_distance,
+                    'force_parity': self.inputs.get('kpoints_force_parity', orm.Bool(False)),
+                    'metadata': {
+                        'call_link_label': 'create_qpoints_from_distance'
+                    }
+                }
+                qpoints = create_kpoints_from_distance(**inputs) 
 
-        qpoints_mesh = qpoints.get_kpoints_mesh()[0]
-        kpoints_nscf = orm.KpointsData()
-        kpoints_nscf.set_kpoints_mesh([v * self.inputs.kpoints_factor_nscf.value for v in qpoints_mesh])
+        if not self.ctx.is_w90_parent_folder_valid:
+            
+            ## TODO: Check if kpoints is provided in the inputs.
+            ## If not, create kpoints from distance.
+            ## If yes, use the provided kpoints.
+            
+            inputs = {
+                'structure': self.inputs.structure,
+                'distance': self.inputs.kpoints_distance_scf,
+                'force_parity': self.inputs.get('kpoints_force_parity', orm.Bool(False)),
+                'metadata': {
+                    'call_link_label': 'create_kpoints_scf_from_distance'
+                }
+            }
+            
+            kpoints_scf = create_kpoints_from_distance(**inputs)
 
+            qpoints_mesh = qpoints.get_kpoints_mesh()[0]
+            kpoints_nscf = orm.KpointsData()
+            kpoints_nscf.set_kpoints_mesh([v * self.inputs.kpoints_factor_nscf.value for v in qpoints_mesh])
+
+        else:
+            if hasattr(self.ctx.workchain_w90_bands.inputs, 'kpoints_scf'):
+                kpoints_scf = self.ctx.workchain_w90_bands.inputs.kpoints_scf
+            elif hasattr(self.ctx.workchain_w90_bands.inputs, 'kpoints_distance_scf'):
+                inputs = {
+                    'structure': self.inputs.structure,
+                    'distance': self.ctx.workchain_w90_bands.inputs.kpoints_distance_scf,
+                    'force_parity': self.inputs.get('kpoints_force_parity', orm.Bool(False)),
+                    'metadata': {
+                    'call_link_label': 're-create_kpoints_scf_from_distance'
+                    }
+                }
+                kpoints_scf = create_kpoints_from_distance(**inputs)
+            
+            mp_grid = self.ctx.workchain_w90_bands.inputs.parameters['mp_grid']
+            kpoints_nscf = orm.KpointsData()
+            kpoints_nscf.set_kpoints_mesh(mp_grid)
+
+        self.report(f'kpoints_scf: {kpoints_scf}')
+        self.report(f'kpoints_nscf: {kpoints_nscf}')
+        
         self.ctx.qpoints = qpoints
         self.ctx.kpoints_scf = kpoints_scf
         self.ctx.kpoints_nscf = kpoints_nscf
 
     def should_run_wannier90(self):
         """Check if the wannier90 workflow should be run."""
-
         ## The parent_w90_folder is created by Wannier90Calculation, which is a child process
         ## of Wannier90BaseWorkChain. Wannier90BaseWorkChain is also a child process.
         # If One use 'SCDM' projection, its caller is a Wannier90BandsWorkChain 
         # If One use 'PDWF' projection, its caller is a Wannier90OptimizeWorkChain
-        if (
-            self.inputs.parent_w90_folder and
-            self.inputs.parent_w90_folder.creator.caller.is_finished_ok and 
-            self.inputs.parent_w90_folder.creator.caller.process_class is Wannier90BaseWorkChain
-        ):
-            self.report(
-                f'Wannier90BaseWorkChain[{self.inputs.parent_w90_folder.creator.caller.pk}] finished successfully, will skip it.'
-                )
-            
-            ## We should get the kpoints from the Wannier90Calculation
-            mp_grid = self.inputs.parent_w90_folder.creator.inputs.parameters['mp_grid']
-            kpoints_nscf = orm.KpointsData()
-            kpoints_nscf.set_kpoints_mesh(mp_grid)
-            self.ctx.kpoints_nscf = kpoints_nscf
-
-            ## workchain_w90_bands is the top level wannier90 workchain. 
-
-            self.ctx.workchain_w90_bands = self.inputs.parent_w90_folder.creator.caller.caller
-            return False
-        else:
-            self.report(
-                'Wannier90BandsWorkChain/Wannier90OptimizeWorkChain not provided or failed, will run it again.'
-                )
-            return True
-
-    def should_run_ph(self):
-        """Check if the phonon workflow should be run."""
-        if (
-            self.inputs.parent_ph_folder and
-            self.inputs.parent_ph_folder.creator.caller.is_finished_ok and
-            self.inputs.parent_ph_folder.creator.caller.process_class is PhBaseWorkChain
-        ):
-            self.report(f'PhBaseWorkChain[{self.inputs.parent_ph_folder.creator.caller.pk}] finished successfully, will skip it.')
-            self.ctx.workchain_ph = self.inputs.parent_ph_folder.creator.caller
-
-            if hasattr(self.ctx.workchain_ph.inputs, 'qpoints'):
-                self.ctx.qpoints = self.ctx.workchain_ph.inputs.qpoints
-            elif hasattr(self.ctx.workchain_ph.inputs, 'qpoints_distance'):
-                inputs = {
-                    'structure': self.inputs.structure,
-                    'distance': self.ctx.workchain_ph.inputs.qpoints_distance,
-                    'force_parity': getattr(self.ctx.workchain_ph.inputs, 'qpoints_force_parity', orm.Bool(False)),
-                    'metadata': {
-                        'call_link_label': 'create_qpoints_from_distance'
-                    }
-                }
-                qpoints = create_kpoints_from_distance(**inputs) 
-                self.ctx.qpoints = qpoints
-
-            else:
-                raise ValueError('Qpoints information not found in PhBaseWorkChain inputs')
-            
-            self.report(f'Qpoints of the old PhBaseWorkChain: {self.ctx.qpoints.get_kpoints_mesh()[0]} with shift {self.ctx.qpoints.get_kpoints_mesh()[1]}')
-            self.report(f'Kpoints of the old Wannier90BaseWorkChain: {self.ctx.kpoints_nscf.get_kpoints_mesh()[0]} with shift {self.ctx.kpoints_nscf.get_kpoints_mesh()[1]}')
-            if all(q != 0 and k % q == 0 for k, q in zip(self.ctx.kpoints_nscf.get_kpoints_mesh()[0], self.ctx.qpoints.get_kpoints_mesh()[0])):
-                self.report('Kpoints of the Wannier90BaseWorkChain is a multiple of the qpoints of the PhBaseWorkChain.')
-            
-            else:
-                raise ValueError('Kpoints of the Wannier90BaseWorkChain is not compatible with the qpoints of the PhBaseWorkChain.')
-        else:
-            self.report('PhBaseWorkChain not provided or failed, will run it again.')
-            return True
+        
+        return not self.ctx.is_w90_parent_folder_valid
 
     def run_wannier90(self):
         """Run the wannier90 workflow."""
+        
         if 'projwfc' in self.inputs.w90_bands:
             self.report('Running a Wannier90BandsWorkChain.')
             w90_class = Wannier90BandsWorkChain
@@ -388,9 +453,9 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         )
         inputs.metadata.call_link_label = 'w90_bands'
         inputs.structure = self.inputs.structure
-
-        set_kpoints(inputs, self.ctx.kpoints_nscf, w90_class)
+        
         inputs['scf']['kpoints'] = self.ctx.kpoints_scf
+        set_kpoints(inputs, self.ctx.kpoints_nscf, w90_class)
 
         workchain_node = self.submit(w90_class, **inputs)
         self.report(f'launching wannier90 work chain {workchain_node.pk}')
@@ -404,6 +469,11 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         if not workchain.is_finished_ok:
             self.report(f'`Wannier90BandsWorkChain` failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90
+    
+    def should_run_ph(self):
+        """Check if the phonon workflow should be run."""
+        
+        return not self.ctx.is_ph_parent_folder_valid
 
     def run_ph(self):
         """Run the `PhBaseWorkChain`."""
@@ -429,7 +499,9 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PHONON
 
     def run_epw(self):
-        """Run the `epw.x` calculation."""        
+        """Run the `epw.x` calculation."""       
+
+
         inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw'))
 
         inputs.parent_folder_ph = self.ctx.workchain_ph.outputs.remote_folder
@@ -442,7 +514,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
 
         inputs.kpoints = self.ctx.kpoints_nscf
         inputs.kfpoints = fine_points
-        inputs.qpoints = self.ctx.workchain_ph.inputs.qpoints
+        inputs.qpoints = self.ctx.qpoints
         inputs.qfpoints = fine_points      
 
         parameters = inputs.parameters.get_dict()
@@ -514,3 +586,34 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
 
         if cleaned_calcs:
             self.report(f"cleaned remote folders of calculations: {' '.join(map(str, cleaned_calcs))}")
+
+def check_kq_compatibility(
+    kpoints: orm.KpointsData,
+    qpoints: orm.KpointsData,
+) -> (bool, list):
+    """
+    Check if the kpoints and qpoints are compatible.
+    """
+    kpoints_mesh = kpoints.get_kpoints_mesh()[0]
+    kpoints_shift = kpoints.get_kpoints_mesh()[1]
+    qpoints_mesh = qpoints.get_kpoints_mesh()[0]
+    qpoints_shift = qpoints.get_kpoints_mesh()[1]
+    
+    compatibility = None
+    multiplicities = []
+    remainder = []
+    
+    for k, q in zip(kpoints_mesh, qpoints_mesh):
+        multiplicities.append(k // q)
+        remainder.append(k % q)
+
+
+    if kpoints_shift != [0.0, 0.0, 0.0] or qpoints_shift != [0.0, 0.0, 0.0]:
+        compatibility = False
+    else:
+        if remainder == [0, 0, 0]:
+            compatibility = True
+        else:
+            compatibility = False
+    
+    return compatibility, multiplicities

@@ -2,7 +2,7 @@
 """Temporary home for various plotting tools."""
 from aiida import orm
 from typing import Tuple
-from aiida_qe_super.tools.calculators import calculate_lambda_omega, allen_dynes
+from aiida_supercon.tools.calculators import calculate_lambda_omega, allen_dynes
 from matplotlib import pyplot as plt
 import numpy
 from io import StringIO
