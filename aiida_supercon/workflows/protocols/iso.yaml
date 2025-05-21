@@ -1,0 +1,41 @@
+default_inputs:
+  clean_workdir: False
+  qfpoints_distance: 0.1
+  kfpoints_factor: 1
+  epw:
+      metadata:
+      options:
+        resources:
+          num_machines: 1
+        max_wallclock_seconds: 43200  # Twelve hours
+        withmpi: True
+  iso:
+    metadata:
+      options:
+        resources:
+          num_machines: 1
+        max_wallclock_seconds: 43200  # Twelve hours
+        withmpi: True
+    parameters:
+      INPUTEPW:
+        eliashberg: True
+        liso: True
+        limag: True
+        lpade: False
+        laniso: False
+        mp_mesh_k: True
+        wannierize: False
+        tc_linear: True
+        tc_linear_solver: 'power'
+        muc: 0.13
+
+default_protocol: moderate
+protocols:
+  moderate:
+    description: 'Protocol to perform a electron-phonon calculation at normal precision at moderate computational cost.'
+  precise:
+    description: 'Protocol to perform a electron-phonon calculation at high precision at higher computational cost.'
+    qfpoints_distance: 0.05
+  fast:
+    description: 'Protocol to perform a electron-phonon calculation at low precision at minimal computational cost for testing purposes.'
+    qfpoints_distance: 0.2

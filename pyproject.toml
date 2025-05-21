@@ -52,6 +52,7 @@ dev = [
 'quantumespresso.super.electronphonon' = 'aiida_supercon.workflows.electronphonon:ElectronPhononWorkChain'
 'quantumespresso.super.epwelectronphonon' = 'aiida_supercon.workflows.epwelectronphonon:EpwElectronPhononWorkChain'
 'quantumespresso.super.epw' = 'aiida_supercon.workflows.epw:EpwWorkChain'
+'quantumespresso.super.a2f' = 'aiida_supercon.workflows.a2f.A2fWorkChain'
 'quantumespresso.super.supercon' = 'aiida_supercon.workflows.supercon.SuperConWorkChain'
 
 [tool.flit.module]

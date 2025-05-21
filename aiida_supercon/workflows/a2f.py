@@ -9,16 +9,13 @@ from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 from aiida_quantumespresso.calculations.epw import EpwCalculation
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
 from .epw import EpwWorkChain
-from .a2f import A2fWorkChain
-from .iso import IsoWorkChain
-from .aniso import AnisoWorkChain
 from aiida.engine import calcfunction
-
-load_profile()
-
 
 from scipy.interpolate import interp1d
 import numpy
+
+load_profile()
+
 
 @calcfunction
 def calculate_tc(max_eigenvalue: orm.XyData) -> orm.Float:
@@ -29,7 +26,7 @@ def calculate_tc(max_eigenvalue: orm.XyData) -> orm.Float:
         return orm.Float(float(interp1d(me_array[:, 1], me_array[:, 0])(1.0)))
 
 @calcfunction
-def calculate_Allen_Dynes_tc(a2f: orm.ArrayData, mustar: orm.Float) -> orm.Float:
+def calculate_Allen_Dynes_tc(a2f: orm.ArrayData, mustar = 0.13) -> orm.Float:
     w        = a2f.get_array('frequency')
     # Here we preassume that there are 10 smearing values for a2f calculation
     spectral = a2f.get_array('a2f')[:, 9]   
@@ -45,10 +42,28 @@ def calculate_Allen_Dynes_tc(a2f: orm.ArrayData, mustar: orm.Float) -> orm.Float
 
     return orm.Float(Tc)
 
-class SuperConWorkChain(ProtocolMixin, WorkChain):
-    """Work chain to compute the electron-phonon coupling."""
+class A2fWorkChain(ProtocolMixin, WorkChain):
+    """Work chain to compute the Allen-Dynes critical temperature."""
     __KPOINTS_GAMMA = orm.KpointsData()
     __KPOINTS_GAMMA.set_kpoints_mesh([1, 1, 1])
+    
+    _blocked_keywords = [
+        ('INPUTEPW', 'use_ws'),
+        ('INPUTEPW', 'nbndsub'),
+        ('INPUTEPW', 'bands_skipped'),
+        ('INPUTEPW', 'vme'),
+    ]
+    
+    _defaults_parameters = {
+        'INPUTEPW': {
+            'degaussq'   : 0.05,
+            'degaussw'   : 0.01,
+            'eps_acustic' : 1,
+            'iverbosity' : 1,
+            'fsthick'    : 0.8,
+            'temps'      : 1,
+        }
+    }
     
     @classmethod
     def define(cls, spec):
@@ -57,10 +72,10 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
 
         spec.input('structure', valid_type=orm.StructureData)
         spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(False))
-        spec.input('qfpoints_distance', valid_type=orm.Float)
+        spec.input('qfpoints', required=False, valid_type=orm.KpointsData)
+        spec.input('qfpoints_distance', required=False, valid_type=orm.Float)
         spec.input('kfpoints_factor', valid_type=orm.Int)
         spec.input('parent_epw_folder', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
-        spec.input('parent_scon_folder', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
         spec.expose_inputs(
             EpwWorkChain, namespace='epw', exclude=(
                 'clean_workdir', 'structure'
@@ -72,12 +87,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_inputs(
-            A2fWorkChain, namespace='a2f', exclude=(
-                'clean_workdir', 'structure'
-            ),
-        )
-        spec.expose_inputs(
-            IsoWorkChain, namespace='iso', exclude=(
+            EpwCalculation, namespace='a2f', exclude=(
                 'kpoints',
                 'qpoints',
                 'kfpoints', 
@@ -92,68 +102,47 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
                 'help': 'Inputs for the isotropic `EpwCalculation`.'
             }
         )
-        spec.expose_inputs(
-            AnisoWorkChain, namespace='aniso', exclude=(
-                'kpoints',
-                'qpoints',
-                'kfpoints', 
-                'qfpoints',
-                'parent_folder_ph', 
-                'parent_folder_nscf', 
-                'parent_folder_epw',
-            ),
-            namespace_options={
-                'required': False,
-                'populate_defaults': False,
-                'help': 'Inputs for the anisotropic `EpwCalculation`.'
-            }
-        )
+        spec.inputs.validator = cls.validate_inputs
         spec.outline(
-            cls.validate_inputs,
             cls.setup,
+            cls.generate_reciprocal_points,
             if_(cls.should_run_epw)(
                 cls.run_epw,
                 cls.inspect_epw,
             ),
-            cls.generate_reciprocal_points,
-            if_(cls.should_run_a2f)(
-                cls.run_a2f,
-                cls.inspect_a2f,
-            ),
-            if_(cls.should_run_iso)(
-                cls.run_iso,
-                cls.inspect_iso,
-            ),
-            if_(cls.should_run_aniso)(
-                cls.run_aniso,
-                cls.inspect_aniso,
-            ),
+            cls.run_a2f,
+            cls.inspect_a2f,
             cls.results
         )
         spec.output('parameters', valid_type=orm.Dict,
                     help='The `output_parameters` output node of the final EPW calculation.')
-        spec.output('Tc_allen_dynes', valid_type=orm.Float, required=False,
-                    help='The Allen-Dynes Tc interpolated from the a2f file.')
-        spec.output('Tc_iso', valid_type=orm.Float, required=False,
-                    help='The isotropic linearised Eliashberg Tc interpolated from the max eigenvalue curve.')
-        spec.output('Tc_aniso', valid_type=orm.Float, required=False,
-                    help='The anisotropic Eliashberg Tc interpolated from the max eigenvalue curve.')
-
+        spec.output('a2f', valid_type=orm.XyData,
+                    help='The contents of the `.a2f` file.')
+        spec.output('remote_folder', valid_type=orm.RemoteData,
+                    help='The remote folder of the final EPW calculation.')
+        # spec.output('Tc_allen_dynes', valid_type=orm.Float, required=False,
+        #             help='The Allen-Dynes Tc interpolated from the a2f file.')
         spec.exit_code(401, 'ERROR_SUB_PROCESS_EPW',
             message='The `epw` sub process failed')
-        spec.exit_code(402, 'ERROR_SUB_PROCESS_A2F',
+        spec.exit_code(402, 'ERROR_SUB_PROCESS_EPW_A2F',
             message='The `a2f` sub process failed')
-        spec.exit_code(403, 'ERROR_SUB_PROCESS_ISO',
-            message='The `isotropic` sub process failed')
-        spec.exit_code(404, 'ERROR_SUB_PROCESS_ANISO',
-            message='The `aniso` sub process failed')
 
     @classmethod
     def get_protocol_filepath(cls):
         """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
         from importlib_resources import files
         from . import protocols
-        return files(protocols) / 'supercon.yaml'
+        return files(protocols) / 'a2f.yaml'
+    
+    @classmethod
+    def validate_inputs(cls, value, port_namespace):  # pylint: disable=unused-argument
+        """Validate the top level namespace."""
+
+        if not ('qfpoints_distance' in port_namespace or 'qfpoints' in port_namespace):
+            return "Neither `qfpoints` nor `qfpoints_distance` were specified."
+
+        if not ('parent_epw_folder' in port_namespace or 'epw' in port_namespace):
+            return "Only one of `parent_epw_folder` or `epw` can be accepted."
 
     @classmethod
     def get_builder_from_protocol(
@@ -187,32 +176,24 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             # TODO: Add check to make sure epw_folder is on same computer as epw_code
             builder.parent_epw_folder = parent_epw_folder
 
-
         builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
         builder.kfpoints_factor = orm.Int(inputs['kfpoints_factor'])
+        
+        epw_inputs = inputs.get('a2f', None) 
+        
+        epw_builder = EpwCalculation.get_builder()
+        epw_builder.code = codes['epw']
+        epw_builder.metadata = epw_inputs['metadata']
+        if 'settings' in epw_inputs:
+            epw_builder.settings = orm.Dict(epw_inputs['settings'])
 
-        for epw_namespace in ('a2f', 'iso', 'aniso'):
-            epw_inputs = inputs.get(epw_namespace, None) 
-            
-            epw_builder = EpwCalculation.get_builder()
-            epw_builder.code = codes['epw']
-            epw_builder.metadata = epw_inputs['metadata']
-            if 'settings' in epw_inputs:
-                epw_builder.settings = orm.Dict(epw_inputs['settings'])
-            
-            if 'parameters' in epw_inputs:
-                epw_builder.parameters = orm.Dict(epw_inputs['parameters'])
-            
-            builder[epw_namespace] = epw_builder
+        epw_builder.parameters = orm.Dict(epw_inputs.get('parameters', {}))
+        
+        builder.a2f = epw_builder
 
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
         return builder
-
-    def validate_inputs(self):
-        """Validate the inputs."""
-        if hasattr(self.inputs, 'parent_epw_folder') and hasattr(self.inputs, 'epw'):
-            raise ValueError("Only one of `parent_epw_folder` or `epw` can be accepted.")
 
     def setup(self):
         """Setup steps, i.e. initialise context variables."""
@@ -264,9 +245,6 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
 
         self.ctx.qfpoints = qfpoints
         self.ctx.kfpoints = kfpoints
-        
-        self.report(f'qfpoints: {qfpoints}')
-        self.report(f'kfpoints: {kfpoints}')
 
     def should_run_epw(self):
         """Check if the epw loop should continue or not."""
@@ -278,6 +256,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             if parent_epw_wc.process_class != EpwWorkChain:
                 raise ValueError("`parent_epw_folder` must be a `RemoteData` node from an `EpwWorkChain`.")
             
+            self.report(f'Reading from parent epw folder')
             self.ctx.epw = parent_epw_wc            
             
             return False
@@ -291,30 +270,38 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         inputs.structure = self.inputs.structure
         
         inputs.metadata.call_link_label = 'epw'
-        calcjob_node = self.submit(EpwCalculation, **inputs)
+        workchain_node = self.submit(EpwWorkChain, **inputs)
 
-        self.report(f'launching `epw` with PK {calcjob_node.pk}')
+        self.report(f'launching `epw` with PK {workchain_node.pk}')
 
-        return ToContext(epw=calcjob_node)
+        return ToContext(epw=workchain_node)
 
     def inspect_epw(self):
         """Verify that the epw.x workflow finished successfully."""
-        epw_calculation = self.ctx.epw
+        epw_workchain = self.ctx.epw
 
-        if not epw_calculation.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {epw_calculation.exit_status}')
+        if not epw_workchain.is_finished_ok:
+            self.report(f'`epw.x` failed with exit status {epw_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_EPW
 
-    def should_run_epw_iso(self):
-        """Check if the isotropic loop should continue or not."""
-        if hasattr(self.inputs, 'epw_iso'):
-            return True
-        else:
-            return False
-
-    def run_epw_iso(self):
+    def run_a2f(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
         
+        inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='a2f'))
+
+        epw_calcjob = self.ctx.epw.base.links.get_outgoing(link_label_filter='epw').first().node
+        
+        parameters = inputs.parameters.get_dict()
+        epw_parameters = epw_calcjob.inputs.parameters.get_dict()
+        
+        for namespace, _parameters in self._defaults_parameters.items():
+            for keyword, value in _parameters.items():
+                parameters[namespace][keyword] = value
+        for namespace, keyword in self._blocked_keywords:
+            if keyword in epw_parameters[namespace]:
+                parameters[namespace][keyword] = epw_parameters[namespace][keyword]
+        
+        inputs.parameters = orm.Dict(parameters)
         create_qpoints_from_distance = self.ctx.epw.base.links.get_outgoing(link_label_filter='create_qpoints_from_distance').first().node
 
         qpoints = create_qpoints_from_distance.outputs.result
@@ -324,12 +311,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             for v in qpoints.get_kpoints_mesh()[0]
             ])
 
-        inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw_iso'))
-
-        if hasattr(self.inputs, 'parent_epw_folder'):
-            parent_folder = self.inputs.parent_epw_folder
-        else:
-            parent_folder = self.ctx.epw.outputs.remote_folder
+        parent_folder = self.ctx.epw.outputs.epw_folder
 
         inputs.parent_folder_epw = parent_folder
         inputs.kpoints = kpoints
@@ -345,101 +327,29 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.a2f']
         inputs.settings = orm.Dict(settings)
 
-        if self.ctx.degaussq:
-            parameters = inputs.parameters.get_dict()
-            parameters['INPUTEPW']['degaussq'] = self.ctx.degaussq
-            inputs.parameters = orm.Dict(parameters)
-
-        inputs.metadata.call_link_label = 'epw_iso'
+        inputs.metadata.call_link_label = 'a2f'
         calcjob_node = self.submit(EpwCalculation, **inputs)
 
-        self.report(f'launching isotropic `epw` with PK {calcjob_node.pk}')
+        self.report(f'launching a2f `epw` with PK {calcjob_node.pk}')
 
-        return ToContext(epw_iso=calcjob_node)
+        return ToContext(a2f=calcjob_node)
 
-    def inspect_epw_iso(self):
+    def inspect_a2f(self):
         """Verify that the epw.x workflow finished successfully."""
-        epw_iso = self.ctx.epw_iso
+        a2f = self.ctx.a2f
 
-        if not epw_iso.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {epw_iso.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_EPW_ISO
-        else:
-            try:
-                self.report(f"Allen-Dynes: {epw_iso.outputs.output_parameters['allen_dynes']}")
-            except KeyError:
-                self.report(f"Could not find Allen-Dynes temperature in parsed output parameters!")
+        if not a2f.is_finished_ok:
+            self.report(f'`epw.x` failed with exit status {a2f.exit_status}')
+            return self.exit_codes.ERROR_SUB_PROCESS_A2F
 
-            if self.ctx.degaussq is None:
-                frequency = epw_iso.outputs.a2f.get_array('frequency')
-                self.ctx.degaussq = frequency[-1] / 100
 
-    def should_run_epw_aniso(self):
-        """Check if the anisotropic loop should continue or not."""
-        
-        Tc_lE = self.ctx.Tc_lE
-        if hasattr(self.inputs, 'epw_aniso') and Tc_lE > 5.0:
-            return True
-        else:
-            return False
-        
-    def run_epw_aniso(self):
-        """Run the aniso ``epw.x`` calculation."""
-        
-        Tc_lE = self.ctx.Tc_lE
-
-        """Run the aniso ``epw.x`` calculation."""
-        inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw_aniso'))
-
-        inputs.parent_folder_epw = self.ctx.final_epw.outputs.remote_folder
-        inputs.kfpoints = self.ctx.final_epw.inputs.kfpoints
-        inputs.qfpoints = self.ctx.final_epw.inputs.qfpoints
-
-        parameters = inputs.parameters.get_dict()
-        
-        if self.ctx.degaussq:
-            parameters['INPUTEPW']['degaussq'] = self.ctx.degaussq
-        
-        parameters['INPUTEPW']['temps'] = f'3.5 {Tc_lE.value}'
-        inputs.parameters = orm.Dict(parameters)
-
-        try:
-            settings = inputs.settings.get_dict()
-        except AttributeError:
-            settings = {}
-            
-        settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.imag_aniso_*', 'aiida.lambda*']
-        
-        if parameters['INPUTEPW'].get('lpade', False):
-            settings['ADDITIONAL_RETRIEVE_LIST'].extend(('aiida.pade_aniso_gap0*', ))
-        
-        inputs.settings = orm.Dict(settings)
-
-        inputs.metadata.call_link_label = 'epw_aniso'
-
-        calcjob_node = self.submit(EpwCalculation, **inputs)
-        self.report(f'launching aniso `epw` {calcjob_node.pk}')
-
-        return ToContext(aniso_epw=calcjob_node)
-    
-    def inspect_epw_aniso(self):
-        """Verify that the aniso epw.x workflow finished successfully."""
-        epw_calculation = self.ctx.aniso_epw
-
-        if not epw_calculation.is_finished_ok:
-            self.report(f'Anisotropic `epw.x` failed with exit status {epw_calculation.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_EPW_ANISO
-        
     def results(self):
         """TODO"""
         
-        self.out('Tc_iso', self.ctx.Tc_iso)
-        self.out('Tc_aniso', self.ctx.Tc_aniso)
-        self.out('Tc_allen_dynes', self.ctx.Tc_allen_dynes)
-        self.out('parameters', self.ctx.final_epw.outputs.output_parameters)
-        self.out('max_eigenvalue', self.ctx.final_epw.outputs.max_eigenvalue)
-        self.out('a2f', self.ctx.final_epw.outputs.a2f)
-
+        # self.out('Tc_a2f', self.ctx.Tc_a2f)
+        self.out('parameters', self.ctx.a2f.outputs.output_parameters)
+        self.out('a2f', self.ctx.a2f.outputs.a2f)
+        self.out('remote_folder', self.ctx.a2f.outputs.remote_folder)
     def on_terminated(self):
         """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
         super().on_terminated()

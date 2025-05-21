@@ -226,48 +226,54 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
         
         # Check if the wannier90 workflow should be run from scratch
         
-        if not parent_w90_folder:
-            w90_bands_inputs = inputs.get('w90_bands', {})
-            pseudo_family = w90_bands_inputs.pop('pseudo_family', None)
-                
-            w90_bands = Wannier90OptimizeWorkChain.get_builder_from_protocol(
-                structure=structure,
-                codes=codes,
-                pseudo_family=pseudo_family,
-                overrides=w90_bands_inputs,
-                projection_type=wannier_projection_type,
-                reference_bands=reference_bands,
-                bands_kpoints=bands_kpoints,
-            )
-            w90_bands.pop('structure', None)
-            w90_bands.pop('open_grid', None)
+        # if not parent_w90_folder:
+        
+        # TODO: Check we can restart wannier90 from parent_w90_folder.
+        w90_bands_inputs = inputs.get('w90_bands', {})
+        pseudo_family = w90_bands_inputs.pop('pseudo_family', None)
             
-            if wannier_projection_type == WannierProjectionType.ATOMIC_PROJECTORS_QE:
-                w90_bands.pop('projwfc', None)
+        w90_bands = Wannier90OptimizeWorkChain.get_builder_from_protocol(
+            structure=structure,
+            codes=codes,
+            pseudo_family=pseudo_family,
+            overrides=w90_bands_inputs,
+            projection_type=wannier_projection_type,
+            reference_bands=reference_bands,
+            bands_kpoints=bands_kpoints,
+        )
+        w90_bands.pop('structure', None)
+        w90_bands.pop('open_grid', None)
+        
+        if wannier_projection_type == WannierProjectionType.ATOMIC_PROJECTORS_QE:
+            w90_bands.pop('projwfc', None)
 
-            builder.w90_bands = w90_bands
-            builder.kpoints_distance_scf = orm.Float(inputs['kpoints_distance_scf'])
-            builder.kpoints_factor_nscf = orm.Int(inputs['kpoints_factor_nscf'])
-            
-        else:
-            builder.parent_w90_folder = parent_w90_folder
+        builder.w90_bands = w90_bands
+        builder.kpoints_distance_scf = orm.Float(inputs['kpoints_distance_scf'])
+        builder.kpoints_factor_nscf = orm.Int(inputs['kpoints_factor_nscf'])
+        
+        # else:
+        builder.parent_w90_folder = parent_w90_folder
 
         # Check if the phonon workflow should be run from scratch
-        if not parent_ph_folder:
-            ph_base_inputs = inputs.get('ph_base', {})
-            ph_base = PhBaseWorkChain.get_builder_from_protocol(
-                codes['ph'],
-                None, 
-                protocol, 
-                overrides=ph_base_inputs, 
-                **kwargs)
-            
-            ph_base.pop('clean_workdir', None)
-            ph_base.pop('qpoints_distance')
-            builder.ph_base = ph_base
-            builder.qpoints_distance = orm.Float(inputs['qpoints_distance'])
-        else:
-            builder.parent_ph_folder = parent_ph_folder
+        # if not parent_ph_folder:
+        
+        # TODO: Check we can restart phonon from parent_ph_folder.
+        
+        ph_base_inputs = inputs.get('ph_base', {})
+        ph_base = PhBaseWorkChain.get_builder_from_protocol(
+            codes['ph'],
+            parent_folder=parent_ph_folder, 
+            protocol=protocol, 
+            overrides=ph_base_inputs, 
+            **kwargs
+            )
+        
+        ph_base.pop('clean_workdir', None)
+        ph_base.pop('qpoints_distance', None)
+        builder.ph_base = ph_base
+        builder.qpoints_distance = orm.Float(inputs['qpoints_distance'])
+        # else:
+        builder.parent_ph_folder = parent_ph_folder
 
         epw_builder = EpwCalculation.get_builder()
 
@@ -422,9 +428,6 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
             kpoints_nscf = orm.KpointsData()
             kpoints_nscf.set_kpoints_mesh(mp_grid)
 
-        self.report(f'kpoints_scf: {kpoints_scf}')
-        self.report(f'kpoints_nscf: {kpoints_nscf}')
-        
         self.ctx.qpoints = qpoints
         self.ctx.kpoints_scf = kpoints_scf
         self.ctx.kpoints_nscf = kpoints_nscf
@@ -500,8 +503,7 @@ class EpwWorkChain(ProtocolMixin, WorkChain):
 
     def run_epw(self):
         """Run the `epw.x` calculation."""       
-
-
+        
         inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw'))
 
         inputs.parent_folder_ph = self.ctx.workchain_ph.outputs.remote_folder
