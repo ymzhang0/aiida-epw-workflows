@@ -16,39 +16,31 @@ from aiida.engine import calcfunction
 
 load_profile()
 
-
-from scipy.interpolate import interp1d
-import numpy
-
 @calcfunction
-def calculate_tc(max_eigenvalue: orm.XyData) -> orm.Float:
-    me_array = max_eigenvalue.get_array('max_eigenvalue')
-    if me_array[:, 1].max() < 1.0:
-        return orm.Float(0.0)
-    else:
-        return orm.Float(float(interp1d(me_array[:, 1], me_array[:, 0])(1.0)))
-
-@calcfunction
-def calculate_Allen_Dynes_tc(a2f: orm.ArrayData, mustar: orm.Float) -> orm.Float:
-    w        = a2f.get_array('frequency')
-    # Here we preassume that there are 10 smearing values for a2f calculation
-    spectral = a2f.get_array('a2f')[:, 9]   
-    mev2K    = 11.604525006157
-
-    _lambda  = 2*numpy.trapz(numpy.divide(spectral, w), x=w)
-
-    # wlog =  np.exp(np.average(np.divide(alpha, w), weights=np.log(w)))
-    wlog     =  numpy.exp(2/_lambda*numpy.trapz(numpy.multiply(numpy.divide(spectral, w), numpy.log(w)), x=w))
-
-    Tc = wlog/1.2*numpy.exp(-1.04*(1+_lambda)/(_lambda-mustar*(1+0.62*_lambda))) * mev2K
-
-
-    return orm.Float(Tc)
+def split_list(list_node: orm.List) -> dict:
+    return {f'el_{no}': orm.Float(el) for no, el in enumerate(list_node.get_list())}
 
 class SuperConWorkChain(ProtocolMixin, WorkChain):
     """Work chain to compute the electron-phonon coupling."""
     __KPOINTS_GAMMA = orm.KpointsData()
     __KPOINTS_GAMMA.set_kpoints_mesh([1, 1, 1])
+    
+    _excluded_epw_inputs = (
+        'kpoints', 'qpoints', 'kfpoints', 'qfpoints',
+        'parent_folder_ph', 'parent_folder_nscf', 'parent_folder_epw', 'clean_workdir',
+    )
+    
+    _excluded_a2f_inputs = (
+        'parent_folder_epw', 'clean_workdir',
+    )
+    
+    _excluded_iso_inputs = (
+        'qfpoints', 'qfpoints_distance', 'kfpoints_factor', 'parent_folder_epw', 'clean_workdir',
+    )
+    
+    _excluded_aniso_inputs = (
+        'qfpoints', 'qfpoints_distance', 'kfpoints_factor', 'parent_folder_epw', 'clean_workdir',
+    )
     
     @classmethod
     def define(cls, spec):
@@ -60,7 +52,9 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         spec.input('qfpoints_distance', valid_type=orm.Float)
         spec.input('kfpoints_factor', valid_type=orm.Int)
         spec.input('parent_epw_folder', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
-        spec.input('parent_scon_folder', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
+        spec.input('interpolation_distance', required=False, valid_type=(orm.Float, orm.List))
+        spec.input('convergence_threshold', required=False, valid_type=orm.Float)
+
         spec.expose_inputs(
             EpwWorkChain, namespace='epw', exclude=(
                 'clean_workdir', 'structure'
@@ -72,20 +66,15 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_inputs(
-            A2fWorkChain, namespace='a2f', exclude=(
-                'clean_workdir', 'structure'
-            ),
+            A2fWorkChain, namespace='a2f', exclude=cls._excluded_a2f_inputs,
+            namespace_options={
+                'required': False,
+                'populate_defaults': False,
+                'help': 'Inputs for the anisotropic `EpwCalculation`.'
+            }
         )
         spec.expose_inputs(
-            IsoWorkChain, namespace='iso', exclude=(
-                'kpoints',
-                'qpoints',
-                'kfpoints', 
-                'qfpoints',
-                'parent_folder_ph', 
-                'parent_folder_nscf',
-                'parent_folder_epw',
-            ),
+            IsoWorkChain, namespace='iso', exclude=cls._excluded_epw_inputs,
             namespace_options={
                 'required': False,
                 'populate_defaults': False,
@@ -93,15 +82,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_inputs(
-            AnisoWorkChain, namespace='aniso', exclude=(
-                'kpoints',
-                'qpoints',
-                'kfpoints', 
-                'qfpoints',
-                'parent_folder_ph', 
-                'parent_folder_nscf', 
-                'parent_folder_epw',
-            ),
+            AnisoWorkChain, namespace='aniso', exclude=cls._excluded_epw_inputs,
             namespace_options={
                 'required': False,
                 'populate_defaults': False,
@@ -115,8 +96,11 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
                 cls.run_epw,
                 cls.inspect_epw,
             ),
-            cls.generate_reciprocal_points,
-            if_(cls.should_run_a2f)(
+            if_(cls.should_run_conv)(
+                cls.run_conv,
+                cls.inspect_conv,
+            ),
+            if_(lambda self: not cls.should_run_conv(self))(
                 cls.run_a2f,
                 cls.inspect_a2f,
             ),
@@ -132,20 +116,22 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         )
         spec.output('parameters', valid_type=orm.Dict,
                     help='The `output_parameters` output node of the final EPW calculation.')
-        spec.output('Tc_allen_dynes', valid_type=orm.Float, required=False,
-                    help='The Allen-Dynes Tc interpolated from the a2f file.')
-        spec.output('Tc_iso', valid_type=orm.Float, required=False,
-                    help='The isotropic linearised Eliashberg Tc interpolated from the max eigenvalue curve.')
-        spec.output('Tc_aniso', valid_type=orm.Float, required=False,
-                    help='The anisotropic Eliashberg Tc interpolated from the max eigenvalue curve.')
+        # spec.output('Tc_allen_dynes', valid_type=orm.Float, required=False,
+        #             help='The Allen-Dynes Tc interpolated from the a2f file.')
+        # spec.output('Tc_iso', valid_type=orm.Float, required=False,
+        #             help='The isotropic linearised Eliashberg Tc interpolated from the max eigenvalue curve.')
+        # spec.output('Tc_aniso', valid_type=orm.Float, required=False,
+        #             help='The anisotropic Eliashberg Tc interpolated from the max eigenvalue curve.')
 
         spec.exit_code(401, 'ERROR_SUB_PROCESS_EPW',
             message='The `epw` sub process failed')
-        spec.exit_code(402, 'ERROR_SUB_PROCESS_A2F',
+        spec.exit_code(402, 'ERROR_CONVERGENCE_NOT_REACHED',
+            message='The convergence is not reached in current interpolation list.')
+        spec.exit_code(403, 'ERROR_SUB_PROCESS_A2F',
             message='The `a2f` sub process failed')
-        spec.exit_code(403, 'ERROR_SUB_PROCESS_ISO',
+        spec.exit_code(404, 'ERROR_SUB_PROCESS_ISO',
             message='The `isotropic` sub process failed')
-        spec.exit_code(404, 'ERROR_SUB_PROCESS_ANISO',
+        spec.exit_code(405, 'ERROR_SUB_PROCESS_ANISO',
             message='The `aniso` sub process failed')
 
     @classmethod
@@ -187,7 +173,6 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             # TODO: Add check to make sure epw_folder is on same computer as epw_code
             builder.parent_epw_folder = parent_epw_folder
 
-
         builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
         builder.kfpoints_factor = orm.Int(inputs['kfpoints_factor'])
 
@@ -204,6 +189,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
                 epw_builder.parameters = orm.Dict(epw_inputs['parameters'])
             
             builder[epw_namespace] = epw_builder
+            builder[epw_namespace].pop('epw')
 
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
@@ -217,8 +203,43 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
     def setup(self):
         """Setup steps, i.e. initialise context variables."""
         
+        if hasattr(self.inputs, 'interpolation_distance'):
+            interpolation_distance = self.inputs.get('interpolation_distance')
+            if isinstance(interpolation_distance, orm.List):
+                self.ctx.interpolation_list = list(split_list(interpolation_distance).values())
+            else:
+                self.ctx.interpolation_list = [interpolation_distance]
+
+            self.ctx.interpolation_list.sort()
+            self.ctx.final_interp = None
+            self.ctx.allen_dynes_values = []
+            self.ctx.is_converged = False
+
         self.ctx.degaussq = None
 
+    @staticmethod
+    def get_kpoints_from_workchain(workchain):
+        """Get the kpoints from the workchain."""
+        if workchain.process_class is EpwWorkChain:
+            epw_calcjob = workchain.base.links.get_outgoing(link_label_filter='epw').first().node
+            create_qpoints_from_distance = workchain.base.links.get_outgoing(link_label_filter='create_qpoints_from_distance').first().node
+
+            qpoints = create_qpoints_from_distance.outputs.result
+            kpoints = orm.KpointsData()
+            kpoints.set_kpoints_mesh([
+                v * workchain.inputs.kpoints_factor_nscf.value 
+                for v in qpoints.get_kpoints_mesh()[0]
+                ])
+
+        elif workchain.process_class in (A2fWorkChain, IsoWorkChain):
+            epw_calcjob = workchain.base.links.get_outgoing(link_label_filter='a2f').first().node
+            kpoints = epw_calcjob.inputs.kpoints
+            qpoints = epw_calcjob.inputs.qpoints
+        else:
+            raise ValueError("`workchain` must be an `EpwWorkChain` or `A2fWorkChain` or `IsoWorkChain`.")
+
+        return kpoints, qpoints
+    
     @staticmethod
     def get_kpoints_from_inputs(
         inputs, 
@@ -243,30 +264,6 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             raise ValueError("Kpoints no specified in `parent_epw_folder`")
         
         return kpoints
-
-    def generate_reciprocal_points(self):
-        """Generate the qpoints and kpoints meshes for the interpolation."""
-
-        qfpoints = self.get_kpoints_from_inputs(
-            self.inputs, 
-            self.inputs.structure, 
-            'create_qfpoints_from_distance',
-            kpoints_arg = 'qfpoints',
-            kpoints_distance_arg = 'qfpoints_distance'
-            )
-
-        kfpoints = orm.KpointsData()
-        kfpoints.set_kpoints_mesh([
-            v * self.inputs.kfpoints_factor.value 
-            for v in qfpoints.get_kpoints_mesh()[0]
-            ])
-
-
-        self.ctx.qfpoints = qfpoints
-        self.ctx.kfpoints = kfpoints
-        
-        self.report(f'qfpoints: {qfpoints}')
-        self.report(f'kfpoints: {kfpoints}')
 
     def should_run_epw(self):
         """Check if the epw loop should continue or not."""
@@ -305,44 +302,44 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             self.report(f'`epw.x` failed with exit status {epw_calculation.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_EPW
 
-    def should_run_epw_iso(self):
-        """Check if the isotropic loop should continue or not."""
-        if hasattr(self.inputs, 'epw_iso'):
-            return True
-        else:
+    def should_run_conv(self):
+        """Check if the conv loop should continue or not."""
+        if not hasattr(self.inputs, 'interpolation_distance'):
             return False
+        if 'convergence_threshold' in self.inputs:
+            try:
+                prev_allen_dynes = self.ctx.epw_interp[-2].outputs.output_parameters['allen_dynes']
+                new_allen_dynes = self.ctx.epw_interp[-1].outputs.output_parameters['allen_dynes']
+                self.ctx.is_converged = (
+                    abs(prev_allen_dynes - new_allen_dynes)
+                    < self.inputs.convergence_threshold
+                )
+                self.report(f'Checking convergence: old {prev_allen_dynes}; new {new_allen_dynes} -> Converged = {self.ctx.is_converged.value}')
+            except (AttributeError, IndexError, KeyError):
+                self.report('Not enough data to check convergence.')
 
-    def run_epw_iso(self):
-        """Run the ``restart`` EPW calculation for the current interpolation distance."""
-        
-        create_qpoints_from_distance = self.ctx.epw.base.links.get_outgoing(link_label_filter='create_qpoints_from_distance').first().node
-
-        qpoints = create_qpoints_from_distance.outputs.result
-        kpoints = orm.KpointsData()
-        kpoints.set_kpoints_mesh([
-            v * self.ctx.epw.inputs.kpoints_factor_nscf.value 
-            for v in qpoints.get_kpoints_mesh()[0]
-            ])
-
-        inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw_iso'))
-
-        if hasattr(self.inputs, 'parent_epw_folder'):
-            parent_folder = self.inputs.parent_epw_folder
         else:
-            parent_folder = self.ctx.epw.outputs.remote_folder
+            self.report('No `convergence_threshold` input was provided, convergence automatically achieved.')
+            self.ctx.is_converged = True
 
-        inputs.parent_folder_epw = parent_folder
-        inputs.kpoints = kpoints
-        inputs.qpoints = qpoints
-        inputs.kfpoints = self.ctx.kfpoints
-        inputs.qfpoints = self.ctx.qfpoints
-
+        if len(self.ctx.interpolation_list) == 0 and not self.ctx.is_converged:
+            self.exit_codes.ERROR_CONVERGENCE_NOT_REACHED
+            
+        return len(self.ctx.interpolation_list) > 0 and not self.ctx.is_converged
+    
+    def run_conv(self):
+        """Run the ``restart`` EPW calculation for the current interpolation distance."""
+        inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='a2f'))
+        
+        inputs.parent_folder_epw = self.ctx.epw.outputs.remote_folder
+        inputs.qfpoints_distance = self.ctx.interpolation_list.pop()
+        inputs.kfpoints_factor = self.inputs.kfpoints_factor
+        
         try:
             settings = inputs.settings.get_dict()
         except AttributeError:
             settings = {}
-
-        settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.a2f']
+            
         inputs.settings = orm.Dict(settings)
 
         if self.ctx.degaussq:
@@ -350,95 +347,144 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             parameters['INPUTEPW']['degaussq'] = self.ctx.degaussq
             inputs.parameters = orm.Dict(parameters)
 
-        inputs.metadata.call_link_label = 'epw_iso'
+        inputs.metadata.call_link_label = 'epw_interp'
         calcjob_node = self.submit(EpwCalculation, **inputs)
+        mesh = 'x'.join(str(i) for i in self.ctx.qfpoints.get_kpoints_mesh()[0])
+        self.report(f'launching interpolation `epw` with PK {calcjob_node.pk} and interpolation mesh {mesh}')
 
-        self.report(f'launching isotropic `epw` with PK {calcjob_node.pk}')
+        return ToContext(epw_interp=append_(calcjob_node))
 
-        return ToContext(epw_iso=calcjob_node)
+    def inspect_conv(self):
+        """Verify that the conv workflow finished successfully."""
+        epw_calculation = self.ctx.epw_interp[-1]
 
-    def inspect_epw_iso(self):
-        """Verify that the epw.x workflow finished successfully."""
-        epw_iso = self.ctx.epw_iso
-
-        if not epw_iso.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {epw_iso.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_EPW_ISO
+        if not epw_calculation.is_finished_ok:
+            self.report(f'`epw.x` failed with exit status {epw_calculation.exit_status}')
+            self.ctx.epw_interp.pop()
+            # return self.exit_codes.ERROR_SUB_PROCESS_EPW_INTERP
         else:
+            self.ctx.final_interp = self.ctx.inter_points
             try:
-                self.report(f"Allen-Dynes: {epw_iso.outputs.output_parameters['allen_dynes']}")
+                self.report(f"Allen-Dynes: {epw_calculation.outputs.output_parameters['allen_dynes']}")
             except KeyError:
                 self.report(f"Could not find Allen-Dynes temperature in parsed output parameters!")
 
             if self.ctx.degaussq is None:
-                frequency = epw_iso.outputs.a2f.get_array('frequency')
+                frequency = epw_calculation.outputs.a2f.get_array('frequency')
                 self.ctx.degaussq = frequency[-1] / 100
 
-    def should_run_epw_aniso(self):
+    def run_a2f(self):
+        """Run the ``restart`` EPW calculation for the current interpolation distance."""
+        inputs = AttributeDict(self.exposed_inputs(A2fWorkChain, namespace='a2f'))
+
+        inputs.parent_folder_epw = self.ctx.epw.outputs.remote_folder
+        inputs.qfpoints_distance = self.ctx.qfpoints_distance
+        inputs.kfpoints_factor = self.inputs.kfpoints_factor
+        inputs.metadata.call_link_label = 'a2f'
+        
+        calcjob_node = self.submit(A2fWorkChain, **inputs)
+
+        self.report(f'launching isotropic `epw` with PK {calcjob_node.pk}')
+
+        return ToContext(a2f=calcjob_node)
+
+    def inspect_a2f(self):
+        """Verify that the a2f workflow finished successfully."""
+        a2f_calculation = self.ctx.a2f
+
+        if not a2f_calculation.is_finished_ok:
+            self.report(f'`a2f` failed with exit status {a2f_calculation.exit_status}')
+            return self.exit_codes.ERROR_SUB_PROCESS_A2F
+        
+    def should_run_iso(self):
+        """Check if the isotropic loop should continue or not."""
+        if hasattr(self.inputs, 'iso'):
+            return True
+        else:
+            return False
+
+    def run_iso(self):
+        """Run the ``restart`` EPW calculation for the current interpolation distance."""
+
+        inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw_iso'))
+
+        parent_folder = self.ctx.epw.outputs.remote_folder
+
+        inputs.parent_folder_epw = parent_folder
+        inputs.qfpoints_distance = self.ctx.qfpoints_distance
+        inputs.kfpoints_factor = self.inputs.kfpoints_factor
+
+        try:
+            settings = inputs.settings.get_dict()
+        except AttributeError:
+            settings = {}
+
+        inputs.settings = orm.Dict(settings)
+        inputs.metadata.call_link_label = 'iso'
+        
+        calcjob_node = self.submit(EpwCalculation, **inputs)
+
+        self.report(f'launching isotropic `epw` with PK {calcjob_node.pk}')
+
+        return ToContext(iso=calcjob_node)
+
+    def inspect_iso(self):
+        """Verify that the epw.x workflow finished successfully."""
+        iso = self.ctx.iso
+
+        if not iso.is_finished_ok:
+            self.report(f'`epw.x` failed with exit status {iso.exit_status}')
+            return self.exit_codes.ERROR_SUB_PROCESS_EPW_ISO
+        else:
+            try:
+                self.report(f"Allen-Dynes: {iso.outputs.output_parameters['allen_dynes']}")
+            except KeyError:
+                self.report(f"Could not find Allen-Dynes temperature in parsed output parameters!")
+
+    def should_run_aniso(self):
         """Check if the anisotropic loop should continue or not."""
         
         Tc_lE = self.ctx.Tc_lE
-        if hasattr(self.inputs, 'epw_aniso') and Tc_lE > 5.0:
+        if hasattr(self.inputs, 'aniso') and Tc_lE > 5.0:
             return True
         else:
             return False
         
-    def run_epw_aniso(self):
+    def run_aniso(self):
         """Run the aniso ``epw.x`` calculation."""
         
-        Tc_lE = self.ctx.Tc_lE
-
-        """Run the aniso ``epw.x`` calculation."""
         inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw_aniso'))
 
-        inputs.parent_folder_epw = self.ctx.final_epw.outputs.remote_folder
-        inputs.kfpoints = self.ctx.final_epw.inputs.kfpoints
-        inputs.qfpoints = self.ctx.final_epw.inputs.qfpoints
-
-        parameters = inputs.parameters.get_dict()
-        
-        if self.ctx.degaussq:
-            parameters['INPUTEPW']['degaussq'] = self.ctx.degaussq
-        
-        parameters['INPUTEPW']['temps'] = f'3.5 {Tc_lE.value}'
-        inputs.parameters = orm.Dict(parameters)
+        inputs.parent_folder_epw = self.ctx.iso.outputs.remote_folder
+        inputs.qfpoints_distance = self.ctx.qfpoints_distance
+        inputs.kfpoints_factor = self.inputs.kfpoints_factor
 
         try:
             settings = inputs.settings.get_dict()
         except AttributeError:
             settings = {}
             
-        settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.imag_aniso_*', 'aiida.lambda*']
-        
-        if parameters['INPUTEPW'].get('lpade', False):
-            settings['ADDITIONAL_RETRIEVE_LIST'].extend(('aiida.pade_aniso_gap0*', ))
-        
         inputs.settings = orm.Dict(settings)
 
-        inputs.metadata.call_link_label = 'epw_aniso'
+        inputs.metadata.call_link_label = 'aniso'
 
         calcjob_node = self.submit(EpwCalculation, **inputs)
-        self.report(f'launching aniso `epw` {calcjob_node.pk}')
+        self.report(f'launching anisotropic `epw` {calcjob_node.pk}')
 
-        return ToContext(aniso_epw=calcjob_node)
+        return ToContext(aniso=calcjob_node)
     
-    def inspect_epw_aniso(self):
+    def inspect_aniso(self):
         """Verify that the aniso epw.x workflow finished successfully."""
-        epw_calculation = self.ctx.aniso_epw
+        aniso = self.ctx.aniso
 
-        if not epw_calculation.is_finished_ok:
-            self.report(f'Anisotropic `epw.x` failed with exit status {epw_calculation.exit_status}')
+        if not aniso.is_finished_ok:
+            self.report(f'Anisotropic `epw.x` failed with exit status {aniso.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_EPW_ANISO
         
     def results(self):
         """TODO"""
         
-        self.out('Tc_iso', self.ctx.Tc_iso)
-        self.out('Tc_aniso', self.ctx.Tc_aniso)
-        self.out('Tc_allen_dynes', self.ctx.Tc_allen_dynes)
         self.out('parameters', self.ctx.final_epw.outputs.output_parameters)
-        self.out('max_eigenvalue', self.ctx.final_epw.outputs.max_eigenvalue)
-        self.out('a2f', self.ctx.final_epw.outputs.a2f)
 
     def on_terminated(self):
         """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""

@@ -2,14 +2,68 @@ default_inputs:
   clean_workdir: False
   qfpoints_distance: 0.1
   kfpoints_factor: 2
-  epw:
+  epw: &default_epw
+    qpoints_distance: 0.5
+    kpoints_distance_scf: 0.15
+    kpoints_factor_nscf: 2
+  # To set for the NSCF step of the Wannier90 work chain
+  # One can either use `nscf` mode or `bands` mode. For the `nscf` mode,
+  # the `nosym` and `noinv` must be set to True to avoid pw.x automatically
+  # adds more (symmetry-equivalent) kpoints to the user-specified kpoints.
+  # For the `bands` mode, pw.x will use exactly what the user provided.
+  # In addition, it seems epw.x has some problem when restarting from a
+  # pw.x calculation with `nosym` and `noinv` set to True, therefore, we
+  # switch to the `bands` mode.
+    w90_bands:
+      nscf:
+        pw:
+          parameters:
+            SYSTEM:
+              nosym: False
+              noinv: False
+            CONTROL:
+              calculation: bands
+    ph_base:
+      ph:
+        settings:
+          PREPARE_FOR_EPW: True
+    epw:
       metadata:
-      options:
-        resources:
-          num_machines: 1
-        max_wallclock_seconds: 43200  # Twelve hours
-        withmpi: True
-  epw_iso:
+        options:
+          resources:
+            num_machines: 1
+          max_wallclock_seconds: 43200  # Twelve hours
+          withmpi: True
+          stash:
+            source_list:
+              - crystal.fmt
+              - dmedata.fmt
+              - epwdata.fmt
+              - selecq.fmt
+              - vmedata.fmt
+              - aiida.kgmap
+              - aiida.kmap
+              - aiida.ukk
+              - out/aiida.epmatwp
+              - save
+      parameters:
+        INPUTEPW:
+          a2f: False
+          degaussq: 0.05
+          degaussw: 0.2
+          elph: True
+          epbread: False
+          epbwrite: True
+          epwread: False
+          epwwrite: True
+          fsthick: 100
+          phonselfen: False
+          temps: 300
+          vme: 'dipole'
+          wannierize: False
+  a2f:
+    epw: *default_epw
+  a2f:
     metadata:
       options:
         resources:
@@ -18,75 +72,57 @@ default_inputs:
         withmpi: True
     parameters:
       INPUTEPW:
-        broyden_beta: 0.4
-        conv_thr_iaxis: 0.01
-        degaussq: 0.5
-        degaussw: 0.1
         eliashberg: True
         elph: True
         ep_coupling: True
-        epbread: False
-        epbwrite: False
-        ephwrite: True
-        eps_acustic: 1
         epwread: True
         epwwrite: False
-        etf_mem: 1
-        fsthick: 0.8
-        liso: True
-        laniso: False
-        limag: True
-        lpade: True
-        mp_mesh_k: True
-        muc: 0.13
-        nqstep: 500
-        nsiter: 1
-        nstemp: 1
-        restart: True
-        selecqread: False
-        temps: 10.0
-        vme: 'dipole'
+        ephwrite: True
         wannierize: False
-        wscut: 0.5
+        muc: 0.13
+        mp_mesh_k: True
 
-  epw_aniso:
-    metadata:
-      options:
-        resources:
+  iso:
+    epw: *default_epw
+    iso:
+      metadata:
+        options:
+          resources:
+            num_machines: 1
+          max_wallclock_seconds: 43200  # Twelve hours
+          withmpi: True
+      parameters:
+        INPUTEPW:
+          eliashberg: True
+          liso: True
+          limag: True
+          lpade: False
+          laniso: False
+          mp_mesh_k: True
+          wannierize: False
+          tc_linear: True
+          tc_linear_solver: 'power'
+          muc: 0.13
+  
+  aniso:
+    epw: *default_epw
+    aniso:
+      metadata:
+        options:
+          resources:
           num_machines: 1
         max_wallclock_seconds: 43200  # Twelve hours
         withmpi: True
     parameters:
       INPUTEPW:
-        broyden_beta: 0.4
-        conv_thr_iaxis: 0.001
-        degaussq: 0.5
-        degaussw: 0.1
         eliashberg: True
-        elph: False
-        ep_coupling: False
-        epbread: False
-        epbwrite: False
-        ephwrite: False
-        eps_acustic: 1
-        epwread: True
-        epwwrite: False
-        etf_mem: 1
-        fsthick: 0.8
         laniso: True
         limag: True
         lpade: True
         mp_mesh_k: True
-        muc: 0.13
-        nqstep: 500
-        nsiter: 500
-        nstemp: 15
-        restart: true
-        selecqread: False
-        temps: 8 60
-        vme: 'dipole'
         wannierize: False
-        wscut: 0.5
+        muc: 0.13
+
 default_protocol: moderate
 protocols:
   moderate:

@@ -83,7 +83,12 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
         }
     }
     
-    _min_temp = 1.0
+    _frozen_plot_gap_function_parameters = {
+        'INPUTEPW': {
+            'iverbosity': 2,
+        }
+    }
+    _min_temp = 3.5
     
     @classmethod
     def define(cls, spec):
@@ -96,6 +101,7 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
         spec.input('qfpoints_distance', required=False, valid_type=orm.Float)
         spec.input('kfpoints_factor', valid_type=orm.Int)
         spec.input('parent_epw_folder', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
+        spec.input('plot_gap_function', required=False, valid_type=orm.Bool, default=lambda: orm.Bool(True))
         spec.expose_inputs(
             EpwWorkChain, namespace='epw', exclude=(
                 'clean_workdir', 'structure'
@@ -210,7 +216,7 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
         epw_builder.parameters = orm.Dict(epw_inputs.get('parameters', {}))
         
         builder.aniso  = epw_builder
-
+        builder.plot_gap_function = orm.Bool(epw_inputs.get('plot_gap_function', True))
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
         return builder
@@ -341,15 +347,7 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
                     parameters[namespace][keyword] = value
             inputs.kpoints = epw_calcjob.inputs.kpoints
             inputs.qpoints = epw_calcjob.inputs.qpoints
-        elif self.ctx.epw.process_label == 'IsoWorkChain':
-            epw_calcjob = self.ctx.epw.base.links.get_outgoing(link_label_filter='iso').first().node
-            parent_folder = epw_calcjob.outputs.remote_folder
-            for namespace, _parameters in self._frozen_restart_parameters.items():
-                for keyword, value in _parameters.items():
-                    parameters[namespace][keyword] = value
-            iso_Tc = epw_calcjob.ctx.Tc_iso
-            inputs.kpoints = epw_calcjob.inputs.kpoints
-            inputs.qpoints = epw_calcjob.inputs.qpoints
+
         else:
             raise ValueError("`epw` or `a2f` or `iso` workchain not found in `EpwWorkChain`")
         
@@ -361,13 +359,6 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
         for namespace, keyword in self._blocked_keywords:
             if keyword in epw_parameters[namespace]:
                 parameters[namespace][keyword] = epw_parameters[namespace][keyword]
-        
-
-        inputs.parameters = orm.Dict(parameters)
-        inputs.parent_folder_epw = parent_folder
-
-        inputs.kfpoints = self.ctx.kfpoints
-        inputs.qfpoints = self.ctx.qfpoints
 
         try:
             settings = inputs.settings.get_dict()
@@ -378,6 +369,21 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
             'out/aiida.dos', 'aiida.a2f*', 'aiida.phdos*', 
             'aiida.pade_aniso_gap0_*', 'aiida.imag_aniso_gap0*',
             'aiida.lambda_k_pairs']
+        
+        if self.inputs.plot_gap_function.value:
+            for namespace, _parameters in self._frozen_plot_gap_function_parameters.items():
+                for keyword, value in _parameters.items():
+                    parameters[namespace][keyword] = value
+            settings['ADDITIONAL_RETRIEVE_LIST'].extend([
+                'aiida.imag_aniso_gap0_*.frmsf',
+                'aiida.lambda.frmsf',
+                ])
+            
+        inputs.parameters = orm.Dict(parameters)
+        inputs.parent_folder_epw = parent_folder
+
+        inputs.kfpoints = self.ctx.kfpoints
+        inputs.qfpoints = self.ctx.qfpoints
 
         inputs.settings = orm.Dict(settings)
 
