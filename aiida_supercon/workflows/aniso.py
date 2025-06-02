@@ -8,9 +8,9 @@ from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
 from aiida_quantumespresso.calculations.epw import EpwCalculation
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-from .epw import EpwWorkChain
-from .a2f import A2fWorkChain
-from .iso import IsoWorkChain
+from .epw import EpwBaseWorkChain
+from .a2f import EpwA2fWorkChain
+from .iso import EpwIsoWorkChain
 from aiida.engine import calcfunction
 
 from scipy.interpolate import interp1d
@@ -44,7 +44,7 @@ def calculate_Allen_Dynes_tc(a2f: orm.ArrayData, mustar = 0.13) -> orm.Float:
 
     return orm.Float(Tc)
 
-class AnisoWorkChain(ProtocolMixin, WorkChain):
+class EpwAnisoWorkChain(ProtocolMixin, WorkChain):
     """Work chain to compute the anisotropic critical temperature."""
     __KPOINTS_GAMMA = orm.KpointsData()
     __KPOINTS_GAMMA.set_kpoints_mesh([1, 1, 1])
@@ -100,11 +100,11 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
         spec.input('qfpoints', required=False, valid_type=orm.KpointsData)
         spec.input('qfpoints_distance', required=False, valid_type=orm.Float)
         spec.input('kfpoints_factor', valid_type=orm.Int)
-        spec.input('parent_epw_folder', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
+        spec.input('parent_folder_epw', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
         spec.input('plot_gap_function', required=False, valid_type=orm.Bool, default=lambda: orm.Bool(True))
         spec.expose_inputs(
-            EpwWorkChain, namespace='epw', exclude=(
-                'clean_workdir', 'structure'
+            EpwBaseWorkChain, namespace='epw', exclude=(
+                'clean_workdir', 'structure', 'w90_chk_to_ukk_script'
             ),
             namespace_options={
                 'required': False,
@@ -164,8 +164,8 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
     def validate_inputs(cls, value, port_namespace):  # pylint: disable=unused-argument
         """Validate the top level namespace."""
 
-        if not ('qfpoints_distance' in port_namespace or 'qfpoints' in port_namespace):
-            return "Neither `qfpoints` nor `qfpoints_distance` were specified."
+        # if not ('qfpoints_distance' in port_namespace or 'qfpoints' in port_namespace):
+        #     return "Neither `qfpoints` nor `qfpoints_distance` were specified."
 
         if not ('parent_epw_folder' in port_namespace or 'epw' in port_namespace):
             return "Only one of `parent_epw_folder` or `epw` can be accepted."
@@ -175,7 +175,7 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
             cls, 
             codes, 
             structure, 
-            parent_epw_folder=None,
+            parent_folder_epw=None,
             protocol=None, 
             overrides=None, 
             **kwargs
@@ -189,7 +189,7 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
         builder = cls.get_builder()
         builder.structure = structure
 
-        if not parent_epw_folder:
+        if not parent_folder_epw:
             builder.epw = EpwWorkChain.get_builder_from_protocol(
                 codes=codes,
                 structure=structure,
@@ -200,7 +200,7 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
             
         else:
             # TODO: Add cheeck to make sure epw_folder is on same computer as epw_code
-            builder.parent_epw_folder = parent_epw_folder
+            builder.parent_folder_epw = parent_folder_epw
 
         builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
         builder.kfpoints_factor = orm.Int(inputs['kfpoints_factor'])
@@ -286,17 +286,17 @@ class AnisoWorkChain(ProtocolMixin, WorkChain):
         
         if hasattr(self.inputs, 'epw'):
             return True
-        elif hasattr(self.inputs, 'parent_epw_folder'):
-            parent_wc = self.inputs.parent_epw_folder.creator.caller
+        elif hasattr(self.inputs, 'parent_folder_epw'):
+            parent_wc = self.inputs.parent_folder_epw.creator.caller
             if parent_wc.process_class in (EpwWorkChain, A2fWorkChain, IsoWorkChain):
                 self.report(f'Reading from parent epw folder')
                 self.ctx.epw = parent_wc            
             else:
-                raise ValueError("`parent_epw_folder` must be a `RemoteData` node from an `EpwWorkChain` or `A2FWorkChain`.")
+                raise ValueError("`parent_folder_epw` must be a `RemoteData` node from an `EpwWorkChain` or `A2FWorkChain` or `IsoWorkChain`.")
             
             return False
         else:
-            raise ValueError("No `epw` or `parent_epw_folder` specified in inputs")
+            raise ValueError("No `epw` or `parent_folder_epw` specified in inputs")
 
     def run_epw(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""

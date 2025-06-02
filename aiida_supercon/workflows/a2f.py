@@ -42,7 +42,7 @@ def calculate_Allen_Dynes_tc(a2f: orm.ArrayData, mustar = 0.13) -> orm.Float:
 
     return orm.Float(Tc)
 
-class A2fWorkChain(ProtocolMixin, WorkChain):
+class EpwA2fWorkChain(ProtocolMixin, WorkChain):
     """Work chain to compute the Allen-Dynes critical temperature."""
     __KPOINTS_GAMMA = orm.KpointsData()
     __KPOINTS_GAMMA.set_kpoints_mesh([1, 1, 1])
@@ -75,10 +75,10 @@ class A2fWorkChain(ProtocolMixin, WorkChain):
         spec.input('qfpoints', required=False, valid_type=orm.KpointsData)
         spec.input('qfpoints_distance', required=False, valid_type=orm.Float)
         spec.input('kfpoints_factor', valid_type=orm.Int)
-        spec.input('parent_epw_folder', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
+        spec.input('parent_folder_epw', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
         spec.expose_inputs(
             EpwWorkChain, namespace='epw', exclude=(
-                'clean_workdir', 'structure'
+                'clean_workdir', 'structure', 'w90_chk_to_ukk_script'
             ),
             namespace_options={
                 'required': False,
@@ -138,8 +138,8 @@ class A2fWorkChain(ProtocolMixin, WorkChain):
     def validate_inputs(cls, value, port_namespace):  # pylint: disable=unused-argument
         """Validate the top level namespace."""
 
-        if not ('qfpoints_distance' in port_namespace or 'qfpoints' in port_namespace):
-            return "Neither `qfpoints` nor `qfpoints_distance` were specified."
+        # if not ('qfpoints_distance' in port_namespace or 'qfpoints' in port_namespace):
+        #     return "Neither `qfpoints` nor `qfpoints_distance` were specified."
 
         if not ('parent_epw_folder' in port_namespace or 'epw' in port_namespace):
             return "Only one of `parent_epw_folder` or `epw` can be accepted."
@@ -149,8 +149,8 @@ class A2fWorkChain(ProtocolMixin, WorkChain):
             cls, 
             codes, 
             structure, 
-            parent_epw_folder=None,
             protocol=None, 
+            parent_folder_epw=None,
             overrides=None, 
             **kwargs
         ):
@@ -159,11 +159,9 @@ class A2fWorkChain(ProtocolMixin, WorkChain):
         :TODO:
         """
         inputs = cls.get_protocol_inputs(protocol, overrides)
-
         builder = cls.get_builder()
-        builder.structure = structure
 
-        if not parent_epw_folder:
+        if not parent_folder_epw:
             builder.epw = EpwWorkChain.get_builder_from_protocol(
                 codes=codes,
                 structure=structure,
@@ -172,13 +170,7 @@ class A2fWorkChain(ProtocolMixin, WorkChain):
                 **kwargs
             )
             
-        else:
-            # TODO: Add check to make sure epw_folder is on same computer as epw_code
-            builder.parent_epw_folder = parent_epw_folder
 
-        builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
-        builder.kfpoints_factor = orm.Int(inputs['kfpoints_factor'])
-        
         epw_inputs = inputs.get('a2f', None) 
         
         epw_builder = EpwCalculation.get_builder()
@@ -188,9 +180,11 @@ class A2fWorkChain(ProtocolMixin, WorkChain):
             epw_builder.settings = orm.Dict(epw_inputs['settings'])
 
         epw_builder.parameters = orm.Dict(epw_inputs.get('parameters', {}))
-        
-        builder.a2f = epw_builder
 
+        builder.structure = structure
+        builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
+        builder.kfpoints_factor = orm.Int(inputs['kfpoints_factor'])             
+        builder.a2f = epw_builder
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
         return builder
@@ -251,10 +245,10 @@ class A2fWorkChain(ProtocolMixin, WorkChain):
         
         if hasattr(self.inputs, 'epw'):
             return True
-        elif hasattr(self.inputs, 'parent_epw_folder'):
-            parent_epw_wc = self.inputs.parent_epw_folder.creator.caller
+        elif hasattr(self.inputs, 'parent_folder_epw'):
+            parent_epw_wc = self.inputs.parent_folder_epw.creator.caller
             if parent_epw_wc.process_class != EpwWorkChain:
-                raise ValueError("`parent_epw_folder` must be a `RemoteData` node from an `EpwWorkChain`.")
+                raise ValueError("`parent_folder_epw` must be a `RemoteData` node from an `EpwWorkChain`.")
             
             self.report(f'Reading from parent epw folder')
             self.ctx.epw = parent_epw_wc            
@@ -330,7 +324,7 @@ class A2fWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = 'a2f'
         calcjob_node = self.submit(EpwCalculation, **inputs)
 
-        self.report(f'launching a2f `epw` with PK {calcjob_node.pk}')
+        self.report(f'launching `a2f` with PK {calcjob_node.pk}')
 
         return ToContext(a2f=calcjob_node)
 

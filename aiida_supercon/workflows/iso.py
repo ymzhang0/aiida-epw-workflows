@@ -43,7 +43,7 @@ def calculate_Allen_Dynes_tc(a2f: orm.ArrayData, mustar = 0.13) -> orm.Float:
 
     return orm.Float(Tc)
 
-class IsoWorkChain(ProtocolMixin, WorkChain):
+class EpwIsoWorkChain(ProtocolMixin, WorkChain):
     """Work chain to compute the Allen-Dynes critical temperature."""
     __KPOINTS_GAMMA = orm.KpointsData()
     __KPOINTS_GAMMA.set_kpoints_mesh([1, 1, 1])
@@ -94,10 +94,10 @@ class IsoWorkChain(ProtocolMixin, WorkChain):
         spec.input('qfpoints', required=False, valid_type=orm.KpointsData)
         spec.input('qfpoints_distance', required=False, valid_type=orm.Float)
         spec.input('kfpoints_factor', valid_type=orm.Int)
-        spec.input('parent_epw_folder', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
+        spec.input('parent_folder_epw', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
         spec.expose_inputs(
             EpwWorkChain, namespace='epw', exclude=(
-                'clean_workdir', 'structure'
+                'clean_workdir', 'structure', 'w90_chk_to_ukk_script'
             ),
             namespace_options={
                 'required': False,
@@ -142,6 +142,9 @@ class IsoWorkChain(ProtocolMixin, WorkChain):
 
         spec.output('Tc_iso', valid_type=orm.Float,
                     help='The isotropic Tc interpolated from the a2f file.')
+        
+        spec.output('remote_folder', valid_type=orm.RemoteData,
+                    help='The remote folder of the final EPW calculation.')
         spec.exit_code(401, 'ERROR_SUB_PROCESS_EPW',
             message='The `epw` sub process failed')
         spec.exit_code(402, 'ERROR_SUB_PROCESS_ISO',
@@ -158,8 +161,8 @@ class IsoWorkChain(ProtocolMixin, WorkChain):
     def validate_inputs(cls, value, port_namespace):  # pylint: disable=unused-argument
         """Validate the top level namespace."""
 
-        if not ('qfpoints_distance' in port_namespace or 'qfpoints' in port_namespace):
-            return "Neither `qfpoints` nor `qfpoints_distance` were specified."
+        # if not ('qfpoints_distance' in port_namespace or 'qfpoints' in port_namespace):
+        #     return "Neither `qfpoints` nor `qfpoints_distance` were specified."
 
         if not ('parent_epw_folder' in port_namespace or 'epw' in port_namespace):
             return "Only one of `parent_epw_folder` or `epw` can be accepted."
@@ -169,7 +172,7 @@ class IsoWorkChain(ProtocolMixin, WorkChain):
             cls, 
             codes, 
             structure, 
-            parent_epw_folder=None,
+            parent_folder_epw=None,
             protocol=None, 
             overrides=None, 
             **kwargs
@@ -183,7 +186,7 @@ class IsoWorkChain(ProtocolMixin, WorkChain):
         builder = cls.get_builder()
         builder.structure = structure
 
-        if not parent_epw_folder:
+        if not parent_folder_epw:
             builder.epw = EpwWorkChain.get_builder_from_protocol(
                 codes=codes,
                 structure=structure,
@@ -194,7 +197,7 @@ class IsoWorkChain(ProtocolMixin, WorkChain):
             
         else:
             # TODO: Add cheeck to make sure epw_folder is on same computer as epw_code
-            builder.parent_epw_folder = parent_epw_folder
+            builder.parent_folder_epw = parent_folder_epw
 
         builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
         builder.kfpoints_factor = orm.Int(inputs['kfpoints_factor'])
@@ -280,17 +283,17 @@ class IsoWorkChain(ProtocolMixin, WorkChain):
         
         if hasattr(self.inputs, 'epw'):
             return True
-        elif hasattr(self.inputs, 'parent_epw_folder'):
-            parent_wc = self.inputs.parent_epw_folder.creator.caller
+        elif hasattr(self.inputs, 'parent_folder_epw'):
+            parent_wc = self.inputs.parent_folder_epw.creator.caller
             if parent_wc.process_class in (EpwWorkChain, A2fWorkChain):
                 self.report(f'Reading from parent epw folder')
                 self.ctx.epw = parent_wc            
             else:
-                raise ValueError("`parent_epw_folder` must be a `RemoteData` node from an `EpwWorkChain` or `A2FWorkChain`.")
+                raise ValueError("`parent_folder_epw` must be a `RemoteData` node from an `EpwWorkChain` or `A2FWorkChain`.")
             
             return False
         else:
-            raise ValueError("No `epw` or `parent_epw_folder` specified in inputs")
+            raise ValueError("No `epw` or `parent_folder_epw` specified in inputs")
 
     def run_epw(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
@@ -372,7 +375,7 @@ class IsoWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = 'iso'
         calcjob_node = self.submit(EpwCalculation, **inputs)
 
-        self.report(f'launching iso `epw` with PK {calcjob_node.pk}')
+        self.report(f'launching `iso` with PK {calcjob_node.pk}')
 
         return ToContext(iso=calcjob_node)
 
@@ -401,6 +404,7 @@ class IsoWorkChain(ProtocolMixin, WorkChain):
         self.out('a2f', self.ctx.iso.outputs.a2f)
         self.out('max_eigenvalue', self.ctx.iso.outputs.max_eigenvalue)
         self.out('Tc_iso', self.ctx.Tc_iso)
+        self.out('remote_folder', self.ctx.iso.outputs.remote_folder)
     def on_terminated(self):
         """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
         super().on_terminated()

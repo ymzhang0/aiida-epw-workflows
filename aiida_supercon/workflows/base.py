@@ -120,7 +120,7 @@ from aiida_wannier90_workflows.utils.workflows.builder.setter import set_kpoints
 from aiida_wannier90_workflows.common.types import WannierProjectionType
 
 
-class EpwWorkChain(ProtocolMixin, WorkChain):
+class EpwBaseWorkChain(ProtocolMixin, WorkChain):
     """Main work chain to start calculating properties using EPW.
 
     Has support for both the selected columns of the density matrix (SCDM) and
