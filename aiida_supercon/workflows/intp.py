@@ -127,6 +127,7 @@ from aiida_wannier90_workflows.common.types import WannierProjectionType
 from .utils.overrides import get_overrides_from_w90_workchain, update_epw_from_w90_overrides, update_epw_from_w90_intp, get_overrides_from_ph_base, update_epw_from_ph_overrides, update_epw_from_ph_base
 from .utils.kpoints import is_compatible
 
+from .base import EpwBaseWorkChain
 def validate_inputs(inputs, ctx=None):  # pylint: disable=unused-argument
     """Validate the inputs of the entire input namespace of `Wannier90OptimizeWorkChain`."""
 
@@ -174,7 +175,6 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
 
         spec.input('structure', valid_type=orm.StructureData)
         spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(False))
-        spec.input('w90_chk_to_ukk_script', valid_type=(orm.RemoteData, orm.SinglefileData))
         spec.input('kpoints_factor_nscf', valid_type=orm.Int)
         spec.input('qpoints_distance', valid_type=orm.Float, required=False)
         
@@ -233,10 +233,10 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_inputs(
-            EpwCalculation, 
+            EpwBaseWorkChain, 
             namespace='epw', 
             exclude=(
-                'parent_folder_ph', 'parent_folder_nscf', 'parent_folder_chk', 'kpoints', 'qpoints', 'kfpoints', 'qfpoints'
+                'parent_folder_ph', 'parent_folder_nscf', 'parent_folder_chk', 'qfpoints', 'qfpoints_distance', 'kfpoints_factor'
             ),
             namespace_options={
                 'help': 'Inputs for the `EpwCalculation`.'

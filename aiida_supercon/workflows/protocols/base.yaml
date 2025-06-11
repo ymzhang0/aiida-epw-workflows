@@ -1,5 +1,6 @@
 default_inputs:
   clean_workdir: True
+  max_iterations: 5
   qfpoints_distance: 0.1
   kfpoints_factor: 2
   # To set for the NSCF step of the Wannier90 work chain
@@ -16,10 +17,10 @@ default_inputs:
         withmpi: True
     parameters:
       INPUTEPW:
-        degaussq: 0.05
         degaussw: 0.025
         elph: True
         ep_coupling: True
+        eps_acustic: 0.1
         temps: 300
         vme: 'dipole'
         use_ws: True

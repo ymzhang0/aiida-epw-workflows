@@ -16,6 +16,8 @@ from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
 from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
 
+from pathlib import Path
+
 EpwCalculation = CalculationFactory('quantumespresso.epw')
 
 
@@ -34,6 +36,11 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         spec.expose_inputs(
             EpwCalculation, namespace='epw', 
             exclude=('kpoints', 'qpoints', 'kfpoints', 'qfpoints')
+            )
+        
+        spec.input(
+            'structure', valid_type=orm.StructureData,
+            help='The structure to compute the epw for fine grid generation'
             )
         
         spec.input(
@@ -71,10 +78,16 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             help='parent folder of the chk file'
             )
         
+        spec.input(
+            'w90_chk_to_ukk_script', valid_type=orm.RemoteData, required=False,
+            help='w90_chk_to_ukk_script'
+            )
+        
         spec.outline(
             cls.setup,
-            cls.validate_kpoints,
             cls.validate_parent_folders,
+            cls.validate_parallelization,
+            cls.validate_kpoints,
             while_(cls.should_run_process)(
                 cls.prepare_process,
                 cls.run_process,
@@ -101,6 +114,18 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         spec.exit_code(211, 'ERROR_INVALID_INPUT_AUTOMATIC_PARALLELIZATION_UNRECOGNIZED_KEY',
             message='Unrecognized keys were specified for `automatic_parallelization`.'
                     'This exit status has been deprecated as the automatic parallellization feature was removed.')
+        spec.exit_code(212, 'ERROR_MISSING_W90_CHK_TO_UKK_SCRIPT',
+            message='w90_chk_to_ukk_script is not provided.')
+        spec.exit_code(213, 'ERROR_INVALID_INPUT_PARENT_FOLDER_CHK',
+            message='parent_folder_chk is not provided.')
+        spec.exit_code(214, 'ERROR_INVALID_INPUT_PARENT_FOLDER_NSCF',
+            message='parent_folder_nscf is not provided.')
+        spec.exit_code(215, 'ERROR_INVALID_INPUT_PARENT_FOLDER_PH',
+            message='parent_folder_ph is not provided.')
+        spec.exit_code(216, 'ERROR_INVALID_INPUT_PARENT_FOLDER_EPW',
+            message='parent_folder_epw is not provided.')
+        spec.exit_code(217, 'ERROR_INCOMPATIBLE_COARSE_GRIDS',
+            message='The coarse kpoints and qpoints are not compatible.')
         spec.exit_code(300, 'ERROR_UNRECOVERABLE_FAILURE',
             message='The calculation failed with an unidentified unrecoverable error.')
         spec.exit_code(310, 'ERROR_KNOWN_UNRECOVERABLE_FAILURE',
@@ -128,6 +153,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         parent_folder_ph=None,
         parent_folder_chk=None,
         parent_folder_epw=None,
+        w90_chk_to_ukk_script=None,
         **_
     ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
@@ -170,6 +196,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         builder.parent_folder_ph = parent_folder_ph
         builder.parent_folder_chk = parent_folder_chk
         builder.parent_folder_epw = parent_folder_epw
+        builder.w90_chk_to_ukk_script = w90_chk_to_ukk_script
         
         if 'settings' in inputs['epw']:
             builder.epw['settings'] = orm.Dict(inputs['epw']['settings'])
@@ -317,20 +344,55 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
                 self.report("Parent folder of chk calculation is cleaned. Skipping k-point mesh search.")
                 return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_CHK
             
-            self.ctx.inputs.parent_folder_chk = self.inputs.parent_folder_chk
-        
-            parameters = self.ctx.inputs.parameters.get_dict()
-        
-            wannier_params = self.inputs.parameters.get_dict()
-        
-            exclude_bands = wannier_params.get('exclude_bands', None) #TODO check this!
-        
-            if exclude_bands:
-                parameters['INPUTEPW']['bands_skipped'] = f'exclude_bands = {exclude_bands[0]}:{exclude_bands[-1]}'
+            if not self.inputs.w90_chk_to_ukk_script:
+                self.report("w90_chk_to_ukk_script is not provided. Skipping wannierization.")
+                return self.exit_codes.ERROR_MISSING_W90_CHK_TO_UKK_SCRIPT 
 
-            parameters['INPUTEPW']['nbndsub'] = wannier_params['num_wann']
-        
+    def validate_parallelization(self):
+        try:
+            resources = self.ctx.inputs.metadata.options['resources']
+            num_machines = resources['num_machines']
+            num_mpiprocs_per_machine = resources['num_mpiprocs_per_machine']
+            total_procs = num_machines * num_mpiprocs_per_machine
+        except KeyError as e:
+            # If resource options are not defined, we cannot perform the check.
+            # This is unlikely as AiiDA requires them, but it is a safe fallback.
+            self.report(f'Could not determine total MPI processes from metadata.options.resources: {e}. Skipping check.')
+            return
 
+        # 2. Extract the `npool` value from either `parallelization` or `settings.CMDLINE`
+        npool = None
+        parallelization = self.ctx.inputs.get('parallelization', {})
+        settings = self.ctx.inputs.get('settings', {})
+        cmdline = settings.get('cmdline', [])
+        
+        if '-npool' in parallelization:
+            try:
+                npool = int(parallelization['-npool'])
+            except (ValueError, TypeError):
+                npool = None # Treat non-integer value as not set
+        
+        elif '-npool' in cmdline:
+            try:
+                # Find the index of '-npool' and get the next item in the list
+                idx = cmdline.index('-npool')
+                npool = int(cmdline[idx + 1])
+            except (ValueError, IndexError, TypeError):
+                # This handles cases like: ['-npool'] (at the end) or ['-npool', 'four']
+                npool = None # Treat malformed cmdline as not set
+
+        # 3. Perform the validation checks
+        if npool is None:
+            parallelization['-npool'] = total_procs
+            self.ctx.inputs.parallelization = orm.Dict(parallelization)
+        if npool != total_procs:
+            self.report(
+                f'Validation failed: `npool` value ({npool}) is not equal to the '
+                f'total number of MPI processes ({total_procs}).'
+            )
+            return self.exit_codes.ERROR_INCONSISTENT_NPOOL_SETTING
+
+        
     def setup(self):
         """Call the ``setup`` of the ``BaseRestartWorkChain`` and create the inputs dictionary in ``self.ctx.inputs``.
 
@@ -343,11 +405,6 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         super().setup()
         self.ctx.inputs = AttributeDict(self.exposed_inputs(EpwCalculation, 'epw'))
 
-        self.ctx.inputs.parameters = self.ctx.inputs.parameters.get_dict()
-        self.ctx.inputs.parameters.setdefault('INPUTEPW', {})
-        
-        self.ctx.inputs.settings = self.ctx.inputs.settings.get_dict() if 'settings' in self.ctx.inputs else {}
-
     def validate_kpoints(self):
         """Validate the inputs related to k-points.
 
@@ -355,6 +412,11 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         the case of the latter, the `KpointsData` will be constructed for the input `StructureData` using the
         `create_kpoints_from_distance` calculation function.
         """
+        from .utils.kpoints import is_compatible
+        
+        if not is_compatible(self.ctx.inputs.kpoints, self.ctx.inputs.qpoints):
+            return self.exit_codes.ERROR_INCOMPATIBLE_COARSE_GRIDS
+        
         if all(key not in self.inputs for key in ['qfpoints', 'qfpoints_distance']):
             return self.exit_codes.ERROR_INVALID_INPUT_KPOINTS
 
@@ -371,12 +433,48 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             }
             qfpoints = create_kpoints_from_distance(**inputs)  # pylint: disable=unexpected-keyword-arg
 
-        qfpoints_mesh = qfpoints.get_kpoints_mesh()
+        qfpoints_mesh = qfpoints.get_kpoints_mesh()[0]
         kfpoints = orm.KpointsData()
         kfpoints.set_kpoints_mesh([v * self.inputs.kfpoints_factor.value for v in qfpoints_mesh])
 
         self.ctx.inputs.qfpoints = qfpoints
         self.ctx.inputs.kfpoints = kfpoints
+        
+    def prepare_process(self):
+        """A placeholder for preparing inputs for the next calculation.
+        
+        Currently, no modifications to `self.ctx.inputs` are needed before
+        submission. We rely on the parent `run_process` to create the builder.
+        """
+        parameters = self.ctx.inputs.parameters.get_dict()
+
+        if 'parent_folder_chk' in self.inputs:
+            wannierize = parameters['INPUTEPW'].get('wannierize', False)
+            
+            if wannierize:
+                self.report("Should not have a chk folder if wannierize is True")
+                return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_CHK
+
+            w90_calcjob = self.inputs.parent_folder_chk.creator
+            w90_params = w90_calcjob.inputs.parameters.get_dict()
+            exclude_bands = w90_params.get('exclude_bands', None) #TODO check this!
+        
+            if exclude_bands:
+                parameters['INPUTEPW']['bands_skipped'] = f'exclude_bands = {exclude_bands[0]}:{exclude_bands[-1]}'
+
+            parameters['INPUTEPW']['nbndsub'] = w90_params['num_wann']
+            
+            self.ctx.inputs.parameters = orm.Dict(parameters)
+
+            wannier_chk_path = Path(self.inputs.parent_folder_chk.get_remote_path(), 'aiida.chk')
+            nscf_xml_path = Path(self.inputs.parent_folder_nscf.get_remote_path(), 'out/aiida.xml')
+
+            prepend_text = self.ctx.inputs.metadata.options.get('prepend_text', '')
+            prepend_text += f'\n{self.inputs.w90_chk_to_ukk_script.get_remote_path()} {wannier_chk_path} {nscf_xml_path} aiida.ukk'
+
+            self.ctx.inputs.metadata.options.prepend_text = prepend_text
+        
+        self.ctx.inputs.parameters = orm.Dict(parameters)
         
     def report_error_handled(self, calculation, action):
         """Report an action taken for a calculation that has failed.
