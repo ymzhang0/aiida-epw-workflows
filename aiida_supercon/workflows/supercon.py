@@ -8,10 +8,10 @@ from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
 from aiida_quantumespresso.calculations.epw import EpwCalculation
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-from .epw import EpwWorkChain
-from .a2f import A2fWorkChain
-from .iso import IsoWorkChain
-from .aniso import AnisoWorkChain
+from .base import EpwBaseWorkChain
+from .a2f import EpwA2fWorkChain
+from .iso import EpwIsoWorkChain
+from .aniso import EpwAnisoWorkChain
 from aiida.engine import calcfunction
 
 load_profile()
@@ -20,10 +20,9 @@ load_profile()
 def split_list(list_node: orm.List) -> dict:
     return {f'el_{no}': orm.Float(el) for no, el in enumerate(list_node.get_list())}
 
-class SuperConWorkChain(ProtocolMixin, WorkChain):
+class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     """Work chain to compute the electron-phonon coupling."""
-    __KPOINTS_GAMMA = orm.KpointsData()
-    __KPOINTS_GAMMA.set_kpoints_mesh([1, 1, 1])
+    __KPOINTS_GAMMA = [1, 1, 1]
     
     _excluded_epw_inputs = (
         'structure', 'clean_workdir', 'w90_chk_to_ukk_script')
@@ -54,7 +53,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         spec.input('convergence_threshold', required=False, valid_type=orm.Float)
 
         spec.expose_inputs(
-            EpwWorkChain, namespace='epw', exclude=cls._excluded_epw_inputs,
+            EpwBaseWorkChain, namespace='epw', exclude=cls._excluded_epw_inputs,
             namespace_options={
                 'required': False,
                 'populate_defaults': False,
@@ -62,7 +61,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_inputs(
-            A2fWorkChain, namespace='a2f', exclude=cls._excluded_a2f_inputs,
+            EpwA2fWorkChain, namespace='a2f', exclude=cls._excluded_a2f_inputs,
             namespace_options={
                 'required': False,
                 'populate_defaults': False,
@@ -70,7 +69,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_inputs(
-            IsoWorkChain, namespace='iso', exclude=cls._excluded_iso_inputs,
+            EpwIsoWorkChain, namespace='iso', exclude=cls._excluded_iso_inputs,
             namespace_options={
                 'required': False,
                 'populate_defaults': False,
@@ -78,7 +77,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_inputs(
-            AnisoWorkChain, namespace='aniso', exclude=cls._excluded_aniso_inputs,
+            EpwAnisoWorkChain, namespace='aniso', exclude=cls._excluded_aniso_inputs,
             namespace_options={
                 'required': False,
                 'populate_defaults': False,
@@ -163,9 +162,9 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         
         
         for (epw_namespace, epw_workchain_class) in (
-            ('a2f', A2fWorkChain),
-            ('iso', IsoWorkChain),
-            ('aniso', AnisoWorkChain),
+            ('a2f', EpwA2fWorkChain),
+            ('iso', EpwIsoWorkChain),
+            ('aniso', EpwAnisoWorkChain),
         ):
             epw_inputs = inputs.get(epw_namespace, None)
             epw_builder = epw_workchain_class.get_builder()
@@ -180,7 +179,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
             builder[epw_namespace] = epw_builder
 
         if not parent_folder_epw:
-            builder.epw = EpwWorkChain.get_builder_from_protocol(
+            builder.epw = EpwBaseWorkChain.get_builder_from_protocol(
                 *args,
                 overrides=inputs.get('epw', None),
                 **kwargs
@@ -274,7 +273,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         elif hasattr(self.inputs, 'parent_folder_epw'):
             parent_epw_wc = self.inputs.parent_folder_epw.creator.caller
             self.report(f'Will restart from previous `epw` workchain<{parent_epw_wc.pk}>')
-            if parent_epw_wc.process_class != EpwWorkChain:
+            if parent_epw_wc.process_class not in (EpwBaseWorkChain, EpwA2fWorkChain, EpwIsoWorkChain, EpwAnisoWorkChain):
                 raise ValueError("`parent_folder_epw` must be a `RemoteData` node from an `EpwWorkChain`.")
             
             self.ctx.epw = parent_epw_wc            
@@ -285,12 +284,12 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
 
     def run_epw(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
-        inputs = AttributeDict(self.exposed_inputs(EpwWorkChain, namespace='epw'))
+        inputs = AttributeDict(self.exposed_inputs(EpwBaseWorkChain, namespace='epw'))
 
         inputs.structure = self.inputs.structure
         
         inputs.metadata.call_link_label = 'epw'
-        calcjob_node = self.submit(EpwCalculation, **inputs)
+        calcjob_node = self.submit(EpwBaseWorkChain, **inputs)
 
         self.report(f'launching `epw` with PK {calcjob_node.pk}')
 
@@ -383,7 +382,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
 
     def run_a2f(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
-        inputs = AttributeDict(self.exposed_inputs(A2fWorkChain, namespace='a2f'))
+        inputs = AttributeDict(self.exposed_inputs(EpwA2fWorkChain, namespace='a2f'))
 
         inputs.structure = self.inputs.structure
         inputs.parent_folder_epw = self.ctx.epw.outputs.epw_folder
@@ -391,7 +390,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
         inputs.kfpoints_factor = self.inputs.kfpoints_factor
         inputs.metadata.call_link_label = 'a2f'
         
-        workchain_node = self.submit(A2fWorkChain, **inputs)
+        workchain_node = self.submit(EpwA2fWorkChain, **inputs)
 
         self.report(f'launching `a2f` with PK {workchain_node.pk}')
 
@@ -416,7 +415,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
     def run_iso(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
 
-        inputs = AttributeDict(self.exposed_inputs(IsoWorkChain, namespace='iso'))
+        inputs = AttributeDict(self.exposed_inputs(EpwIsoWorkChain, namespace='iso'))
 
         inputs.structure = self.inputs.structure
         inputs.parent_folder_epw = self.ctx.a2f.outputs.remote_folder
@@ -425,7 +424,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
 
         inputs.metadata.call_link_label = 'iso'
         
-        workchain_node = self.submit(IsoWorkChain, **inputs)
+        workchain_node = self.submit(EpwIsoWorkChain, **inputs)
 
         self.report(f'launching isotropic `epw` with PK {workchain_node.pk}')
 
@@ -452,7 +451,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
     def run_aniso(self):
         """Run the aniso ``epw.x`` calculation."""
         
-        inputs = AttributeDict(self.exposed_inputs(AnisoWorkChain, namespace='aniso'))
+        inputs = AttributeDict(self.exposed_inputs(EpwAnisoWorkChain, namespace='aniso'))
 
         inputs.structure = self.inputs.structure
         inputs.parent_folder_epw = self.ctx.iso.outputs.remote_folder
@@ -461,7 +460,7 @@ class SuperConWorkChain(ProtocolMixin, WorkChain):
 
         inputs.metadata.call_link_label = 'aniso'
 
-        workchain_node = self.submit(AnisoWorkChain, **inputs)
+        workchain_node = self.submit(EpwAnisoWorkChain, **inputs)
         self.report(f'launching anisotropic `epw` {workchain_node.pk}')
 
         return ToContext(aniso=workchain_node)

@@ -8,7 +8,7 @@ from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
 from aiida_quantumespresso.calculations.epw import EpwCalculation
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-from .epw import EpwWorkChain
+from .base import EpwBaseWorkChain
 from aiida.engine import calcfunction
 
 from scipy.interpolate import interp1d

@@ -25,7 +25,7 @@ requires-python = ">=3.7"
 dependencies = [
     "aiida-core~=2.5",
     "aiida-wannier90-workflows~=2.2",
-    "aiida-quantumespresso @ git+https://github.com/mbercx/aiida-quantumespresso.git@support/epw"
+    "aiida-quantumespresso~=4.7
 ]
 
 [project.urls]
@@ -49,11 +49,12 @@ dev = [
 [project.entry-points."aiida.cmdline.data"]
 
 [project.entry-points.'aiida.workflows']
-'quantumespresso.super.electronphonon' = 'aiida_supercon.workflows.electronphonon:ElectronPhononWorkChain'
-'quantumespresso.super.epwelectronphonon' = 'aiida_supercon.workflows.epwelectronphonon:EpwElectronPhononWorkChain'
-'quantumespresso.super.epw' = 'aiida_supercon.workflows.epw:EpwWorkChain'
-'quantumespresso.super.a2f' = 'aiida_supercon.workflows.a2f.A2fWorkChain'
-'quantumespresso.super.supercon' = 'aiida_supercon.workflows.supercon.SuperConWorkChain'
+'quantumespresso.epw.base' = 'aiida_supercon.workflows.base:EpwBaseWorkChain'
+'quantumespresso.epw.a2f' = 'aiida_supercon.workflows.a2f:EpwA2fWorkChain'
+'quantumespresso.epw.iso' = 'aiida_supercon.workflows.iso:EpwIsoWorkChain'
+'quantumespresso.epw.aniso' = 'aiida_supercon.workflows.aniso.EpwAnisoWorkChain'
+'quantumespresso.epw.supercon' = 'aiida_supercon.workflows.supercon.EpwSuperConWorkChain'
+'quantumespresso.epw.transport' = 'aiida_supercon.workflows.transport.EpwTransportWorkChain'
 
 [tool.flit.module]
 name = "aiida_supercon"

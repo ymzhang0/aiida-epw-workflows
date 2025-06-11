@@ -8,8 +8,8 @@ from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
 from aiida_quantumespresso.calculations.epw import EpwCalculation
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-from .epw import EpwWorkChain
-from .a2f import A2fWorkChain
+from .base import EpwBaseWorkChain
+from .a2f import EpwA2fWorkChain
 from aiida.engine import calcfunction
 
 from scipy.interpolate import interp1d
@@ -45,8 +45,7 @@ def calculate_Allen_Dynes_tc(a2f: orm.ArrayData, mustar = 0.13) -> orm.Float:
 
 class EpwIsoWorkChain(ProtocolMixin, WorkChain):
     """Work chain to compute the Allen-Dynes critical temperature."""
-    __KPOINTS_GAMMA = orm.KpointsData()
-    __KPOINTS_GAMMA.set_kpoints_mesh([1, 1, 1])
+    __KPOINTS_GAMMA = [1, 1, 1]
     
     _frozen_io_parameters = {
         'INPUTEPW': {
@@ -96,7 +95,7 @@ class EpwIsoWorkChain(ProtocolMixin, WorkChain):
         spec.input('kfpoints_factor', valid_type=orm.Int)
         spec.input('parent_folder_epw', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
         spec.expose_inputs(
-            EpwWorkChain, namespace='epw', exclude=(
+            EpwBaseWorkChain, namespace='epw', exclude=(
                 'clean_workdir', 'structure', 'w90_chk_to_ukk_script'
             ),
             namespace_options={
@@ -187,7 +186,7 @@ class EpwIsoWorkChain(ProtocolMixin, WorkChain):
         builder.structure = structure
 
         if not parent_folder_epw:
-            builder.epw = EpwWorkChain.get_builder_from_protocol(
+            builder.epw = EpwBaseWorkChain.get_builder_from_protocol(
                 codes=codes,
                 structure=structure,
                 protocol=protocol,
@@ -264,7 +263,7 @@ class EpwIsoWorkChain(ProtocolMixin, WorkChain):
                 v * self.inputs.kfpoints_factor.value 
                 for v in qfpoints.get_kpoints_mesh()[0]
                 ])
-        elif self.ctx.epw.process_label == 'A2fWorkChain':
+        elif self.ctx.epw.process_label == 'EpwA2fWorkChain':
             create_qfpoints_from_distance = self.ctx.epw.base.links.get_outgoing(link_label_filter='create_qfpoints_from_distance').first().node
             qfpoints = create_qfpoints_from_distance.outputs.result
             kfpoints = orm.KpointsData()
@@ -285,7 +284,7 @@ class EpwIsoWorkChain(ProtocolMixin, WorkChain):
             return True
         elif hasattr(self.inputs, 'parent_folder_epw'):
             parent_wc = self.inputs.parent_folder_epw.creator.caller
-            if parent_wc.process_class in (EpwWorkChain, A2fWorkChain):
+            if parent_wc.process_class in (EpwBaseWorkChain, EpwA2fWorkChain, EpwIsoWorkChain, EpwAnisoWorkChain):
                 self.report(f'Reading from parent epw folder')
                 self.ctx.epw = parent_wc            
             else:
@@ -297,12 +296,12 @@ class EpwIsoWorkChain(ProtocolMixin, WorkChain):
 
     def run_epw(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
-        inputs = AttributeDict(self.exposed_inputs(EpwWorkChain, namespace='epw'))
+        inputs = AttributeDict(self.exposed_inputs(EpwBaseWorkChain, namespace='epw'))
 
         inputs.structure = self.inputs.structure
         
         inputs.metadata.call_link_label = 'epw'
-        workchain_node = self.submit(EpwWorkChain, **inputs)
+        workchain_node = self.submit(EpwBaseWorkChain, **inputs)
 
         self.report(f'launching `epw` with PK {workchain_node.pk}')
 
@@ -322,7 +321,7 @@ class EpwIsoWorkChain(ProtocolMixin, WorkChain):
         inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='iso'))
         parameters = inputs.parameters.get_dict()
         
-        if self.ctx.epw.process_label == 'EpwWorkChain':
+        if self.ctx.epw.process_label == 'EpwBaseWorkChain':
             epw_calcjob = self.ctx.epw.base.links.get_outgoing(link_label_filter='epw').first().node
             parent_folder = self.ctx.epw.outputs.epw_folder
             create_qpoints_from_distance = self.ctx.epw.base.links.get_outgoing(link_label_filter='create_qpoints_from_distance').first().node
@@ -336,7 +335,7 @@ class EpwIsoWorkChain(ProtocolMixin, WorkChain):
 
             inputs.kpoints = kpoints
             inputs.qpoints = qpoints
-        elif self.ctx.epw.process_label == 'A2fWorkChain':
+        elif self.ctx.epw.process_label == 'EpwA2fWorkChain':
             epw_calcjob = self.ctx.epw.base.links.get_outgoing(link_label_filter='a2f').first().node
             parent_folder = epw_calcjob.outputs.remote_folder
             for namespace, _parameters in self._frozen_io_parameters.items():

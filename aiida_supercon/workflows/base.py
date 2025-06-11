@@ -1,621 +1,408 @@
 # -*- coding: utf-8 -*-
-"""Work chain to compute the electron-phonon coupling.
-
-This work chain is refined to accept the parent folders of the Wannier90 and Phonon work chains.
-
-Firstly it will validate the parent folders.
-
-- If the phonon parent folders are valid, it will use the qpoints from the phonon parent folders.
-
-Then it will check if the wannier90 parent folders are valid. 
-
-- If so, it will check if the kpoints of the wannier90 work chain are compatible with the qpoints of the phonon work chain. 
-
-- If they are not compatible, it will re-generate the kpoints of the wannier90 work chain based on the qpoints of the phonon work chain. Then it will re-run the wannier90 work chain.
-
-- If the wannier90 parent folders are not valid, it will run the wannier90 work chain from scratch.
-
-If none of the parent folders are provided or are not valid, it will run the Wannier90 and Phonon work chains from scratch.
-
-The first step is to compute the electron-phonon (dvscf) on a coarse grid. I think 0.3A^-1 q-point grid should be good but you can use the same k-point grid (as opposed to twice) so it should be cheaper. This step should be done only once
-
-For this step you need to run 
-
-pw.x < scf.in
-ph.x < ph.in
-
-Once the calculation is done, you need to rename and gather the results in a "save" folder
-This is done with QE/EPW/bin/pp.py script
-You just run it as python3 QE/EPW/bin/pp.py
-you need to provide the prefix name to the script
-What is very important is that the "save" folder is saved in the AiiDA framework
-This will be the biggest thing to save and is typically ~ 500 mb to 1 Gb
-
-We can discuss this if we want to keep it or not but if possible, I would say yes
-Ok then the EPW step starts
-
-2. Find initial wannier projection
-
-pw.x < scf.in
-pw.x < nscf.in
-projwfc.x
-+ wannier steps from Junfeng workflow?
--> What we need here is the block of inputs provided to epw.in linked to the wannierization 
-(wdata(1) = "<wannier inputs>" input variable; is basically a vector of input variables that are directly passed to wannier.x)
-
-e.g.
-
- wdata(1) = 'bands_plot = .true.'
- wdata(2) = 'begin kpoint_path'
- wdata(3) = 'G 0.00 0.00 0.00 M 0.50 0.00 0.00'
- wdata(4) = 'M 0.50 0.00 0.00 K 0.333333333333 0.333333333333 0.00'
- wdata(5) = 'K 0.333333333333 0.333333333333 0.00 G 0.0 0.0 0.00'
- wdata(6) = 'end kpoint_path'
- wdata(7) = 'bands_plot_format = gnuplot'
- wdata(8) = 'dis_num_iter      = 5000'
- wdata(9) = 'num_print_cycles  = 10'
- wdata(10) = 'dis_mix_ratio     = 1.0'
- wdata(11) = 'conv_tol = 1E-12'
- wdata(12) = 'conv_window = 4'
-
-
-3. EPW step (in a different folder). You just need to do a soft link to the "save" folder from the above step
-
-You need to do
-pw.x <scf.in   (Could potentially be the same as in step 2)
-pw.x <nscf.in -> JQ: we can simply use these from the wannier workflow
-
-epw.x < epw1.in 
-
-At the end of this step, you have the electron-phonon matrix element in real space
-This needs to be stored for sure
-The most important and only big file is "PREFIX..epmatwp"
-For TiO, this is 872 Mb ...
-From this file you can interpolate to any fine grid density
-
-I mean use for next calculation but you may want to keep it in order to do more convergence later
-for example if you find that a 40x40x40 grid is not enough
-you dont want to redo step 1 and 2 to get 60x60x60
-
-Files to save:
-
-ln -s ../epw8-conv1/crystal.fmt
-ln -s ../epw8-conv1/epwdata.fmt
-ln -s ../epw8-conv1/<prefix>.bvec
-ln -s ../epw8-conv1/<prefix>.chk
-ln -s ../epw8-conv1/<prefix>.kgmap
-ln -s ../epw8-conv1/<prefix>.kmap
-ln -s ../epw8-conv1/<prefix>.mmn
-ln -s ../epw8-conv1/<prefix>.nnkp
-ln -s ../epw8-conv1/<prefix>.ukk
-ln -s ../epw8-conv1/<prefix>.epmatwp (Note: quite big file!)
-ln -s ../epw8-conv1/vmedata.fmt
-ln -s ../epw8-conv1/dmedata.fmt
-ln -s ../epw8-conv1/save (Is basically the save folder from step 1)
-
-4. EPW interpolation to get Eliashberg Tc
-
-epw.x < epw2.in
-epw2.in
-
-and basically here you can change the fine grid in epw2.in to converge things
-This run can be done in a different folder but you need to soft link a number of files from the previous calculation 2.
-
-"""
-from pathlib import Path
-
+"""Workchain to run a Quantum ESPRESSO pw.x calculation with automated error handling and restarts."""
 from aiida import orm
-from aiida.common import AttributeDict
+from aiida.common import AttributeDict, exceptions
+from aiida.common import NotExistent, InputValidationError
 
-from aiida.engine import WorkChain, ToContext, if_, while_
-from aiida_quantumespresso.workflows.ph.base import PhBaseWorkChain
+from aiida.common.lang import type_check
+from aiida.engine import BaseRestartWorkChain, ExitCode, ProcessHandlerReport, process_handler, while_
+from aiida.plugins import CalculationFactory, GroupFactory
+
+from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
+from aiida_quantumespresso.common.types import ElectronicType, RestartType, SpinType
+from aiida_quantumespresso.utils.defaults.calculation import pw as qe_defaults
+
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
-from aiida_quantumespresso.calculations.epw import EpwCalculation
-from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
+from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
 
-from aiida_wannier90_workflows.workflows import Wannier90BaseWorkChain, Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
-from aiida_wannier90_workflows.workflows.optimize import validate_inputs as validate_inputs_bands
-from aiida_wannier90_workflows.utils.workflows.builder.setter import set_kpoints
-from aiida_wannier90_workflows.common.types import WannierProjectionType
+EpwCalculation = CalculationFactory('quantumespresso.epw')
 
 
-class EpwBaseWorkChain(ProtocolMixin, WorkChain):
-    """Main work chain to start calculating properties using EPW.
+class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
+    """Workchain to run a Quantum ESPRESSO pw.x calculation with automated error handling and restarts."""
 
-    Has support for both the selected columns of the density matrix (SCDM) and
-    (projectability-disentangled Wannier function) PDWF projection types.
-    """
+    # pylint: disable=too-many-public-methods, too-many-statements
+
+    _process_class = EpwCalculation
 
     @classmethod
     def define(cls, spec):
-        """Define the work chain specification."""
+        """Define the process specification."""
+        # yapf: disable
         super().define(spec)
-
-        spec.input('structure', valid_type=orm.StructureData)
-        spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(False))
-        spec.input('qpoints_distance', valid_type=orm.Float, default=lambda: orm.Float(0.5))
-        spec.input('kpoints_distance_scf', valid_type=orm.Float, default=lambda: orm.Float(0.15))
-        spec.input('kpoints_factor_nscf', valid_type=orm.Int, default=lambda: orm.Int(2))
-        spec.input('w90_chk_to_ukk_script', valid_type=(orm.RemoteData, orm.SinglefileData))
-
-        spec.input('parent_ph_folder', valid_type=(orm.RemoteStashFolderData, orm.RemoteData), required=False,
-            help='PhBaseWorkChain, if provided, will be skipped')
-
-        spec.input('parent_w90_folder', valid_type=(orm.RemoteStashFolderData, orm.RemoteData), required=False,
-            help='Wannier90BandsWorkChain or Wannier90OptimizeWorkChain, if provided, will be skipped')
-
         spec.expose_inputs(
-            Wannier90OptimizeWorkChain, namespace='w90_bands', exclude=(
-                'structure', 'clean_workdir',
-            ),
-            namespace_options={
-                'help': 'Inputs for the `Wannier90OptimizeWorkChain/Wannier90BandsWorkChain`.'
-            }
-        )
-        spec.inputs['w90_bands'].validator = validate_inputs_bands
-        spec.expose_inputs(
-            PhBaseWorkChain, namespace='ph_base', exclude=(
-                'clean_workdir', 'ph.parent_folder', 'qpoints', 'qpoints_distance'
-            ),
-            namespace_options={
-                'help': 'Inputs for the `PwBaseWorkChain` that does the `ph.x` calculation.'
-            }
-        )
-        spec.expose_inputs(
-            EpwCalculation, namespace='epw', exclude=(
-                'parent_folder_ph', 'parent_folder_nscf', 'kpoints', 'qpoints', 'kfpoints', 'qfpoints'
-            ),
-            namespace_options={
-                'help': 'Inputs for the `EpwCalculation`.'
-            }
-        )
-        spec.output('retrieved', valid_type=orm.FolderData)
-        spec.output('epw_folder', valid_type=orm.RemoteStashFolderData)
+            EpwCalculation, namespace='epw', 
+            exclude=('kpoints', 'qpoints', 'kfpoints', 'qfpoints')
+            )
+        
+        spec.input(
+            'qfpoints', valid_type=orm.KpointsData, required=False,
+            help='fine qpoint mesh'
+            )
 
+        spec.input(
+            'qfpoints_distance', valid_type=orm.Float, required=False,
+            help='fine qpoint mesh distance'
+            )
+
+        spec.input(
+            'kfpoints_factor', valid_type=orm.Int, 
+            help='fine kpoint mesh factor'
+            )       
+
+        spec.input(
+            'parent_folder_nscf', valid_type=orm.RemoteData, required=False,
+            help='parent folder of the nscf calculation'
+            )
+        
+        spec.input(
+            'parent_folder_ph', valid_type=(orm.RemoteData, orm.RemoteStashFolderData), required=False,
+            help='parent folder of the ph calculation'
+            )
+        
+        spec.input(
+            'parent_folder_epw', valid_type=(orm.RemoteData, orm.RemoteStashFolderData), required=False,
+            help='parent folder of the epw calculation'
+            )
+
+        spec.input(
+            'parent_folder_chk', valid_type=orm.RemoteData, required=False,
+            help='parent folder of the chk file'
+            )
+        
         spec.outline(
+            cls.setup,
+            cls.validate_kpoints,
             cls.validate_parent_folders,
-            cls.generate_reciprocal_points,
-            if_(cls.should_run_wannier90)(
-                cls.run_wannier90,
-                cls.inspect_wannier90,
+            while_(cls.should_run_process)(
+                cls.prepare_process,
+                cls.run_process,
+                cls.inspect_process,
             ),
-            if_(cls.should_run_ph)(
-                cls.run_ph,
-                cls.inspect_ph,
-            ),
-            cls.run_epw,
-            cls.inspect_epw,
             cls.results,
         )
-        spec.exit_code(403, 'ERROR_SUB_PROCESS_FAILED_PHONON',
-            message='The electron-phonon `PhBaseWorkChain` sub process failed')
-        spec.exit_code(404, 'ERROR_SUB_PROCESS_FAILED_WANNIER90',
-            message='The `Wannier90BandsWorkChain` sub process failed')
-        spec.exit_code(405, 'ERROR_SUB_PROCESS_FAILED_EPW',
-            message='The `EpwWorkChain` sub process failed')
+
+        spec.expose_outputs(EpwCalculation)
+
+        spec.exit_code(201, 'ERROR_INVALID_INPUT_PSEUDO_POTENTIALS',
+            message='The explicit `pseudos` or `pseudo_family` could not be used to get the necessary pseudos.')
+        spec.exit_code(202, 'ERROR_INVALID_INPUT_KPOINTS',
+            message='Neither the `kpoints` nor the `kpoints_distance` input was specified.')
+        spec.exit_code(203, 'ERROR_INVALID_INPUT_RESOURCES',
+            message='Neither the `options` nor `automatic_parallelization` input was specified. '
+                    'This exit status has been deprecated as the check it corresponded to was incorrect.')
+        spec.exit_code(204, 'ERROR_INVALID_INPUT_RESOURCES_UNDERSPECIFIED',
+            message='The `metadata.options` did not specify both `resources.num_machines` and `max_wallclock_seconds`. '
+                    'This exit status has been deprecated as the check it corresponded to was incorrect.')
+        spec.exit_code(210, 'ERROR_INVALID_INPUT_AUTOMATIC_PARALLELIZATION_MISSING_KEY',
+            message='Required key for `automatic_parallelization` was not specified.'
+                    'This exit status has been deprecated as the automatic parallellization feature was removed.')
+        spec.exit_code(211, 'ERROR_INVALID_INPUT_AUTOMATIC_PARALLELIZATION_UNRECOGNIZED_KEY',
+            message='Unrecognized keys were specified for `automatic_parallelization`.'
+                    'This exit status has been deprecated as the automatic parallellization feature was removed.')
+        spec.exit_code(300, 'ERROR_UNRECOVERABLE_FAILURE',
+            message='The calculation failed with an unidentified unrecoverable error.')
+        spec.exit_code(310, 'ERROR_KNOWN_UNRECOVERABLE_FAILURE',
+            message='The calculation failed with a known unrecoverable error.')
+        spec.exit_code(320, 'ERROR_INITIALIZATION_CALCULATION_FAILED',
+            message='The initialization calculation failed.')
 
     @classmethod
     def get_protocol_filepath(cls):
         """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
         from importlib_resources import files
+
         from . import protocols
-        return files(protocols) / 'epw.yaml'
+        return files(protocols) / 'base.yaml'
 
     @classmethod
     def get_builder_from_protocol(
-        cls, codes, structure, protocol=None, overrides=None,
-        wannier_projection_type=WannierProjectionType.ATOMIC_PROJECTORS_QE,
-        reference_bands=None, bands_kpoints=None,
-        parent_w90_folder=None, parent_ph_folder=None,
-        **kwargs
-        ):
+        cls,
+        code,
+        structure,
+        protocol=None,
+        overrides=None,
+        options=None,
+        parent_folder_nscf=None,
+        parent_folder_ph=None,
+        parent_folder_chk=None,
+        parent_folder_epw=None,
+        **_
+    ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
 
-        :param structure: the ``StructureData`` instance to use.
+        :param code: the ``Code`` instance configured for the ``quantumespresso.pw`` plugin.
         :param protocol: protocol to use, if not specified, the default will be used.
         :param overrides: optional dictionary of inputs to override the defaults of the protocol.
-        :param kwargs: additional keyword arguments that will be passed to the ``get_builder_from_protocol`` of all the
-            sub processes that are called by this workchain.
+        :param options: A dictionary of options that will be recursively set for the ``metadata.options`` input of all
+            the ``CalcJobs`` that are nested in this work chain.
         :return: a process builder instance with all inputs defined ready for launch.
         """
+        from aiida_quantumespresso.workflows.protocols.utils import recursive_merge
+
+        if isinstance(code, str):
+            code = orm.load_code(code)
+
         inputs = cls.get_protocol_inputs(protocol, overrides)
 
+        # Update the parameters based on the protocol inputs
+        parameters = inputs['epw']['parameters']
+    
+        # If overrides are provided, they are considered absolute
+        if overrides:
+            parameter_overrides = overrides.get('epw', {}).get('parameters', {})
+            parameters = recursive_merge(parameters, parameter_overrides)
+
+        metadata = inputs['epw']['metadata']
+
+        if options:
+            metadata['options'] = recursive_merge(inputs['epw']['metadata']['options'], options)
+
+        # pylint: disable=no-member
         builder = cls.get_builder()
         builder.structure = structure
+        builder.epw['code'] = code
+        builder.epw['parameters'] = orm.Dict(parameters)
+        builder.epw['metadata'] = metadata
         
-        # Check if the wannier90 workflow should be run from scratch
+        builder.parent_folder_nscf = parent_folder_nscf
+        builder.parent_folder_ph = parent_folder_ph
+        builder.parent_folder_chk = parent_folder_chk
+        builder.parent_folder_epw = parent_folder_epw
         
-        # if not parent_w90_folder:
-        
-        # TODO: Check we can restart wannier90 from parent_w90_folder.
-        w90_bands_inputs = inputs.get('w90_bands', {})
-        pseudo_family = w90_bands_inputs.pop('pseudo_family', None)
-            
-        w90_bands = Wannier90OptimizeWorkChain.get_builder_from_protocol(
-            structure=structure,
-            codes=codes,
-            pseudo_family=pseudo_family,
-            overrides=w90_bands_inputs,
-            projection_type=wannier_projection_type,
-            reference_bands=reference_bands,
-            bands_kpoints=bands_kpoints,
-        )
-        w90_bands.pop('structure', None)
-        w90_bands.pop('open_grid', None)
-        
-        if wannier_projection_type == WannierProjectionType.ATOMIC_PROJECTORS_QE:
-            w90_bands.pop('projwfc', None)
-
-        builder.w90_bands = w90_bands
-        builder.kpoints_distance_scf = orm.Float(inputs['kpoints_distance_scf'])
-        builder.kpoints_factor_nscf = orm.Int(inputs['kpoints_factor_nscf'])
-        
-        # else:
-        builder.parent_w90_folder = parent_w90_folder
-
-        # Check if the phonon workflow should be run from scratch
-        # if not parent_ph_folder:
-        
-        # TODO: Check we can restart phonon from parent_ph_folder.
-        
-        ph_base_inputs = inputs.get('ph_base', {})
-        ph_base = PhBaseWorkChain.get_builder_from_protocol(
-            codes['ph'],
-            parent_folder=parent_ph_folder, 
-            protocol=protocol, 
-            overrides=ph_base_inputs, 
-            **kwargs
-            )
-        
-        ph_base.pop('clean_workdir', None)
-        ph_base.pop('qpoints_distance', None)
-        builder.ph_base = ph_base
-        builder.qpoints_distance = orm.Float(inputs['qpoints_distance'])
-        # else:
-        builder.parent_ph_folder = parent_ph_folder
-
-        epw_builder = EpwCalculation.get_builder()
-
-        epw_builder.code = codes['epw']
-        epw_inputs = inputs.get('epw', None)
-
-        epw_builder.parameters = orm.Dict(epw_inputs['parameters'])
-
-        if 'target_base' not in epw_builder.metadata['options']['stash']:
-            epw_computer = codes['epw'].computer
-            if epw_computer.transport_type == 'core.local':
-                target_basepath = Path(epw_computer.get_workdir(), 'stash').as_posix()
-            elif epw_computer.transport_type == 'core.ssh':
-                target_basepath = Path(
-                    epw_computer.get_workdir().format(username=epw_computer.get_configuration()['username']), 'stash'
-                ).as_posix()
-            epw_inputs['metadata']['options']['stash']['target_base'] = target_basepath
-
-        epw_builder.metadata = epw_inputs['metadata']
-        epw_builder.settings = orm.Dict(epw_inputs['settings'])
-
-        builder.epw = epw_builder
+        if 'settings' in inputs['epw']:
+            builder.epw['settings'] = orm.Dict(inputs['epw']['settings'])
+        if 'parallelization' in inputs['epw']:
+            builder.epw['parallelization'] = orm.Dict(inputs['epw']['parallelization'])
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
+        
+        if 'qfpoints' in inputs:
+            builder.qfpoints = inputs['qfpoints']
+        else:
+            builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
+            
+        builder.kfpoints_factor = orm.Int(inputs['kfpoints_factor'])
+        
+        builder.max_iterations = orm.Int(inputs['max_iterations'])
+        # pylint: enable=no-member
 
         return builder
+    
+    def _get_kpoints_from_nscf_folder(self, nscf_folder):
+        """
+        A robust method to find the k-point mesh from a parent nscf folder.
+
+        This method tries different strategies in order of reliability.
+
+        :param nscf_folder: A RemoteData node from a PwCalculation (nscf).
+        :return: A KpointsData node that has mesh information.
+        :raises ValueError: If the mesh cannot be found through any strategy.
+        """
+        pw_calc = nscf_folder.creator
+
+        # Check if the nscf CalcJob's input k-points already has a mesh.
+        # This covers the case of a standalone PwBaseWorkChain run.
+        self.report("K-point mesh search: Trying from direct input...")
+        try:
+            kpoints = pw_calc.inputs.kpoints
+            mesh, _ = kpoints.get_kpoints_mesh()
+            self.report(f"Found mesh {mesh} directly in pw_calc<{pw_calc.pk}> inputs.")
+            return kpoints
+        except (AttributeError, NotExistent):
+            self.report("The input k-points do not contain a mesh.")
+            pass # Move on to the next strategy
+
+        w90_workchain = pw_calc.caller.caller
+        if not w90_workchain:
+            # If there's no caller, we can't use Strategies 2 & 3.
+            # We must fall back to the last resort.
+            self.report("No caller found for nscf calculation. Moving to final strategy.")
+            return self._deduce_mesh_from_explicit_kpoints(pw_calc.inputs.kpoints)
 
 
+        # Check if the caller is a Wannier90 workchain and look for `mp_grid`.
+        self.report("K-point mesh search: Reading from Wannier 'mp_grid'...")
+        if w90_workchain.process_class is Wannier90OptimizeWorkChain:
+            if hasattr(w90_workchain.inputs, 'optimize_disproj') and w90_workchain.inputs.optimize_disproj:
+                wannier_params = w90_workchain.inputs.wannier90_optimal.wannier90.get('parameters')
+            else:
+                wannier_params = w90_workchain.inputs.wannier90.wannier90.get('parameters')
+        elif w90_workchain.process_class is Wannier90BandsWorkChain:
+            wannier_params = w90_workchain.inputs.wannier.parameters.get_dict()
+        else:
+            return self._deduce_mesh_from_explicit_kpoints(pw_calc.inputs.kpoints)
+    
+        if 'mp_grid' in wannier_params:
+            mp_grid = wannier_params['mp_grid']
+            self.report(f"Found 'mp_grid' {mp_grid} in Wannier parameters.")
+            kpoints = orm.KpointsData()
+            kpoints.set_kpoints_mesh(mp_grid)
+            return kpoints
+        else:
+            return self._deduce_mesh_from_explicit_kpoints(pw_calc.inputs.kpoints)
+
+    def _deduce_mesh_from_explicit_kpoints(self, kpoints_node):
+        """The fallback strategy: deduce mesh from a list of k-points."""
+        self.report("K-point mesh search: Deduce from coordinates...")
+        try:
+            import numpy as np
+            explicit_kpoints = kpoints_node.get_kpoints()
+            nk1 = len(np.unique(explicit_kpoints[:, 0].round(decimals=6)))
+            nk2 = len(np.unique(explicit_kpoints[:, 1].round(decimals=6)))
+            nk3 = len(np.unique(explicit_kpoints[:, 2].round(decimals=6)))
+            if len(explicit_kpoints) != nk1 * nk2 * nk3:
+                raise ValueError("Product of deduced dimensions does not match k-point count.")
+            mesh = [nk1, nk2, nk3]
+            self.report(f"Deduced mesh to be {mesh}. Note: This is a guess.")
+            kpoints = orm.KpointsData()
+            kpoints.set_kpoints_mesh(mesh)
+            return kpoints
+        except (AttributeError, ValueError) as e:
+            raise ValueError(f"Could not deduce mesh from coordinates. Reason: {e}") from e
+
+    def _get_qpoints_from_ph_folder(self, ph_folder):
+        """
+        A robust method to find the q-point mesh from a parent ph folder.
+
+        This method tries different strategies in order of reliability.
+        1. Check the inputs of the `PhBaseWorkChain`.
+        2. Check the inputs of the `PhCalculation` CalcJob itself.
+        3. As a last resort, deduce the mesh from the list of coordinates.
+
+        :param ph_folder: A RemoteData node from a PhCalculation.
+        :return: A KpointsData node that has mesh information.
+        :raises ValueError: If the mesh cannot be found through any strategy.
+        """
+        ph_calc = ph_folder.creator
+        qpoints = ph_calc.inputs.qpoints
+        return qpoints
+    
     def validate_parent_folders(self):
+        
         """Validate the parent folders."""
         
-        ## TODO: Check if the parent folders are CLEANED
-        
-        is_w90_parent_folder_valid = False
-        is_ph_parent_folder_valid = False
-
-        parent_ph_folder = self.inputs.get('parent_ph_folder', None)
-        if (
-            parent_ph_folder and
-            (not parent_ph_folder.is_cleaned) and
-            parent_ph_folder.creator.caller.is_finished_ok and
-            parent_ph_folder.creator.caller.process_class is PhBaseWorkChain
-        ):
-            self.report(f'PhBaseWorkChain[{parent_ph_folder.creator.caller.pk}] finished successfully.')
-            self.ctx.workchain_ph = parent_ph_folder.creator.caller
-            is_ph_parent_folder_valid = True
-
-        else:
-            self.report('PhBaseWorkChain not provided or failed, will run it again.')
-            is_ph_parent_folder_valid = False
-
-        parent_w90_folder = self.inputs.get('parent_w90_folder', None)
-        
-        if (
-            parent_w90_folder and
-            (not parent_w90_folder.is_cleaned) and
-            parent_w90_folder.creator.caller.is_finished_ok and 
-            parent_w90_folder.creator.caller.process_class is Wannier90BaseWorkChain
-        ):
-            self.report(f'Wannier90BaseWorkChain[{parent_w90_folder.creator.caller.pk}] finished successfully.')
-            is_w90_parent_folder_valid = True
-            self.ctx.workchain_w90_bands = parent_w90_folder.creator.caller.caller
-        else:
-            self.report('Wannier90BaseWorkChain not provided or failed, will run it again.')
-            is_w90_parent_folder_valid = False
+        if hasattr(self.inputs, 'parent_folder_nscf'):
+            if self.inputs.parent_folder_nscf.is_cleaned:
+                self.report("Parent folder of nscf calculation is cleaned. Skipping k-point mesh search.")
+                return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_NSCF
             
-        ## TODO: what if there w90 provided but ph not?
-        
-        if is_ph_parent_folder_valid and is_w90_parent_folder_valid:
-            compatibility, _ = check_kq_compatibility(self.ctx.kpoints_nscf, self.ctx.qpoints)
-            if compatibility:
-                self.report('Kpoints of the Wannier90BaseWorkChain is a multiple of the qpoints of the PhBaseWorkChain.')
-                is_w90_parent_folder_valid = True
-            else:
-                self.report('Kpoints of the Wannier90BaseWorkChain is not a multiple of the qpoints of the PhBaseWorkChain.')
-                self.report("Rerun Wannier90WorkChain with kpoints based on given PhBaseWorkChain qpoints.")
-                is_w90_parent_folder_valid = False
+            try:
+                kpoints = self._get_kpoints_from_nscf_folder(self.inputs.parent_folder_nscf)
+                self.ctx.inputs.kpoints = kpoints
+                self.report(f"Successfully determined k-point mesh: {kpoints.get_kpoints_mesh()[0]}")
+            except (ValueError, NotExistent) as e:
+                self.report(f"Fatal error: Could not determine the k-points mesh. Reason: {e}")
+                return self.exit_codes.ERROR_KPOINTS_MESH_NOT_FOUND
 
-        self.ctx.is_w90_parent_folder_valid = is_w90_parent_folder_valid
-        self.ctx.is_ph_parent_folder_valid = is_ph_parent_folder_valid
+            self.ctx.inputs.parent_folder_nscf = self.inputs.parent_folder_nscf
 
-        self.report(f'is_w90_parent_folder_valid: {self.ctx.is_w90_parent_folder_valid}')
-        self.report(f'is_ph_parent_folder_valid: {self.ctx.is_ph_parent_folder_valid}')
-        
-    def generate_reciprocal_points(self):
-        """Generate the qpoints and kpoints meshes for the `ph.x` and `pw.x` calculations."""
-
-        if self.ctx.is_ph_parent_folder_valid:
-            if hasattr(self.ctx.workchain_ph.inputs, 'qpoints'):
-                qpoints = self.ctx.workchain_ph.inputs.qpoints
-            elif hasattr(self.ctx.workchain_ph.inputs, 'qpoints_distance'):
-                inputs = {
-                    'structure': self.inputs.structure,
-                    'distance': self.ctx.workchain_ph.inputs.qpoints_distance,
-                    'force_parity': self.ctx.workchain_ph.inputs.get('kpoints_force_parity', orm.Bool(False)),
-                    'metadata': {
-                        'call_link_label': 're-create_qpoints_from_distance'
-                    }
-                }
-                qpoints = create_kpoints_from_distance(**inputs) 
-            else:
-                raise ValueError('No qpoints or qpoints_distance provided!')
-        else:
-            if hasattr(self.inputs, 'qpoints'):
-                qpoints = self.inputs.qpoints
-            elif hasattr(self.inputs, 'qpoints_distance'):
-                inputs = {
-                    'structure': self.inputs.structure,
-                    'distance': self.inputs.qpoints_distance,
-                    'force_parity': self.inputs.get('kpoints_force_parity', orm.Bool(False)),
-                    'metadata': {
-                        'call_link_label': 'create_qpoints_from_distance'
-                    }
-                }
-                qpoints = create_kpoints_from_distance(**inputs) 
-
-        if not self.ctx.is_w90_parent_folder_valid:
+        if 'parent_folder_ph' in self.inputs:
+            if self.inputs.parent_folder_ph.is_cleaned:
+                self.report("Parent folder of ph calculation is cleaned. Skipping q-point mesh search.")
+                return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_PH
             
-            ## TODO: Check if kpoints is provided in the inputs.
-            ## If not, create kpoints from distance.
-            ## If yes, use the provided kpoints.
+            try:
+                qpoints = self._get_qpoints_from_ph_folder(self.inputs.parent_folder_ph)
+                self.ctx.inputs.qpoints = qpoints
+                self.report(f"Successfully determined q-point mesh: {qpoints.get_kpoints_mesh()[0]}")
+            except (ValueError, NotExistent) as e:
+                self.report(f"Fatal error: Could not determine the q-points mesh. Reason: {e}")
+                return self.exit_codes.ERROR_QPOINTS_MESH_NOT_FOUND
+
+            self.ctx.inputs.parent_folder_ph = self.inputs.parent_folder_ph
+        
+        if hasattr(self.inputs, 'parent_folder_chk'):
+            if self.inputs.parent_folder_chk.is_cleaned:
+                self.report("Parent folder of chk calculation is cleaned. Skipping k-point mesh search.")
+                return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_CHK
             
+            self.ctx.inputs.parent_folder_chk = self.inputs.parent_folder_chk
+        
+            parameters = self.ctx.inputs.parameters.get_dict()
+        
+            wannier_params = self.inputs.parameters.get_dict()
+        
+            exclude_bands = wannier_params.get('exclude_bands', None) #TODO check this!
+        
+            if exclude_bands:
+                parameters['INPUTEPW']['bands_skipped'] = f'exclude_bands = {exclude_bands[0]}:{exclude_bands[-1]}'
+
+            parameters['INPUTEPW']['nbndsub'] = wannier_params['num_wann']
+        
+
+    def setup(self):
+        """Call the ``setup`` of the ``BaseRestartWorkChain`` and create the inputs dictionary in ``self.ctx.inputs``.
+
+        This ``self.ctx.inputs`` dictionary will be used by the ``BaseRestartWorkChain`` to submit the calculations
+        in the internal loop.
+
+        The ``parameters`` and ``settings`` input ``Dict`` nodes are converted into a regular dictionary and the
+        default namelists for the ``parameters`` are set to empty dictionaries if not specified.
+        """
+        super().setup()
+        self.ctx.inputs = AttributeDict(self.exposed_inputs(EpwCalculation, 'epw'))
+
+        self.ctx.inputs.parameters = self.ctx.inputs.parameters.get_dict()
+        self.ctx.inputs.parameters.setdefault('INPUTEPW', {})
+        
+        self.ctx.inputs.settings = self.ctx.inputs.settings.get_dict() if 'settings' in self.ctx.inputs else {}
+
+    def validate_kpoints(self):
+        """Validate the inputs related to k-points.
+
+        Either an explicit `KpointsData` with given mesh/path, or a desired k-points distance should be specified. In
+        the case of the latter, the `KpointsData` will be constructed for the input `StructureData` using the
+        `create_kpoints_from_distance` calculation function.
+        """
+        if all(key not in self.inputs for key in ['qfpoints', 'qfpoints_distance']):
+            return self.exit_codes.ERROR_INVALID_INPUT_KPOINTS
+
+        try:
+            qfpoints = self.inputs.qfpoints
+        except AttributeError:
             inputs = {
                 'structure': self.inputs.structure,
-                'distance': self.inputs.kpoints_distance_scf,
-                'force_parity': self.inputs.get('kpoints_force_parity', orm.Bool(False)),
+                'distance': self.inputs.qfpoints_distance,
+                'force_parity': self.inputs.get('qfpoints_force_parity', orm.Bool(False)),
                 'metadata': {
-                    'call_link_label': 'create_kpoints_scf_from_distance'
+                    'call_link_label': 'create_qfpoints_from_distance'
                 }
             }
-            
-            kpoints_scf = create_kpoints_from_distance(**inputs)
+            qfpoints = create_kpoints_from_distance(**inputs)  # pylint: disable=unexpected-keyword-arg
 
-            qpoints_mesh = qpoints.get_kpoints_mesh()[0]
-            kpoints_nscf = orm.KpointsData()
-            kpoints_nscf.set_kpoints_mesh([v * self.inputs.kpoints_factor_nscf.value for v in qpoints_mesh])
+        qfpoints_mesh = qfpoints.get_kpoints_mesh()
+        kfpoints = orm.KpointsData()
+        kfpoints.set_kpoints_mesh([v * self.inputs.kfpoints_factor.value for v in qfpoints_mesh])
 
-        else:
-            if hasattr(self.ctx.workchain_w90_bands.inputs, 'kpoints_scf'):
-                kpoints_scf = self.ctx.workchain_w90_bands.inputs.kpoints_scf
-            elif hasattr(self.ctx.workchain_w90_bands.inputs, 'kpoints_distance_scf'):
-                inputs = {
-                    'structure': self.inputs.structure,
-                    'distance': self.ctx.workchain_w90_bands.inputs.kpoints_distance_scf,
-                    'force_parity': self.inputs.get('kpoints_force_parity', orm.Bool(False)),
-                    'metadata': {
-                    'call_link_label': 're-create_kpoints_scf_from_distance'
-                    }
-                }
-                kpoints_scf = create_kpoints_from_distance(**inputs)
-            
-            mp_grid = self.ctx.workchain_w90_bands.inputs.parameters['mp_grid']
-            kpoints_nscf = orm.KpointsData()
-            kpoints_nscf.set_kpoints_mesh(mp_grid)
-
-        self.ctx.qpoints = qpoints
-        self.ctx.kpoints_scf = kpoints_scf
-        self.ctx.kpoints_nscf = kpoints_nscf
-
-    def should_run_wannier90(self):
-        """Check if the wannier90 workflow should be run."""
-        ## The parent_w90_folder is created by Wannier90Calculation, which is a child process
-        ## of Wannier90BaseWorkChain. Wannier90BaseWorkChain is also a child process.
-        # If One use 'SCDM' projection, its caller is a Wannier90BandsWorkChain 
-        # If One use 'PDWF' projection, its caller is a Wannier90OptimizeWorkChain
+        self.ctx.inputs.qfpoints = qfpoints
+        self.ctx.inputs.kfpoints = kfpoints
         
-        return not self.ctx.is_w90_parent_folder_valid
+    def report_error_handled(self, calculation, action):
+        """Report an action taken for a calculation that has failed.
 
-    def run_wannier90(self):
-        """Run the wannier90 workflow."""
-        
-        if 'projwfc' in self.inputs.w90_bands:
-            self.report('Running a Wannier90BandsWorkChain.')
-            w90_class = Wannier90BandsWorkChain
-        else:
-            self.report('Running a Wannier90OptimizeWorkChain.')
-            w90_class = Wannier90OptimizeWorkChain
+        This should be called in a registered error handler if its condition is met and an action was taken.
 
-        inputs = AttributeDict(
-            self.exposed_inputs(Wannier90OptimizeWorkChain, namespace='w90_bands')
-        )
-        inputs.metadata.call_link_label = 'w90_bands'
-        inputs.structure = self.inputs.structure
-        
-        inputs['scf']['kpoints'] = self.ctx.kpoints_scf
-        set_kpoints(inputs, self.ctx.kpoints_nscf, w90_class)
-
-        workchain_node = self.submit(w90_class, **inputs)
-        self.report(f'launching wannier90 work chain {workchain_node.pk}')
-
-        return ToContext(workchain_w90_bands=workchain_node)
-
-    def inspect_wannier90(self):
-        """Verify that the wannier90 workflow finished successfully."""
-        workchain = self.ctx.workchain_w90_bands
-
-        if not workchain.is_finished_ok:
-            self.report(f'`Wannier90BandsWorkChain` failed with exit status {workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90
-    
-    def should_run_ph(self):
-        """Check if the phonon workflow should be run."""
-        
-        return not self.ctx.is_ph_parent_folder_valid
-
-    def run_ph(self):
-        """Run the `PhBaseWorkChain`."""
-        inputs = AttributeDict(self.exposed_inputs(PhBaseWorkChain, namespace='ph_base'))
-
-        scf_base_wc = self.ctx.workchain_w90_bands.base.links.get_outgoing(link_label_filter='scf').first().node
-        inputs.ph.parent_folder = scf_base_wc.outputs.remote_folder
-
-        inputs.qpoints = self.ctx.qpoints
-
-        inputs.metadata.call_link_label = 'ph_base'
-        workchain_node = self.submit(PhBaseWorkChain, **inputs)
-        self.report(f'launching `ph` {workchain_node.pk}')
-
-        return ToContext(workchain_ph=workchain_node)
-
-    def inspect_ph(self):
-        """Verify that the `PhBaseWorkChain` finished successfully."""
-        workchain = self.ctx.workchain_ph
-
-        if not workchain.is_finished_ok:
-            self.report(f'Electron-phonon PhBaseWorkChain failed with exit status {workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PHONON
-
-    def run_epw(self):
-        """Run the `epw.x` calculation."""       
-        
-        inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw'))
-
-        inputs.parent_folder_ph = self.ctx.workchain_ph.outputs.remote_folder
-
-        nscf_base_wc =  self.ctx.workchain_w90_bands.base.links.get_outgoing(link_label_filter='nscf').first().node
-        inputs.parent_folder_nscf = nscf_base_wc.outputs.remote_folder
-
-        fine_points = orm.KpointsData()
-        fine_points.set_kpoints_mesh([1, 1, 1])
-
-        inputs.kpoints = self.ctx.kpoints_nscf
-        inputs.kfpoints = fine_points
-        inputs.qpoints = self.ctx.qpoints
-        inputs.qfpoints = fine_points      
-
-        parameters = inputs.parameters.get_dict()
-
-        wannier_params = self.ctx.workchain_w90_bands.inputs.wannier90.wannier90.parameters.get_dict()
-        exclude_bands = wannier_params.get('exclude_bands') #TODO check this!
-        if exclude_bands:
-            parameters['INPUTEPW']['bands_skipped'] = f'exclude_bands = {exclude_bands[0]}:{exclude_bands[-1]}'
-
-        parameters['INPUTEPW']['nbndsub'] = wannier_params['num_wann']
-        inputs.parameters = orm.Dict(parameters)
-        # if 'projwfc' in self.inputs.w90_bands:
-        #     w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90__remote_folder
-        # else:
-        #     w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90_optimal__remote_folder
-        if (
-            hasattr(self.ctx.workchain_w90_bands.inputs, 'optimize_disproj') 
-            and 
-            self.ctx.workchain_w90_bands.inputs.optimize_disproj
-            ):
-            w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90_optimal.remote_folder
-        else:
-            w90_remote_data = self.ctx.workchain_w90_bands.outputs.wannier90.remote_folder
-
-        wannier_chk_path = Path(w90_remote_data.get_remote_path(), 'aiida.chk')
-        nscf_xml_path = Path(self.ctx.workchain_w90_bands.outputs.nscf.remote_folder.get_remote_path(), 'out/aiida.xml')
-
-        prepend_text = inputs.metadata.options.get('prepend_text', '')
-        prepend_text += f'\n{self.inputs.w90_chk_to_ukk_script.get_remote_path()} {wannier_chk_path} {nscf_xml_path} aiida.ukk'
-        inputs.metadata.options.prepend_text = prepend_text
-
-        inputs.metadata.call_link_label = 'epw'
-
-        calcjob_node = self.submit(EpwCalculation, **inputs)
-        self.report(f'launching `epw` {calcjob_node.pk}')
-
-        return ToContext(calcjob_epw=calcjob_node)
-
-    def inspect_epw(self):
-        """Verify that the `epw.x` calculation finished successfully."""
-        calcjob = self.ctx.calcjob_epw
-
-        if not calcjob.is_finished_ok:
-            self.report(f'`EpwCalculation` failed with exit status {calcjob.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_EPW
-
-    def results(self):
-        """Add the most important results to the outputs of the work chain."""
-        self.out('retrieved', self.ctx.calcjob_epw.outputs.retrieved)
-        self.out('epw_folder', self.ctx.calcjob_epw.outputs.remote_stash)
-
-    def on_terminated(self):
-        """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
-        super().on_terminated()
-
-        if self.inputs.clean_workdir.value is False:
-            self.report('remote folders will not be cleaned')
-            return
-
-        cleaned_calcs = []
-
-        for called_descendant in self.node.called_descendants:
-            if isinstance(called_descendant, orm.CalcJobNode):
-                try:
-                    called_descendant.outputs.remote_folder._clean()  # pylint: disable=protected-access
-                    cleaned_calcs.append(called_descendant.pk)
-                except (IOError, OSError, KeyError):
-                    pass
-
-        if cleaned_calcs:
-            self.report(f"cleaned remote folders of calculations: {' '.join(map(str, cleaned_calcs))}")
-
-def check_kq_compatibility(
-    kpoints: orm.KpointsData,
-    qpoints: orm.KpointsData,
-) -> (bool, list):
-    """
-    Check if the kpoints and qpoints are compatible.
-    """
-    kpoints_mesh = kpoints.get_kpoints_mesh()[0]
-    kpoints_shift = kpoints.get_kpoints_mesh()[1]
-    qpoints_mesh = qpoints.get_kpoints_mesh()[0]
-    qpoints_shift = qpoints.get_kpoints_mesh()[1]
-    
-    compatibility = None
-    multiplicities = []
-    remainder = []
-    
-    for k, q in zip(kpoints_mesh, qpoints_mesh):
-        multiplicities.append(k // q)
-        remainder.append(k % q)
+        :param calculation: the failed calculation node
+        :param action: a string message with the action taken
+        """
+        arguments = [calculation.process_label, calculation.pk, calculation.exit_status, calculation.exit_message]
+        self.report('{}<{}> failed with exit status {}: {}'.format(*arguments))
+        self.report(f'Action taken: {action}')
 
 
-    if kpoints_shift != [0.0, 0.0, 0.0] or qpoints_shift != [0.0, 0.0, 0.0]:
-        compatibility = False
-    else:
-        if remainder == [0, 0, 0]:
-            compatibility = True
-        else:
-            compatibility = False
-    
-    return compatibility, multiplicities
+    @process_handler(priority=600)
+    def handle_unrecoverable_failure(self, calculation):
+        """Handle calculations with an exit status below 400 which are unrecoverable, so abort the work chain."""
+        if calculation.is_failed and calculation.exit_status < 400:
+            self.report_error_handled(calculation, 'unrecoverable error, aborting...')
+            return ProcessHandlerReport(True, self.exit_codes.ERROR_UNRECOVERABLE_FAILURE)
+
+    @process_handler(priority=590, exit_codes=[])
+    def handle_known_unrecoverable_failure(self, calculation):
+        """Handle calculations with an exit status that correspond to a known failure mode that are unrecoverable.
+
+        These failures may always be unrecoverable or at some point a handler may be devised.
+        """
+        self.report_error_handled(calculation, 'known unrecoverable failure detected, aborting...')
+        return ProcessHandlerReport(True, self.exit_codes.ERROR_KNOWN_UNRECOVERABLE_FAILURE)

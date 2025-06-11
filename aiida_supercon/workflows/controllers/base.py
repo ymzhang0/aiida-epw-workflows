@@ -18,7 +18,7 @@ class EpwBaseWorkChainController(FromGroupSubmissionController):
     pw2wannier90_code: str
     wannier90_code: str
     epw_code: str
-    protocol = "moderate"
+    protocol = None
     overrides: Optional[dict] = None
     electronic_type: ElectronicType = ElectronicType.METAL,
     spin_type: SpinType = SpinType.NONE,
