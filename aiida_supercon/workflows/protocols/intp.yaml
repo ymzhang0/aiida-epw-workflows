@@ -27,25 +27,25 @@ default_inputs:
           withmpi: True
 
   epw:
-    metadata:
-      options:
-        withmpi: True
-
-    parameters:
-      INPUTEPW:
-        a2f: False
-        degaussq: 0.05
-        degaussw: 0.2
-        elph: True
-        epbread: False
-        epbwrite: True
-        epwread: False
-        epwwrite: True
-        fsthick: 100
-        phonselfen: False
-        temps: 300
-        vme: 'dipole'
-        wannierize: False
+    epw:
+      metadata:
+        options:
+          withmpi: True
+      parameters:
+        INPUTEPW:
+          a2f: False
+          degaussq: 0.05
+          degaussw: 0.2
+          elph: True
+          epbread: False
+          epbwrite: True
+          epwread: False
+          epwwrite: True
+          fsthick: 100
+          phonselfen: False
+          temps: 300
+          vme: 'dipole'
+          wannierize: False
 default_protocol: moderate
 protocols:
   moderate:

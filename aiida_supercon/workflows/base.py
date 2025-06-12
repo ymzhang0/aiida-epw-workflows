@@ -16,6 +16,8 @@ from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
 from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
 
+from ..parsers.epw import EpwParser
+
 from pathlib import Path
 
 EpwCalculation = CalculationFactory('quantumespresso.epw')
@@ -33,11 +35,13 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """Define the process specification."""
         # yapf: disable
         super().define(spec)
+        
         spec.expose_inputs(
             EpwCalculation, namespace='epw', 
             exclude=('kpoints', 'qpoints', 'kfpoints', 'qfpoints')
             )
-        
+        spec.inputs.epw['metadata']['options']['parser_name'].default = 'epw.base'
+
         spec.input(
             'structure', valid_type=orm.StructureData,
             help='The structure to compute the epw for fine grid generation'
@@ -96,7 +100,9 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             cls.results,
         )
 
-        spec.expose_outputs(EpwCalculation)
+        spec.expose_outputs(
+            EpwCalculation, namespace='epw',
+            )
 
         spec.exit_code(201, 'ERROR_INVALID_INPUT_PSEUDO_POTENTIALS',
             message='The explicit `pseudos` or `pseudo_family` could not be used to get the necessary pseudos.')
@@ -230,11 +236,9 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         # Check if the nscf CalcJob's input k-points already has a mesh.
         # This covers the case of a standalone PwBaseWorkChain run.
-        self.report("K-point mesh search: Trying from direct input...")
         try:
             kpoints = pw_calc.inputs.kpoints
             mesh, _ = kpoints.get_kpoints_mesh()
-            self.report(f"Found mesh {mesh} directly in pw_calc<{pw_calc.pk}> inputs.")
             return kpoints
         except (AttributeError, NotExistent):
             self.report("The input k-points do not contain a mesh.")
@@ -244,12 +248,9 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         if not w90_workchain:
             # If there's no caller, we can't use Strategies 2 & 3.
             # We must fall back to the last resort.
-            self.report("No caller found for nscf calculation. Moving to final strategy.")
             return self._deduce_mesh_from_explicit_kpoints(pw_calc.inputs.kpoints)
 
-
         # Check if the caller is a Wannier90 workchain and look for `mp_grid`.
-        self.report("K-point mesh search: Reading from Wannier 'mp_grid'...")
         if w90_workchain.process_class is Wannier90OptimizeWorkChain:
             if hasattr(w90_workchain.inputs, 'optimize_disproj') and w90_workchain.inputs.optimize_disproj:
                 wannier_params = w90_workchain.inputs.wannier90_optimal.wannier90.get('parameters')
@@ -262,7 +263,6 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
     
         if 'mp_grid' in wannier_params:
             mp_grid = wannier_params['mp_grid']
-            self.report(f"Found 'mp_grid' {mp_grid} in Wannier parameters.")
             kpoints = orm.KpointsData()
             kpoints.set_kpoints_mesh(mp_grid)
             return kpoints
@@ -281,7 +281,6 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             if len(explicit_kpoints) != nk1 * nk2 * nk3:
                 raise ValueError("Product of deduced dimensions does not match k-point count.")
             mesh = [nk1, nk2, nk3]
-            self.report(f"Deduced mesh to be {mesh}. Note: This is a guess.")
             kpoints = orm.KpointsData()
             kpoints.set_kpoints_mesh(mesh)
             return kpoints

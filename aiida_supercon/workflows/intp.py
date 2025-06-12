@@ -124,10 +124,62 @@ from aiida_wannier90_workflows.workflows.optimize import validate_inputs as vali
 from aiida_wannier90_workflows.utils.workflows.builder.setter import set_kpoints
 from aiida_wannier90_workflows.common.types import WannierProjectionType
 
-from .utils.overrides import get_overrides_from_w90_workchain, update_epw_from_w90_overrides, update_epw_from_w90_intp, get_overrides_from_ph_base, update_epw_from_ph_overrides, update_epw_from_ph_base
+from .utils.overrides import restart_from_w90_intp, restart_from_ph_base
 from .utils.kpoints import is_compatible
 
 from .base import EpwBaseWorkChain
+from ..common.restart import RestartType
+
+
+def validate_inputs_restart(inputs, ctx=None):
+    """
+    Validate the inputs based on the chosen `restart_mode`.
+    This function is called by AiiDA before the workchain runs.
+    """
+    # The `inputs` argument is a dictionary-like object with the user-provided inputs
+    restart_mode = inputs['restart_mode'].value # .value gives the string, e.g., 'from_phonon'
+
+    if restart_mode == RestartType.FROM_SCRATCH.value:
+        if 'overrides' in inputs:
+            return "For 'FROM_SCRATCH' mode, the 'overrides' namespace should not be provided."
+
+    elif restart_mode == RestartType.RESTART_WANNIER.value:
+        overrides = inputs.get('overrides', None)
+        if overrides:
+            if 'ph_base' not in overrides or not (
+                'parent_folder_ph' in overrides['ph_base']
+                ):
+                return "For 'RESTART_WANNIER' mode, 'overrides.ph_base' must be provided."
+        else:
+            return "For 'RESTART_WANNIER' mode, the 'overrides.ph_base' namespace is required."
+    # elif restart_mode == RestartType.RESTART_EPW.value:
+    #     overrides = inputs.get('overrides', None)
+    #     if overrides:
+    #         if 'epw' not in overrides or not (
+    #             'parent_folder_epw' in overrides['epw']
+    #             ):
+    #             return "For 'RESTART_EPW' mode, 'overrides.epw' must be provided."
+    #     else:
+    #         return "For 'RESTART_EPW' mode, the 'overrides' namespace is required."
+        
+    #     # Check that the required data for this mode is present
+    #     required_keys = ['w90_intp', 'ph_base', 'epw']
+    #     for key in required_keys:
+    #         if key not in inputs['overrides']:
+    #             return f"For 'FROM_PHONON' mode, 'overrides.{key}' must be provided."
+    if restart_mode == RestartType.RESTART_PHONON.value:
+        overrides = inputs.get('overrides', None)
+        if overrides:
+            if 'w90_intp' not in overrides:
+                return "For 'RESTART_PHONON' mode, 'overrides.ph_base' must be provided."
+            if 'ph_base' in overrides:
+                return "For 'RESTART_PHONON' mode, 'overrides.ph_base' should not be provided."
+        else:
+            return "For 'RESTART_PHONON' mode, the 'overrides' namespace is required."
+
+    # If everything is fine, return None
+    return None
+        
 def validate_inputs(inputs, ctx=None):  # pylint: disable=unused-argument
     """Validate the inputs of the entire input namespace of `Wannier90OptimizeWorkChain`."""
 
@@ -136,7 +188,7 @@ def validate_inputs(inputs, ctx=None):  # pylint: disable=unused-argument
         validate_inputs_w90_intp(inputs)
     else:
         print('validate nothing')
-        
+    
     return None
         
 class EpwIntpWorkChain(ProtocolMixin, WorkChain):
@@ -146,7 +198,8 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
     (projectability-disentangled Wannier function) PDWF projection types.
     """
         
-    _KPOINTS_GAMMA = [1, 1, 1]
+    _QFPOINTS = [1, 1, 1]
+    _KFPOINTS_FACTOR = 1
     
     SOURCE_LIST = {
         'ph_base':[
@@ -168,6 +221,22 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
             ]
         }
     
+    _WANNIER_NAMESPACE = 'w90_intp'
+    _PHONON_NAMESPACE = 'ph_base'
+    _EPW_NAMESPACE = 'epw'
+    
+    @classmethod
+    def _define_restart(cls, spec):
+        """Define the inputs and validator for the restart mechanism."""
+        
+        spec.input('restart.restart_mode', valid_type=orm.EnumData, default=lambda: orm.EnumData(RestartType.FROM_SCRATCH))
+        
+        spec.input_namespace(
+            'restart.overrides', required=False, dynamic=True
+            )
+
+        spec.inputs["restart"].validator = validate_inputs_restart
+        
     @classmethod
     def define(cls, spec):
         """Define the work chain specification."""
@@ -175,35 +244,17 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
 
         spec.input('structure', valid_type=orm.StructureData)
         spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(False))
-        spec.input('kpoints_factor_nscf', valid_type=orm.Int)
+        spec.input('kpoints_factor_nscf', valid_type=orm.Int, required=False)
         spec.input('qpoints_distance', valid_type=orm.Float, required=False)
-        
         spec.input('qpoints', valid_type=orm.KpointsData, required=False)
         
-        # w90_ns = PortNamespace(non_db=True)
-        # w90_ns['kpoints_nscf'] = Port(valid_type=KpointsData, required=False)
-        # w90_ns['parent_folder_scf'] = Port(valid_type=RemoteData, required=False)
-
-        # spec.input('w90_overrides', w90_ns)
-
         spec.input_namespace(
-            'w90_overrides',
-            required=False,
-            help='Overrides extracted from the previous Wannier WorkChain'
-        )
-        spec.input('w90_overrides.kpoints_nscf', valid_type=orm.KpointsData, required=False)
-        spec.input('w90_overrides.parent_folder_scf', valid_type=orm.RemoteData, required=False)
-        spec.input('w90_overrides.parent_folder_nscf', valid_type=orm.RemoteData, required=False)
-        spec.input('w90_overrides.parent_folder_chk', valid_type=orm.RemoteData, required=False)
-        spec.input('w90_overrides.parameters', valid_type=orm.Dict, required=False)
-
-        spec.input_namespace(
-            'ph_base_overrides',
-            required=False,
-            help='Overrides extracted from the previous PhBase WorkChain'
-        )
-        spec.input('ph_base_overrides.parent_folder_ph', valid_type=(orm.RemoteData, orm.RemoteStashFolderData), required=False)
-        spec.input('ph_base_overrides.qpoints', valid_type=orm.KpointsData, required=False)
+            'restart',
+            required=True,
+            populate_defaults=False,
+            help='Inputs for the `Wannier90OptimizeWorkChain/Wannier90BandsWorkChain`.'
+            )
+        cls._define_restart(spec)
 
         spec.inputs.validator = validate_inputs
 
@@ -219,12 +270,11 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
                 'help': 'Inputs for the `Wannier90OptimizeWorkChain/Wannier90BandsWorkChain`.'
             }
         )
-                
         spec.expose_inputs(
             PhBaseWorkChain, 
             namespace='ph_base',
             exclude=(
-                'clean_workdir', 'ph.parent_folder', 'qpoints', 'qpoints_distance'
+                'clean_workdir', 'parent_folder_nscf', 'parent_folder_chk', 'parent_folder_ph', 'parent_folder_epw'
             ),
             namespace_options={
                 'required': False,
@@ -232,22 +282,38 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
                 'help': 'Inputs for the `PwBaseWorkChain` that does the `ph.x` calculation.'
             }
         )
+
         spec.expose_inputs(
             EpwBaseWorkChain, 
-            namespace='epw', 
+            namespace='epw',
             exclude=(
-                'parent_folder_ph', 'parent_folder_nscf', 'parent_folder_chk', 'qfpoints', 'qfpoints_distance', 'kfpoints_factor'
+                'clean_workdir', 'epw.parent_folder', 'qfpoints', 'qfpoints_distance'
             ),
             namespace_options={
-                'help': 'Inputs for the `EpwCalculation`.'
+                'required': False,
+                'populate_defaults': False,
+                'help': 'Inputs for the `EpwBaseWorkChain` that does the `epw.x` calculation.'
             }
         )
-        
+
+        spec.expose_outputs(
+            Wannier90OptimizeWorkChain,
+            namespace='w90_intp',
+        )
+        spec.expose_outputs(
+            PhBaseWorkChain,
+            namespace='ph_base',
+        )
+        spec.expose_outputs(
+            EpwBaseWorkChain,
+            namespace='epw',
+        )
         spec.output('retrieved', valid_type=orm.FolderData)
         spec.output('epw_folder', valid_type=orm.RemoteStashFolderData)
 
         spec.outline(
             cls.generate_reciprocal_points,
+            cls.setup,
             if_(cls.should_run_wannier90)(
                 cls.run_wannier90,
                 cls.inspect_wannier90,
@@ -278,7 +344,6 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         from . import protocols
         return files(protocols) / 'intp.yaml'
 
-        
     @staticmethod
     def set_target_base(
         inputs,
@@ -305,6 +370,7 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         wannier_projection_type=WannierProjectionType.ATOMIC_PROJECTORS_QE,
         reference_bands=None, bands_kpoints=None,
         w90_intp=None, ph_base=None, epw=None,
+        w90_chk_to_ukk_script=None,
         **kwargs
         )-> ProcessBuilder:
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
@@ -320,26 +386,27 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         inputs = cls.get_protocol_inputs(protocol, overrides)
 
         builder = cls.get_builder()
-        
-        epw_builder = EpwCalculation.get_builder()
-        
-        epw_builder.code = codes['epw']
-        epw_inputs = inputs.get('epw', None)
-        
-        epw_builder.parameters = orm.Dict(epw_inputs['parameters'])
-        epw_builder.metadata = epw_inputs['metadata']
-        epw_builder.settings = orm.Dict(epw_inputs['settings'])
-
+        builder.structure = structure
         
         # Here we check the previous wannier90 workchain instead of checking
         # it inside the workchain because we can't pass the `WorkChain` as an
         # input.
+        from .utils.overrides import recursive_merge
+
+        builder.restart.restart_mode = orm.EnumData(RestartType.FROM_SCRATCH)
         
+        # NOTE: It's user's responsibility to provide the finished wannier90 workchain
+        #       We don't check it here. We either skip the wannier90 workchain by a finished one
+        #       or start wannier90 workchain from the beginning.
         if w90_intp:
-            w90_overrides = get_overrides_from_w90_workchain(w90_intp)
-            builder.w90_overrides.update(w90_overrides)
-            builder.pop('w90_intp')
+            builder.restart = recursive_merge(
+                builder.restart, restart_from_w90_intp(w90_intp)
+                )
+            builder.pop('w90_intp', None)
+            builder.pop('kpoints_factor_nscf', None)
         else:
+            builder.restart.restart_mode = orm.EnumData(RestartType.RESTART_WANNIER)
+            builder.kpoints_factor_nscf = orm.Int(inputs['kpoints_factor_nscf'])
             # Only create w90_intp inputs if not provided
             w90_intp_inputs = inputs.get('w90_intp', {})
             pseudo_family = w90_intp_inputs.pop('pseudo_family', None)
@@ -357,22 +424,24 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
             w90_intp.pop('projwfc', None)
             w90_intp.pop('open_grid', None)
             
-            builder.w90_intp = w90_intp
-            
             # TODO: Only for testing, will remove later
-            builder.w90_intp.optimize_disproj = orm.Bool(False)
+            w90_intp.optimize_disproj = orm.Bool(False)
+            builder.w90_intp = w90_intp
 
-            ## TODO: It's ugly but if we don't pop these two, these namespaces will be 
-            # regenerated
-            builder.w90_intp.pop('projwfc', None)
-            builder.w90_intp.pop('open_grid', None)
-                        
-        # TODO: Check we can restart phonon from parent_ph_folder.
+        # NOTE: We can restart phonon from parent_ph_folder.
         if ph_base:
-            ph_base_overrides = get_overrides_from_ph_base(ph_base)
-            builder.ph_base_overrides.update(ph_base_overrides)
-            builder.pop('ph_base')
+            if builder.restart.restart_mode.value == RestartType.RESTART_PHONON.value:
+                builder.restart.restart_mode = orm.EnumData(RestartType.RESTART_EPW)
+            builder.restart = recursive_merge(
+                builder.restart, restart_from_ph_base(ph_base)
+                )
+            builder.pop('ph_base', None)
+            builder.pop('qpoints', None)
+            builder.pop('qpoints_distance', None)
         else:
+            if builder.restart.restart_mode.value == RestartType.RESTART_WANNIER.value:
+                builder.restart.restart_mode = orm.EnumData(RestartType.FROM_SCRATCH)
+                
             ph_base_inputs = inputs.get('ph_base', {})
             ph_base = PhBaseWorkChain.get_builder_from_protocol(
                 codes['ph'],
@@ -380,25 +449,50 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
                 overrides=ph_base_inputs, 
                 **kwargs
                 )
-
             builder.qpoints_distance = orm.Float(inputs['qpoints_distance'])
             builder.ph_base = ph_base
         # Set kpoints and qpoints before checking compatibility
 
-
+        epw_builder = EpwBaseWorkChain.get_builder_from_protocol(
+            code=codes['epw'],
+            structure=structure,
+            overrides=inputs.get('epw', {}),
+            w90_chk_to_ukk_script=w90_chk_to_ukk_script,
+            **kwargs
+        )
+        
         builder.epw = epw_builder
-        builder.structure = structure
-        builder.kpoints_factor_nscf = orm.Int(inputs['kpoints_factor_nscf'])
+        
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
         builder._inputs(prune=True)
 
         return builder
 
+    def setup(self):
+        """Setup the work chain."""
+
+
+        inputs = AttributeDict(
+            self.exposed_inputs(EpwBaseWorkChain, namespace='epw')
+            )
+
+        restart = self.inputs.restart
+        
+        if restart.restart_mode.value in (RestartType.RESTART_PHONON.value, RestartType.RESTART_EPW.value):
+            self.ctx.parent_folder_scf = self.inputs.restart.overrides.w90_intp.get('parent_folder_scf')
+            inputs.parent_folder_nscf = self.inputs.restart.overrides.w90_intp.get('parent_folder_nscf')
+            inputs.parent_folder_chk = self.inputs.restart.overrides.w90_intp.get('parent_folder_chk')
+        
+        if restart.restart_mode.value in (RestartType.RESTART_WANNIER.value, RestartType.RESTART_EPW.value):
+            inputs.parent_folder_ph = self.inputs.restart.overrides.ph_base.get('parent_folder_ph')
+
+        self.ctx.inputs = inputs
+        
     def generate_reciprocal_points(self):
         """Generate the reciprocal points."""
 
         self.report('Generating q-points and k-points')
-        if hasattr(self.inputs, 'ph_base'):
+        if self.inputs.restart.restart_mode == RestartType.RESTART_PHONON.value:
             inputs = {
                 'structure': self.inputs.structure,
                 'distance': self.inputs.qpoints_distance,
@@ -410,29 +504,26 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
             
             qpoints = create_kpoints_from_distance(**inputs)
         else:
-            qpoints = self.inputs.ph_base_overrides.get('qpoints')
+            qpoints = self.inputs.restart.overrides.ph_base.get('qpoints')
             
-        if hasattr(self.inputs, 'w90_intp'):
+        if self.inputs.restart.restart_mode == RestartType.RESTART_WANNIER.value:
             qpoints_mesh = qpoints.get_kpoints_mesh()[0]
             kpoints_nscf = orm.KpointsData()
             kpoints_nscf.set_kpoints_mesh([v * self.inputs.kpoints_factor_nscf.value for v in qpoints_mesh])
-        else:
-            kpoints_nscf = self.inputs.w90_overrides['kpoints_nscf']
+
+        # else:
+        #     kpoints_nscf = self.inputs.restart.overrides.w90_intp['kpoints_nscf']
         
-        if not is_compatible(kpoints_nscf, qpoints):
-            self.exit_codes.ERROR_KPOINTS_QPOINTS_NOT_COMPATIBLE
-        
-        self.report(f'qpoints: {qpoints.get_kpoints_mesh()}')
-        self.report(f'kpoints_nscf: {kpoints_nscf.get_kpoints_mesh()}')
-        self.ctx.qpoints = qpoints
-        self.ctx.kpoints_nscf = kpoints_nscf
+            if not is_compatible(kpoints_nscf, qpoints):
+                self.exit_codes.ERROR_KPOINTS_QPOINTS_NOT_COMPATIBLE
+                
+            self.ctx.kpoints_nscf = kpoints_nscf
+            
 
     def should_run_wannier90(self):
         """Check if the wannier90 workflow should be run."""
-        # The only reason that we run the wannier90 workflow is 
-        # if w90_intp is in the inputs port.
-        
-        return 'w90_intp' in self.inputs
+
+        return self.inputs.restart.restart_mode == RestartType.RESTART_WANNIER.value
 
     def run_wannier90(self):
         """Run the wannier90 workflow."""
@@ -454,26 +545,24 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         """Verify that the wannier90 workflow finished successfully."""
         workchain = self.ctx.workchain_w90_intp
 
+        self.ctx.parent_folder_scf = workchain.outputs.scf.remote_folder
+        self.ctx.epw.inputs.parent_folder_nscf = workchain.outputs.nscf.remote_folder
+        self.ctx.epw.inputs.parent_folder_chk = workchain.outputs.chk.remote_folder
+        
         if not workchain.is_finished_ok:
             self.report(f'`Wannier90BandsWorkChain` failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90
     
     def should_run_ph(self):
         """Check if the phonon workflow should be run."""
-        # The only reason that we run the phonon workflow is 
-        # if ph_base is in the inputs port.
-        return 'ph_base' in self.inputs
+        return self.inputs.restart.restart_mode == RestartType.RESTART_PHONON.value
 
     def run_ph(self):
         """Run the `PhBaseWorkChain`."""
         inputs = AttributeDict(self.exposed_inputs(PhBaseWorkChain, namespace='ph_base'))
-        if hasattr(self.inputs, 'w90_overrides'):
-            inputs.ph.parent_folder = self.inputs.w90_overrides.get('parent_folder_scf', None)
-        elif hasattr(self.ctx, 'workchain_w90_intp'):
-            inputs.ph.parent_folder = self.ctx.workchain_w90_intp.outputs.scf.remote_folder
-        else:
-            self.exit_codes.ERROR_SCF_PARENT_FOLDER_NOT_FOUND
-            
+        
+        inputs.ph.parent_folder = self.ctx.parent_folder_scf
+
         inputs.qpoints = self.ctx.qpoints
         inputs.metadata.call_link_label = 'ph_base'
         
@@ -489,6 +578,8 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         """Verify that the `PhBaseWorkChain` finished successfully."""
         workchain = self.ctx.workchain_ph
 
+        self.ctx.epw.inputs.parent_folder_ph = workchain.outputs.remote_folder
+        
         if not workchain.is_finished_ok:
             self.report(f'Electron-phonon PhBaseWorkChain failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PHONON
@@ -496,46 +587,34 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
     def run_epw(self):
         """Run the `epw.x` calculation."""       
         
-        inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw'))
-
-        inputs.kpoints = self.ctx.kpoints_nscf
-        inputs.qpoints = self.ctx.qpoints
+        # inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw'))
+        inputs = self.ctx.inputs
         
         fpoints = orm.KpointsData()
-        fpoints.set_kpoints_mesh(self._KPOINTS_GAMMA)
-        inputs.kfpoints = fpoints
+        fpoints.set_kpoints_mesh(self._QFPOINTS)
         inputs.qfpoints = fpoints
+        inputs.kfpoints_factor = orm.Int(self._KFPOINTS_FACTOR)
 
-        if hasattr(self.inputs, 'ph_base_overrides'):
-            update_epw_from_ph_overrides(inputs, self.inputs.ph_base_overrides)
-        else:
-            update_epw_from_ph_base(inputs, self.ctx.workchain_ph)
-            
-        if hasattr(self.inputs, 'w90_overrides'):
-            update_epw_from_w90_overrides(inputs, self.inputs.w90_chk_to_ukk_script, self.inputs.w90_overrides)
-        else:
-            update_epw_from_w90_intp(inputs, self.inputs.w90_chk_to_ukk_script, self.ctx.workchain_w90_intp)
-            
         inputs.metadata.call_link_label = 'epw'
-        self.set_target_base(inputs, 'epw')
+        self.set_target_base(inputs.epw, 'epw')
         
-        calcjob_node = self.submit(EpwCalculation, **inputs)
-        self.report(f'launching `epw` {calcjob_node.pk}')
+        workchain_node = self.submit(EpwBaseWorkChain, **inputs)
+        self.report(f'launching `epw` {workchain_node.pk}')
 
-        return ToContext(calcjob_epw=calcjob_node)
+        return ToContext(workchain_epw=workchain_node)
 
     def inspect_epw(self):
         """Verify that the `epw.x` calculation finished successfully."""
-        calcjob = self.ctx.calcjob_epw
+        workchain = self.ctx.workchain_epw
 
-        if not calcjob.is_finished_ok:
-            self.report(f'`EpwCalculation` failed with exit status {calcjob.exit_status}')
+        if not workchain.is_finished_ok:
+            self.report(f'`EpwBaseWorkChain` failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_EPW
 
     def results(self):
         """Add the most important results to the outputs of the work chain."""
-        self.out('retrieved', self.ctx.calcjob_epw.outputs.retrieved)
-        self.out('epw_folder', self.ctx.calcjob_epw.outputs.remote_stash)
+        self.out('retrieved', self.ctx.workchain_epw.outputs.retrieved)
+        self.out('epw_folder', self.ctx.workchain_epw.outputs.remote_stash)
 
     def on_terminated(self):
         """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
