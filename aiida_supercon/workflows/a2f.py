@@ -9,12 +9,12 @@ from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 from aiida_quantumespresso.calculations.epw import EpwCalculation
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
 from .base import EpwBaseWorkChain
+from .intp import EpwIntpWorkChain
 from aiida.engine import calcfunction
 
 from scipy.interpolate import interp1d
 import numpy
 
-load_profile()
 
 
 @calcfunction
@@ -58,7 +58,7 @@ class EpwA2fWorkChain(ProtocolMixin, WorkChain):
         'INPUTEPW': {
             'degaussq'   : 0.05,
             'degaussw'   : 0.01,
-            'eps_acustic' : 1,
+            'eps_acustic' : 0.1,
             'iverbosity' : 1,
             'fsthick'    : 0.8,
             'temps'      : 1,
@@ -77,8 +77,8 @@ class EpwA2fWorkChain(ProtocolMixin, WorkChain):
         spec.input('kfpoints_factor', valid_type=orm.Int)
         spec.input('parent_folder_epw', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
         spec.expose_inputs(
-            EpwWorkChain, namespace='epw', exclude=(
-                'clean_workdir', 'structure', 'w90_chk_to_ukk_script'
+            EpwIntpWorkChain, namespace='epw', exclude=(
+                'clean_workdir', 
             ),
             namespace_options={
                 'required': False,
@@ -87,13 +87,10 @@ class EpwA2fWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_inputs(
-            EpwCalculation, namespace='a2f', exclude=(
-                'kpoints',
-                'qpoints',
-                'kfpoints', 
-                'qfpoints',
-                'parent_folder_ph', 
-                'parent_folder_nscf',
+            EpwBaseWorkChain, namespace='a2f', exclude=(
+                'qfpoints', 
+                'qfpoints_distance',
+                'kfpoints_factor',
                 'parent_folder_epw',
             ),
             namespace_options={
@@ -150,7 +147,7 @@ class EpwA2fWorkChain(ProtocolMixin, WorkChain):
             codes, 
             structure, 
             protocol=None, 
-            parent_folder_epw=None,
+            epw=None,
             overrides=None, 
             **kwargs
         ):
@@ -161,8 +158,8 @@ class EpwA2fWorkChain(ProtocolMixin, WorkChain):
         inputs = cls.get_protocol_inputs(protocol, overrides)
         builder = cls.get_builder()
 
-        if not parent_folder_epw:
-            builder.epw = EpwWorkChain.get_builder_from_protocol(
+        if not epw:
+            builder.epw = EpwIntpWorkChain.get_builder_from_protocol(
                 codes=codes,
                 structure=structure,
                 protocol=protocol,
@@ -173,13 +170,14 @@ class EpwA2fWorkChain(ProtocolMixin, WorkChain):
 
         epw_inputs = inputs.get('a2f', None) 
         
-        epw_builder = EpwCalculation.get_builder()
-        epw_builder.code = codes['epw']
-        epw_builder.metadata = epw_inputs['metadata']
-        if 'settings' in epw_inputs:
-            epw_builder.settings = orm.Dict(epw_inputs['settings'])
+        epw_builder = EpwBaseWorkChain.get_builder_from_protocol(
+            codes=codes,
+            structure=structure,
+            protocol=protocol,
+            overrides=epw_inputs,
+            **kwargs
+        )
 
-        epw_builder.parameters = orm.Dict(epw_inputs.get('parameters', {}))
 
         builder.structure = structure
         builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
@@ -193,7 +191,9 @@ class EpwA2fWorkChain(ProtocolMixin, WorkChain):
         """Setup steps, i.e. initialise context variables."""
         
         self.ctx.degaussq = None
-
+        inputs = self.exposed_inputs(EpwBaseWorkChain, namespace='a2f')
+        self.ctx.inputs = inputs
+        
     @staticmethod
     def get_kpoints_from_inputs(
         inputs, 
@@ -259,12 +259,13 @@ class EpwA2fWorkChain(ProtocolMixin, WorkChain):
 
     def run_epw(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
-        inputs = AttributeDict(self.exposed_inputs(EpwWorkChain, namespace='epw'))
 
+        inputs = self.exposed_inputs(EpwIntpWorkChain, namespace='epw')
+        
         inputs.structure = self.inputs.structure
         
         inputs.metadata.call_link_label = 'epw'
-        workchain_node = self.submit(EpwWorkChain, **inputs)
+        workchain_node = self.submit(EpwIntpWorkChain, **inputs)
 
         self.report(f'launching `epw` with PK {workchain_node.pk}')
 
@@ -281,7 +282,7 @@ class EpwA2fWorkChain(ProtocolMixin, WorkChain):
     def run_a2f(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
         
-        inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='a2f'))
+        inputs = self.ctx.inputs
 
         epw_calcjob = self.ctx.epw.base.links.get_outgoing(link_label_filter='epw').first().node
         
@@ -322,11 +323,11 @@ class EpwA2fWorkChain(ProtocolMixin, WorkChain):
         inputs.settings = orm.Dict(settings)
 
         inputs.metadata.call_link_label = 'a2f'
-        calcjob_node = self.submit(EpwCalculation, **inputs)
+        workchain_node = self.submit(EpwBaseWorkChain, **inputs)
 
-        self.report(f'launching `a2f` with PK {calcjob_node.pk}')
+        self.report(f'launching `a2f` with PK {workchain_node.pk}')
 
-        return ToContext(a2f=calcjob_node)
+        return ToContext(a2f=workchain_node)
 
     def inspect_a2f(self):
         """Verify that the epw.x workflow finished successfully."""

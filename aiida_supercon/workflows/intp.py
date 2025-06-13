@@ -461,8 +461,7 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
             w90_chk_to_ukk_script=w90_chk_to_ukk_script,
             **kwargs
         )
-        print(type(epw_builder))
-        print(epw_builder)
+
         builder.epw = epw_builder
 
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
@@ -546,8 +545,8 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         workchain = self.ctx.workchain_w90_intp
 
         self.ctx.parent_folder_scf = workchain.outputs.scf.remote_folder
-        self.ctx.epw.inputs.parent_folder_nscf = workchain.outputs.nscf.remote_folder
-        self.ctx.epw.inputs.parent_folder_chk = workchain.outputs.chk.remote_folder
+        self.ctx.inputs.parent_folder_nscf = workchain.outputs.nscf.remote_folder
+        self.ctx.inputs.parent_folder_chk = workchain.outputs.chk.remote_folder
         
         if not workchain.is_finished_ok:
             self.report(f'`Wannier90BandsWorkChain` failed with exit status {workchain.exit_status}')
@@ -578,7 +577,7 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         """Verify that the `PhBaseWorkChain` finished successfully."""
         workchain = self.ctx.workchain_ph
 
-        self.ctx.epw.inputs.parent_folder_ph = workchain.outputs.remote_folder
+        self.ctx.inputs.parent_folder_ph = workchain.outputs.remote_folder
         
         if not workchain.is_finished_ok:
             self.report(f'Electron-phonon PhBaseWorkChain failed with exit status {workchain.exit_status}')
