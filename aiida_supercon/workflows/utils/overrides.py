@@ -104,7 +104,6 @@ def restart_from_w90_intp(
                 'parent_folder_scf': scf.remote_folder,
                 'parent_folder_nscf': nscf.remote_folder,
                 'parent_folder_chk': parent_folder_chk,
-                'parameters': wannier_params
             }
         }
     }

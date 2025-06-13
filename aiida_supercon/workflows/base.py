@@ -16,7 +16,6 @@ from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
 from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
 
-from ..parsers.epw import EpwParser
 
 from pathlib import Path
 
@@ -38,10 +37,17 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         
         spec.expose_inputs(
             EpwCalculation, namespace='epw', 
-            exclude=('kpoints', 'qpoints', 'kfpoints', 'qfpoints')
+            exclude=(
+                'kpoints', 
+                'qpoints', 
+                'kfpoints', 
+                'qfpoints',
+                'parent_folder_nscf',
+                'parent_folder_ph',
+                'parent_folder_epw',
             )
-        spec.inputs.epw['metadata']['options']['parser_name'].default = 'epw.base'
-
+        )
+        
         spec.input(
             'structure', valid_type=orm.StructureData,
             help='The structure to compute the epw for fine grid generation'
@@ -171,7 +177,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             the ``CalcJobs`` that are nested in this work chain.
         :return: a process builder instance with all inputs defined ready for launch.
         """
-        from aiida_quantumespresso.workflows.protocols.utils import recursive_merge
+        from .utils.overrides import recursive_copy
 
         if isinstance(code, str):
             code = orm.load_code(code)
@@ -184,12 +190,12 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         # If overrides are provided, they are considered absolute
         if overrides:
             parameter_overrides = overrides.get('epw', {}).get('parameters', {})
-            parameters = recursive_merge(parameters, parameter_overrides)
+            parameters = recursive_copy(parameters, parameter_overrides)
 
         metadata = inputs['epw']['metadata']
 
         if options:
-            metadata['options'] = recursive_merge(inputs['epw']['metadata']['options'], options)
+            metadata['options'] = recursive_copy(inputs['epw']['metadata']['options'], options)
 
         # pylint: disable=no-member
         builder = cls.get_builder()
@@ -198,16 +204,22 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         builder.epw['parameters'] = orm.Dict(parameters)
         builder.epw['metadata'] = metadata
         
-        builder.parent_folder_nscf = parent_folder_nscf
-        builder.parent_folder_ph = parent_folder_ph
-        builder.parent_folder_chk = parent_folder_chk
-        builder.parent_folder_epw = parent_folder_epw
+        if parent_folder_nscf:
+            builder.parent_folder_nscf = parent_folder_nscf
+        if parent_folder_ph:
+            builder.parent_folder_ph = parent_folder_ph
+        if parent_folder_chk:
+            builder.parent_folder_chk = parent_folder_chk
+        if parent_folder_epw:
+            builder.parent_folder_epw = parent_folder_epw
+            
         builder.w90_chk_to_ukk_script = w90_chk_to_ukk_script
         
         if 'settings' in inputs['epw']:
             builder.epw['settings'] = orm.Dict(inputs['epw']['settings'])
         if 'parallelization' in inputs['epw']:
             builder.epw['parallelization'] = orm.Dict(inputs['epw']['parallelization'])
+        
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
         
         if 'qfpoints' in inputs:

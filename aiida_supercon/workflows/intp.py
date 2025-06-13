@@ -140,7 +140,8 @@ def validate_inputs_restart(inputs, ctx=None):
     restart_mode = inputs['restart_mode'].value # .value gives the string, e.g., 'from_phonon'
 
     if restart_mode == RestartType.FROM_SCRATCH.value:
-        if 'overrides' in inputs:
+        overrides = inputs.get('overrides', None)
+        if overrides:
             return "For 'FROM_SCRATCH' mode, the 'overrides' namespace should not be provided."
 
     elif restart_mode == RestartType.RESTART_WANNIER.value:
@@ -229,7 +230,7 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
     def _define_restart(cls, spec):
         """Define the inputs and validator for the restart mechanism."""
         
-        spec.input('restart.restart_mode', valid_type=orm.EnumData, default=lambda: orm.EnumData(RestartType.FROM_SCRATCH))
+        spec.input('restart.restart_mode', required=True, valid_type=orm.EnumData, default=lambda: orm.EnumData(RestartType.FROM_SCRATCH))
         
         spec.input_namespace(
             'restart.overrides', required=False, dynamic=True
@@ -251,7 +252,6 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         spec.input_namespace(
             'restart',
             required=True,
-            populate_defaults=False,
             help='Inputs for the `Wannier90OptimizeWorkChain/Wannier90BandsWorkChain`.'
             )
         cls._define_restart(spec)
@@ -274,7 +274,7 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
             PhBaseWorkChain, 
             namespace='ph_base',
             exclude=(
-                'clean_workdir', 'parent_folder_nscf', 'parent_folder_chk', 'parent_folder_ph', 'parent_folder_epw'
+                'clean_workdir', 'ph.parent_folder'
             ),
             namespace_options={
                 'required': False,
@@ -287,7 +287,7 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
             EpwBaseWorkChain, 
             namespace='epw',
             exclude=(
-                'clean_workdir', 'epw.parent_folder', 'qfpoints', 'qfpoints_distance'
+                'clean_workdir', 'parent_folder_nscf', 'parent_folder_chk', 'parent_folder_ph', 'parent_folder_epw'
             ),
             namespace_options={
                 'required': False,
@@ -456,13 +456,15 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         epw_builder = EpwBaseWorkChain.get_builder_from_protocol(
             code=codes['epw'],
             structure=structure,
+            protocol=protocol,
             overrides=inputs.get('epw', {}),
             w90_chk_to_ukk_script=w90_chk_to_ukk_script,
             **kwargs
         )
-        
+        print(type(epw_builder))
+        print(epw_builder)
         builder.epw = epw_builder
-        
+
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
         builder._inputs(prune=True)
 
@@ -492,7 +494,7 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         """Generate the reciprocal points."""
 
         self.report('Generating q-points and k-points')
-        if self.inputs.restart.restart_mode == RestartType.RESTART_PHONON.value:
+        if self.inputs.restart.restart_mode in (RestartType.RESTART_PHONON, RestartType.FROM_SCRATCH):
             inputs = {
                 'structure': self.inputs.structure,
                 'distance': self.inputs.qpoints_distance,
@@ -506,13 +508,11 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
         else:
             qpoints = self.inputs.restart.overrides.ph_base.get('qpoints')
             
-        if self.inputs.restart.restart_mode == RestartType.RESTART_WANNIER.value:
+        if self.inputs.restart.restart_mode in (RestartType.RESTART_WANNIER, RestartType.FROM_SCRATCH):
             qpoints_mesh = qpoints.get_kpoints_mesh()[0]
             kpoints_nscf = orm.KpointsData()
             kpoints_nscf.set_kpoints_mesh([v * self.inputs.kpoints_factor_nscf.value for v in qpoints_mesh])
 
-        # else:
-        #     kpoints_nscf = self.inputs.restart.overrides.w90_intp['kpoints_nscf']
         
             if not is_compatible(kpoints_nscf, qpoints):
                 self.exit_codes.ERROR_KPOINTS_QPOINTS_NOT_COMPATIBLE
@@ -523,7 +523,7 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
     def should_run_wannier90(self):
         """Check if the wannier90 workflow should be run."""
 
-        return self.inputs.restart.restart_mode == RestartType.RESTART_WANNIER.value
+        return self.inputs.restart.restart_mode in (RestartType.RESTART_WANNIER, RestartType.FROM_SCRATCH)
 
     def run_wannier90(self):
         """Run the wannier90 workflow."""
@@ -555,7 +555,7 @@ class EpwIntpWorkChain(ProtocolMixin, WorkChain):
     
     def should_run_ph(self):
         """Check if the phonon workflow should be run."""
-        return self.inputs.restart.restart_mode == RestartType.RESTART_PHONON.value
+        return self.inputs.restart.restart_mode in (RestartType.RESTART_PHONON, RestartType.FROM_SCRATCH)
 
     def run_ph(self):
         """Run the `PhBaseWorkChain`."""
