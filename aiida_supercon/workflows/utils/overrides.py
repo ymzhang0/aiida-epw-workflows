@@ -74,6 +74,22 @@ def recursive_merge(namespace, dict_to_merge):
 
     return namespace
 
+def find_parent_folder_chk_from_workchain(
+    workchain: orm.WorkChainNode,
+    ) -> orm.RemoteData:
+    
+    if workchain.process_class is Wannier90OptimizeWorkChain:
+        if hasattr(workchain.inputs, 'optimize_disproj') and workchain.inputs.optimize_disproj:
+            parent_folder_chk = workchain.outputs.wannier90_optimal.remote_folder
+        else:
+            parent_folder_chk = workchain.outputs.wannier90.remote_folder
+    elif workchain.process_class is Wannier90BandsWorkChain:
+        parent_folder_chk = workchain.outputs.wannier90.remote_folder
+    else:
+        raise ValueError(f"Workchain {workchain.process_label} not supported")
+    
+    return parent_folder_chk
+
 def restart_from_w90_intp(
     w90_intp: orm.WorkChainNode,
     ) -> orm.Dict:
@@ -88,15 +104,7 @@ def restart_from_w90_intp(
 
     assert not nscf.remote_folder.is_cleaned, "Nscf remote folder is cleaned"
     
-    if w90_intp.process_class is Wannier90OptimizeWorkChain:
-        if hasattr(w90_intp.inputs, 'optimize_disproj') and w90_intp.inputs.optimize_disproj:
-            parent_folder_chk = w90_intp.outputs.wannier90_optimal.remote_folder
-        else:
-            parent_folder_chk = w90_intp.outputs.wannier90.remote_folder
-    else:
-        parent_folder_chk = w90_intp.outputs.wannier90.remote_folder
-    
-
+    parent_folder_chk = find_parent_folder_chk_from_workchain(w90_intp)
     restart = {
         'restart_mode': orm.EnumData(RestartType.RESTART_PHONON),
         'overrides': {

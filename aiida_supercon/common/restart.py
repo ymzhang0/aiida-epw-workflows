@@ -6,5 +6,6 @@ class RestartType(Enum):
     RESTART_WANNIER = 'RESTART_WANNIER'
     RESTART_PHONON = 'RESTART_PHONON'
     RESTART_EPW = 'RESTART_EPW'
+    RESTART_A2F = 'RESTART_A2F'
     # You can add more modes here later
     

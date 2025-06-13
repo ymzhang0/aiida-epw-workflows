@@ -1,33 +1,50 @@
 from .base import EpwBaseWorkChain
 from aiida import orm
+from aiida.engine import WorkChain, ToContext, if_
+from .intp import EpwBaseIntpWorkChain
 
-from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
-from aiida.engine import WorkChain, ToContext, if_, while_
-
-class EpwTransportWorkChain(ProtocolMixin, WorkChain):
+class EpwTransportWorkChain(EpwBaseIntpWorkChain):
     """Workchain to calculate transport properties using EPW."""
-
+    _B2W_NAMESPACE = 'b2w'
+    _INTP_NAMESPACE = 'transport'
+    
+    _blocked_keywords = [
+        ('INPUTEPW', 'use_ws'),
+        ('INPUTEPW', 'nbndsub'),
+        ('INPUTEPW', 'bands_skipped'),
+        ('INPUTEPW', 'vme'),
+    ]
+    
     @classmethod
     def define(cls, spec):
         super().define(spec)
 
-        spec.input('transport_kpoints', valid_type=orm.KpointsData)
-        spec.output('transport_kpoints', valid_type=orm.KpointsData)
         spec.outline(
-            cls.run_epw,
-            cls.inspect_epw,
+            cls.setup,
+            cls.validate_parent_folders,
+            if_(cls.should_run_b2w)(
+                cls.run_b2w,
+                cls.inspect_b2w,
+            ),
             cls.run_transport,
             cls.inspect_transport,
+            cls.results
         )
         
-    def run_epw(self):
+    def run_transport(self):
         pass
     
-    def inspect_epw(self):
+    def inspect_transport(self):
         pass
     
     def run_transport(self):
         pass
     
     def inspect_transport(self):
+        pass
+
+    def results(self):
+        pass
+    
+    def on_terminated(self):
         pass

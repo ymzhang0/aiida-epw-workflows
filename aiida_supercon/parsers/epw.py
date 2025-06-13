@@ -65,6 +65,11 @@ class EpwParser(BaseParser):
             return max_eigenvalue_array
 
         data_type_regex = (
+            ('nbndsub', int, re.compile(r'nbndsub\s*=\s*(\d+)')),
+            ('ws_vectors_electrons', int, re.compile(r'^\s*Number of WS vectors for electrons\s+(\d+)')),
+            ('ws_vectors_phonons', int, re.compile(r'^\s*Number of WS vectors for phonons\s+(\d+)')),
+            ('ws_vectors_electron_phonon', int, re.compile(r'^\s*Number of WS vectors for electron-phonon\s+(\d+)')),
+            ('max_cores_parallelization', int, re.compile(r'^\s*Maximum number of cores for efficient parallelization\s+(\d+)')),
             ('ibndmin', int, re.compile(r'ibndmin\s*=\s*(\d+)')),
             ('ebndmin', float, re.compile(r'ebndmin\s*=\s*([+-]?[\d\.]+)')),
             ('ibndmax', int, re.compile(r'ibndmax\s*=\s*(\d+)')),

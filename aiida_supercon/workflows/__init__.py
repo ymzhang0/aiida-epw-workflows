@@ -1,5 +1,6 @@
 from .base import EpwBaseWorkChain
-from .intp import EpwIntpWorkChain
+from .b2w import EpwB2WWorkChain
+from .intp import EpwBaseIntpWorkChain
 from .a2f import EpwA2fWorkChain
 from .iso import EpwIsoWorkChain
 from .aniso import EpwAnisoWorkChain
@@ -9,7 +10,8 @@ from .transport import EpwTransportWorkChain
 
 __all__ = [
     'EpwBaseWorkChain',
-    'EpwIntpWorkChain',
+    'EpwB2WWorkChain',
+    'EpwBaseIntpWorkChain',
     'EpwA2fWorkChain',
     'EpwIsoWorkChain',
     'EpwAnisoWorkChain',

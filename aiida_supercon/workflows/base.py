@@ -21,13 +21,55 @@ from pathlib import Path
 
 EpwCalculation = CalculationFactory('quantumespresso.epw')
 
+def validate_inputs(inputs, ctx=None):
+    """
+    Validator for the logic of providing parent folder inputs.
+    It enforces that either `parent_folder_epw` is provided, OR the trio of
+    `nscf`, `ph`, and `chk` folders are provided together.
+    """
+    
+    # Check if parent_folder_epw is provided
+    has_parent_folder_epw = 'parent_folder_epw' in inputs
+    
+    # Check which of the other three folders are provided
+    has_parent_folder_nscf = 'parent_folder_nscf' in inputs
+    has_parent_folder_ph = 'parent_folder_ph' in inputs
+    has_parent_folder_chk = 'parent_folder_chk' in inputs
+    
+    # --- Now, we apply your rules ---
+    
+    # Rule 1: Cannot provide `parent_folder_epw` AND any of the other three.
+    if has_parent_folder_epw and any([
+        has_parent_folder_nscf, 
+        has_parent_folder_ph, 
+        has_parent_folder_chk
+        ]
+    ):
+        return "You cannot provide `parent_folder_epw` at the same time as the `nscf/ph/chk` folders."
 
+    # Rule 2: If any of the `nscf/ph/chk` trio are provided, ALL must be provided.
+    # `any()` is True if at least one is True. `all()` is True only if all are True.
+    if any([
+        has_parent_folder_nscf, 
+        has_parent_folder_ph, 
+        has_parent_folder_chk
+        ]) and not all([
+            has_parent_folder_nscf, 
+            has_parent_folder_ph, 
+            has_parent_folder_chk
+        ]):
+            
+        return "If providing `nscf/ph/chk` parent folders, you must provide all three together."
+
+    # If the logic passes, the validator must return None
+    return None
 class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
     """Workchain to run a Quantum ESPRESSO pw.x calculation with automated error handling and restarts."""
 
     # pylint: disable=too-many-public-methods, too-many-statements
 
     _process_class = EpwCalculation
+
 
     @classmethod
     def define(cls, spec):
@@ -93,6 +135,8 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             help='w90_chk_to_ukk_script'
             )
         
+        spec.inputs.validator = validate_inputs
+        
         spec.outline(
             cls.setup,
             cls.validate_parent_folders,
@@ -107,7 +151,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         )
 
         spec.expose_outputs(
-            EpwCalculation, namespace='epw',
+            EpwCalculation,
             )
 
         spec.exit_code(201, 'ERROR_INVALID_INPUT_PSEUDO_POTENTIALS',
@@ -212,8 +256,8 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             builder.parent_folder_chk = parent_folder_chk
         if parent_folder_epw:
             builder.parent_folder_epw = parent_folder_epw
-            
-        builder.w90_chk_to_ukk_script = w90_chk_to_ukk_script
+        if w90_chk_to_ukk_script:
+            builder.w90_chk_to_ukk_script = w90_chk_to_ukk_script
         
         if 'settings' in inputs['epw']:
             builder.epw['settings'] = orm.Dict(inputs['epw']['settings'])
@@ -233,7 +277,19 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         # pylint: enable=no-member
 
         return builder
-    
+
+    def setup(self):
+        """Call the ``setup`` of the ``BaseRestartWorkChain`` and create the inputs dictionary in ``self.ctx.inputs``.
+
+        This ``self.ctx.inputs`` dictionary will be used by the ``BaseRestartWorkChain`` to submit the calculations
+        in the internal loop.
+
+        The ``parameters`` and ``settings`` input ``Dict`` nodes are converted into a regular dictionary and the
+        default namelists for the ``parameters`` are set to empty dictionaries if not specified.
+        """
+        super().setup()
+        self.ctx.inputs = AttributeDict(self.exposed_inputs(EpwCalculation, 'epw'))
+
     def _get_kpoints_from_nscf_folder(self, nscf_folder):
         """
         A robust method to find the k-point mesh from a parent nscf folder.
@@ -316,11 +372,31 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         qpoints = ph_calc.inputs.qpoints
         return qpoints
     
+    def _get_coarse_grid_from_epw_folder(self, epw_folder):
+        """
+        Get the coarse grid from the epw folder.
+        """
+        epw_calc = epw_folder.creator
+        if not epw_calc.process_class is EpwBaseWorkChain._process_class:
+            self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_EPW
+            
+        kpoints = epw_calc.inputs.kpoints
+        qpoints = epw_calc.inputs.qpoints
+        
+        return kpoints, qpoints
+    
     def validate_parent_folders(self):
         
         """Validate the parent folders."""
         
-        if hasattr(self.inputs, 'parent_folder_nscf'):
+        if 'parent_folder_epw' in self.inputs:
+            kpoints, qpoints = self._get_coarse_grid_from_epw_folder(self.inputs.parent_folder_epw)
+            self.ctx.inputs.kpoints = kpoints
+            self.ctx.inputs.qpoints = qpoints
+            self.ctx.inputs.parent_folder_epw = self.inputs.parent_folder_epw
+            return
+        
+        else:
             if self.inputs.parent_folder_nscf.is_cleaned:
                 self.report("Parent folder of nscf calculation is cleaned. Skipping k-point mesh search.")
                 return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_NSCF
@@ -335,7 +411,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
             self.ctx.inputs.parent_folder_nscf = self.inputs.parent_folder_nscf
 
-        if 'parent_folder_ph' in self.inputs:
+        # if 'parent_folder_ph' in self.inputs:
             if self.inputs.parent_folder_ph.is_cleaned:
                 self.report("Parent folder of ph calculation is cleaned. Skipping q-point mesh search.")
                 return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_PH
@@ -350,7 +426,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
             self.ctx.inputs.parent_folder_ph = self.inputs.parent_folder_ph
         
-        if hasattr(self.inputs, 'parent_folder_chk'):
+        # if hasattr(self.inputs, 'parent_folder_chk'):
             if self.inputs.parent_folder_chk.is_cleaned:
                 self.report("Parent folder of chk calculation is cleaned. Skipping k-point mesh search.")
                 return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_CHK
@@ -403,19 +479,6 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             )
             return self.exit_codes.ERROR_INCONSISTENT_NPOOL_SETTING
 
-        
-    def setup(self):
-        """Call the ``setup`` of the ``BaseRestartWorkChain`` and create the inputs dictionary in ``self.ctx.inputs``.
-
-        This ``self.ctx.inputs`` dictionary will be used by the ``BaseRestartWorkChain`` to submit the calculations
-        in the internal loop.
-
-        The ``parameters`` and ``settings`` input ``Dict`` nodes are converted into a regular dictionary and the
-        default namelists for the ``parameters`` are set to empty dictionaries if not specified.
-        """
-        super().setup()
-        self.ctx.inputs = AttributeDict(self.exposed_inputs(EpwCalculation, 'epw'))
-
     def validate_kpoints(self):
         """Validate the inputs related to k-points.
 
@@ -459,32 +522,36 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """
         parameters = self.ctx.inputs.parameters.get_dict()
 
-        if 'parent_folder_chk' in self.inputs:
-            wannierize = parameters['INPUTEPW'].get('wannierize', False)
-            
-            if wannierize:
+        wannierize = parameters['INPUTEPW'].get('wannierize', False)
+        
+        if wannierize:
+            if 'parent_folder_epw' in self.inputs:
+                self.report("Should not have a parent_folder_epw if wannierize is True")
+                return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_EPW
+
+            elif 'parent_folder_chk' in self.inputs:
                 self.report("Should not have a chk folder if wannierize is True")
                 return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_CHK
-
-            w90_calcjob = self.inputs.parent_folder_chk.creator
-            w90_params = w90_calcjob.inputs.parameters.get_dict()
-            exclude_bands = w90_params.get('exclude_bands', None) #TODO check this!
-        
-            if exclude_bands:
-                parameters['INPUTEPW']['bands_skipped'] = f'exclude_bands = {exclude_bands[0]}:{exclude_bands[-1]}'
-
-            parameters['INPUTEPW']['nbndsub'] = w90_params['num_wann']
             
-            self.ctx.inputs.parameters = orm.Dict(parameters)
+        else:
+            if 'parent_folder_chk' in self.inputs:
+                w90_calcjob = self.inputs.parent_folder_chk.creator
+                w90_params = w90_calcjob.inputs.parameters.get_dict()
+                exclude_bands = w90_params.get('exclude_bands', None) #TODO check this!
+            
+                if exclude_bands:
+                    parameters['INPUTEPW']['bands_skipped'] = f'exclude_bands = {exclude_bands[0]}:{exclude_bands[-1]}'
 
-            wannier_chk_path = Path(self.inputs.parent_folder_chk.get_remote_path(), 'aiida.chk')
-            nscf_xml_path = Path(self.inputs.parent_folder_nscf.get_remote_path(), 'out/aiida.xml')
+                parameters['INPUTEPW']['nbndsub'] = w90_params['num_wann']
+                
+                wannier_chk_path = Path(self.inputs.parent_folder_chk.get_remote_path(), 'aiida.chk')
+                nscf_xml_path = Path(self.inputs.parent_folder_nscf.get_remote_path(), 'out/aiida.xml')
 
-            prepend_text = self.ctx.inputs.metadata.options.get('prepend_text', '')
-            prepend_text += f'\n{self.inputs.w90_chk_to_ukk_script.get_remote_path()} {wannier_chk_path} {nscf_xml_path} aiida.ukk'
+                prepend_text = self.ctx.inputs.metadata.options.get('prepend_text', '')
+                prepend_text += f'\n{self.inputs.w90_chk_to_ukk_script.get_remote_path()} {wannier_chk_path} {nscf_xml_path} aiida.ukk'
 
-            self.ctx.inputs.metadata.options.prepend_text = prepend_text
-        
+                self.ctx.inputs.metadata.options.prepend_text = prepend_text
+            
         self.ctx.inputs.parameters = orm.Dict(parameters)
         
     def report_error_handled(self, calculation, action):
