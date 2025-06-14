@@ -16,6 +16,11 @@ default_inputs:
           wannierize: False
           muc: 0.13
           mp_mesh_k: True
+          degaussw: 0.01
+          eps_acustic: 0.1
+          iverbosity: 1
+          fsthick: 0.8
+          temps: 1
 
 default_protocol: moderate
 protocols:

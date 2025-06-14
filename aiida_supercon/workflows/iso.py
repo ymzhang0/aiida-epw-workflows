@@ -15,6 +15,10 @@ from scipy.interpolate import interp1d
 import numpy
 
 from .intp import EpwBaseIntpWorkChain
+from .b2w import EpwB2WWorkChain
+from .base import EpwBaseWorkChain
+
+from ..common.restart import RestartType
 
 @calcfunction
 def calculate_iso_tc(max_eigenvalue: orm.XyData) -> orm.Float:
@@ -43,43 +47,15 @@ def calculate_Allen_Dynes_tc(a2f: orm.ArrayData, mustar = 0.13) -> orm.Float:
 
 class EpwIsoWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the Allen-Dynes critical temperature."""
-    __KPOINTS_GAMMA = [1, 1, 1]
     
     _INTP_NAMESPACE = 'iso'
-    
-    _frozen_io_parameters = {
-        'INPUTEPW': {
-            'elph': False,
-            'ep_coupling': False,
-            'epwread': True,
-            'epwwrite': False,
-            'ephwrite': False,
-            'restart': True,
-        },
-    }
+
     _blocked_keywords = [
         ('INPUTEPW', 'use_ws'),
         ('INPUTEPW', 'nbndsub'),
         ('INPUTEPW', 'bands_skipped'),
         ('INPUTEPW', 'vme'),
     ]
-    
-    _defaults_parameters = {
-        'INPUTEPW': {
-            'degaussq'   : 0.05,
-            'degaussw'   : 0.01,
-            'eps_acustic' : 1,
-            'iverbosity' : 1,
-            'fsthick'    : 0.8,
-            'nqstep'     : 500,
-            'nsiter'     : 500,
-            'wscut'      : 0.5,
-            'broyden_beta' : 0.4,
-            'conv_thr_iaxis' : 1e-2,
-            'nstemp'     : 40,
-            'temps'      : '1 40',
-        }
-    }
     
     _min_temp = 1.0
     
@@ -96,8 +72,9 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
                 cls.run_b2w,
                 cls.inspect_b2w,
             ),
-            cls.run_iso,
-            cls.inspect_iso,
+            cls.prepare_process,
+            cls.run_process,
+            cls.inspect_process,
             cls.results
         )
         spec.output('parameters', valid_type=orm.Dict,
@@ -119,109 +96,76 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
         from importlib_resources import files
         from . import protocols
-        return files(protocols) / 'iso.yaml'
+        return files(protocols) / f'{cls._INTP_NAMESPACE}.yaml'
     
     @classmethod
     def get_builder_from_protocol(
             cls, 
             codes, 
             structure, 
-            parent_folder_epw=None,
             protocol=None, 
+            b2w=None,
             overrides=None, 
             **kwargs
         ):
-        """Return a builder prepopulated with inputs selected according to the chosen protocol.
-
-        :TODO:
-        """
+        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
         inputs = cls.get_protocol_inputs(protocol, overrides)
-
         builder = cls.get_builder()
         builder.structure = structure
+
+        ## NOTE: It's user's obligation to provide the 
+        ##       finished EpwIntpWorkChain as intp
+        if b2w:
+            if b2w.is_finished and b2w.process_class in (
+                EpwB2WWorkChain, EpwBaseWorkChain
+            ):
+                builder.restart.restart_mode = orm.EnumData(RestartType.RESTART_ISO)
+                builder.pop(cls._B2W_NAMESPACE)
+                builder.restart.overrides.parent_folder_epw = b2w.outputs.epw.remote_folder
+            else:
+                raise ValueError("The `epw` must be a finished `EpwB2WWorkChain` or `EpwBaseWorkChain`.")
+
+        else:
+            builder.restart.restart_mode = orm.EnumData(RestartType.FROM_SCRATCH)
+            b2w_builder = EpwB2WWorkChain.get_builder_from_protocol(
+                codes=codes,
+                structure=structure,
+                protocol=protocol,
+                overrides=inputs.get(cls._B2W_NAMESPACE, None),
+                wannier_projection_type=kwargs.get('wannier_projection_type', None),
+                w90_chk_to_ukk_script = kwargs.get('w90_chk_to_ukk_script', None),
+            )
+            
+            b2w_builder.w90_intp.pop('open_grid')
+            b2w_builder.w90_intp.pop('projwfc')
+            
+            builder[cls._B2W_NAMESPACE] = b2w_builder
+            
+        builder[cls._INTP_NAMESPACE] = EpwBaseWorkChain.get_builder_from_protocol(
+            code=codes['epw'],
+            structure=structure,
+            protocol=protocol,
+            overrides=inputs.get(cls._INTP_NAMESPACE, None),
+            **kwargs
+        )
 
 
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
         return builder
 
-    def inspect_epw(self):
+    def prepare_process(self):
+        """Prepare the process for the current interpolation distance."""
+        
+        inputs = self.ctx.inputs
+
+        
+    def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""
-        epw_workchain = self.ctx.epw
+        intp = self.ctx.intp
 
-        if not epw_workchain.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {epw_workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_EPW
-
-    def run_iso(self):
-        """Run the ``restart`` EPW calculation for the current interpolation distance."""
-        
-        inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='iso'))
-        parameters = inputs.parameters.get_dict()
-        
-        if self.ctx.epw.process_label == 'EpwBaseWorkChain':
-            epw_calcjob = self.ctx.epw.base.links.get_outgoing(link_label_filter='epw').first().node
-            parent_folder = self.ctx.epw.outputs.epw_folder
-            create_qpoints_from_distance = self.ctx.epw.base.links.get_outgoing(link_label_filter='create_qpoints_from_distance').first().node
-
-            qpoints = create_qpoints_from_distance.outputs.result
-            kpoints = orm.KpointsData()
-            kpoints.set_kpoints_mesh([
-                v * self.ctx.epw.inputs.kpoints_factor_nscf.value 
-                for v in qpoints.get_kpoints_mesh()[0]
-                ])
-
-            inputs.kpoints = kpoints
-            inputs.qpoints = qpoints
-        elif self.ctx.epw.process_label == 'EpwA2fWorkChain':
-            epw_calcjob = self.ctx.epw.base.links.get_outgoing(link_label_filter='a2f').first().node
-            parent_folder = epw_calcjob.outputs.remote_folder
-            for namespace, _parameters in self._frozen_io_parameters.items():
-                for keyword, value in _parameters.items():
-                    parameters[namespace][keyword] = value
-            
-            inputs.kpoints = epw_calcjob.inputs.kpoints
-            inputs.qpoints = epw_calcjob.inputs.qpoints
-        else:
-            raise ValueError("`epw` or `a2f` workchain not found in `EpwWorkChain`")
-        
-        epw_parameters = epw_calcjob.inputs.parameters.get_dict()
-        
-        for namespace, _parameters in self._defaults_parameters.items():
-            for keyword, value in _parameters.items():
-                parameters[namespace][keyword] = value
-        for namespace, keyword in self._blocked_keywords:
-            if keyword in epw_parameters[namespace]:
-                parameters[namespace][keyword] = epw_parameters[namespace][keyword]
-        
-
-        inputs.parameters = orm.Dict(parameters)
-        inputs.parent_folder_epw = parent_folder
-
-        inputs.kfpoints = self.ctx.kfpoints
-        inputs.qfpoints = self.ctx.qfpoints
-
-        try:
-            settings = inputs.settings.get_dict()
-        except AttributeError:
-            settings = {}
-
-        settings['ADDITIONAL_RETRIEVE_LIST'] = ['out/aiida.dos', 'aiida.a2f*', 'aiida.phdos*']
-        inputs.settings = orm.Dict(settings)
-
-        inputs.metadata.call_link_label = self._INTP_NAMESPACE
-        calcjob_node = self.submit(EpwCalculation, **inputs)
-
-        self.report(f'launching `iso` with PK {calcjob_node.pk}')
-
-        return ToContext(iso=calcjob_node)
-
-    def inspect_iso(self):
-        """Verify that the epw.x workflow finished successfully."""
-        iso = self.ctx.iso
-
-        if not iso.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {iso.exit_status}')
+        if not intp.is_finished_ok:
+            self.report(f'`epw.x` failed with exit status {intp.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_ISO
 
         inputs = {
@@ -236,12 +180,11 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
     def results(self):
         """TODO"""
         
-        # self.out('Tc_a2f', self.ctx.Tc_a2f)
-        self.out('parameters', self.ctx.iso.outputs.output_parameters)
-        self.out('a2f', self.ctx.iso.outputs.a2f)
-        self.out('max_eigenvalue', self.ctx.iso.outputs.max_eigenvalue)
+        self.out('parameters', self.ctx.intp.outputs.output_parameters)
+        self.out('a2f', self.ctx.intp.outputs.a2f)
+        self.out('max_eigenvalue', self.ctx.intp.outputs.max_eigenvalue)
         self.out('Tc_iso', self.ctx.Tc_iso)
-        self.out('remote_folder', self.ctx.iso.outputs.remote_folder)
+        self.out('remote_folder', self.ctx.intp.outputs.remote_folder)
     def on_terminated(self):
         """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
         super().on_terminated()

@@ -65,6 +65,7 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         )
         spec.expose_inputs(
             EpwBaseWorkChain, namespace=cls._INTP_NAMESPACE, exclude=(
+                'clean_workdir',
                 'parent_folder_epw',
                 'parent_folder_nscf',
                 'parent_folder_ph',
@@ -83,8 +84,9 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
                 cls.run_b2w,
                 cls.inspect_b2w,
             ),
-            cls.run_intp,
-            cls.inspect_intp,
+            cls.prepare_process,
+            cls.run_process,
+            cls.inspect_process,
             cls.results
         )
         spec.output('parameters', valid_type=orm.Dict,
@@ -118,12 +120,12 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
 
     def should_run_b2w(self):
         """Check if the epw loop should continue or not."""
-        
-        return self.inputs.restart.restart_mode is RestartType.FROM_SCRATCH
+        return self.inputs.restart.restart_mode == RestartType.FROM_SCRATCH
     
     def run_b2w(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
 
+        self.report(f'Running B2W...')
         inputs = self.exposed_inputs(EpwB2WWorkChain, namespace=self._B2W_NAMESPACE)
         
         
@@ -141,9 +143,14 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         if not b2w_workchain.is_finished_ok:
             self.report(f'`epw.x` failed with exit status {b2w_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_B2W
-
-    def run_intp(self):
-        """Run the ``restart`` EPW calculation for the current interpolation distance."""
+        
+    def prepare_process(self):
+        """Prepare the process for the current interpolation distance."""
+        inputs = self.ctx.inputs
+        
+        
+    def run_process(self):
+        """Prepare the process for the current interpolation distance."""
         
         inputs = self.ctx.inputs
 
@@ -171,13 +178,6 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             for namespace, _parameters in self._defaults_parameters.items():
                 for keyword, value in _parameters.items():
                     parameters[namespace][keyword] = value
-        try:
-            settings = inputs.settings.get_dict()
-        except AttributeError:
-            settings = {}
-
-        settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.a2f']
-        inputs.settings = orm.Dict(settings)
 
         inputs.metadata.call_link_label = self._INTP_NAMESPACE
         workchain_node = self.submit(EpwBaseWorkChain, **inputs)
@@ -185,14 +185,6 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         self.report(f'launching `{self._INTP_NAMESPACE}` with PK {workchain_node.pk}')
 
         return ToContext(intp=workchain_node)
-
-    def inspect_intp(self):
-        """Verify that the epw.x workflow finished successfully."""
-        intp = self.ctx.intp
-
-        if not intp.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {intp.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_EPW_INTP
 
 
     def results(self):
@@ -208,7 +200,7 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         super().on_terminated()
         if self.inputs.clean_workdir.value:
             self.report('cleaning remote folders')
-            if hasattr(self.ctx, 'b2w'):
+            if hasattr(self.ctx, self.b2w):
                 self.ctx.b2w.outputs.remote_folder._clean()
-            if hasattr(self.ctx, 'intp'):
+            if hasattr(self.ctx, self.intp):
                 self.ctx.intp.outputs.remote_folder._clean()

@@ -1,23 +1,17 @@
 # -*- coding: utf-8 -*-
 """Work chain for computing the critical temperature based off an `EpwWorkChain`."""
-from aiida import orm, load_profile
-from aiida.common import AttributeDict
-from aiida.engine import WorkChain, ToContext, while_, if_, append_, ExitCode
+from aiida import orm
+from aiida.engine import calcfunction, ToContext, if_
 
-from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
-from aiida_quantumespresso.calculations.epw import EpwCalculation
-from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
 from .base import EpwBaseWorkChain
+from .b2w import EpwB2WWorkChain
 from .intp import EpwBaseIntpWorkChain
-from aiida.engine import calcfunction
 
 from scipy.interpolate import interp1d
 import numpy
 from ..common.restart import RestartType
-from .utils.dict import get_recursive_input_ports
 
-from .b2w import EpwB2WWorkChain
 
 @calcfunction
 def calculate_tc(max_eigenvalue: orm.XyData) -> orm.Float:
@@ -56,15 +50,6 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         ('INPUTEPW', 'vme'),
     ]
     
-    _defaults_parameters = {
-        'INPUTEPW': {
-            'degaussw'   : 0.01,
-            'eps_acustic' : 0.1,
-            'iverbosity' : 1,
-            'fsthick'    : 0.8,
-            'temps'      : 1,
-        }
-    }
     
     @classmethod
     def define(cls, spec):
@@ -79,8 +64,9 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
                 cls.run_b2w,
                 cls.inspect_b2w,
             ),
-            cls.run_a2f,
-            cls.inspect_a2f,
+            cls.prepare_process,
+            cls.run_process,
+            cls.inspect_process,
             cls.results
         )
         spec.output('a2f', valid_type=orm.XyData,
@@ -152,77 +138,42 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
 
         return builder
 
-    def run_a2f(self):
-        """Run the ``restart`` EPW calculation for the current interpolation distance."""
+    def prepare_process(self):
+        """Prepare the process for the current interpolation distance."""
         
         inputs = self.ctx.inputs
 
-        if self.inputs.restart.restart_mode == RestartType.FROM_SCRATCH:
-            b2w_workchain = self.ctx.b2w
-        
-            parameters = inputs.epw.parameters.get_dict()
-            b2w_parameters = b2w_workchain.inputs.epw.parameters.get_dict()
-            
-            for namespace, _parameters in self._defaults_parameters.items():
-                for keyword, value in _parameters.items():
-                    parameters[namespace][keyword] = value
-            for namespace, keyword in self._blocked_keywords:
-                if keyword in b2w_parameters[namespace]:
-                    parameters[namespace][keyword] = b2w_parameters[namespace][keyword]
-            
-            inputs.epw.parameters = orm.Dict(parameters)
-
-            inputs.parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
-
-        elif self.inputs.restart.restart_mode == RestartType.RESTART_A2F:
-            inputs.parent_folder_epw = self.inputs.restart.overrides.parent_folder_epw
-            parameters = inputs.epw.parameters.get_dict()
-            
-            for namespace, _parameters in self._defaults_parameters.items():
-                for keyword, value in _parameters.items():
-                    parameters[namespace][keyword] = value
         try:
             settings = inputs.epw.settings.get_dict()
         except AttributeError:
             settings = {}
 
-        settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.a2f']
+        # settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.a2f']
         inputs.epw.settings = orm.Dict(settings)
 
-        inputs.metadata.call_link_label = self._INTP_NAMESPACE
-        workchain_node = self.submit(EpwBaseWorkChain, **inputs)
 
-        self.report(f'launching `{self._INTP_NAMESPACE}` with PK {workchain_node.pk}')
-
-        return ToContext(a2f=workchain_node)
-
-    def inspect_a2f(self):
+    def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""
-        a2f = self.ctx.a2f
+        intp = self.ctx.intp
 
-        if not a2f.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {a2f.exit_status}')
+        if not intp.is_finished_ok:
+            self.report(f'`epw.x` failed with exit status {intp.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_EPW_A2F
 
 
     def results(self):
         """TODO"""
         
-        # self.out('Tc_a2f', self.ctx.Tc_a2f)
-        self.out('parameters', self.ctx.a2f.outputs.output_parameters)
-        self.out('a2f', self.ctx.a2f.outputs.a2f)
-        self.out('remote_folder', self.ctx.a2f.outputs.remote_folder)
-        
-        # Calculate Tc using Allen-Dynes formula
-        tc = calculate_Allen_Dynes_tc(self.ctx.a2f.outputs.a2f)
-        self.out('Tc_allen_dynes', tc)
+        self.out('parameters', self.ctx.intp.outputs.output_parameters)
+        self.out('a2f', self.ctx.intp.outputs.a2f)
+        self.out('remote_folder', self.ctx.intp.outputs.remote_folder)
 
     def on_terminated(self):
         """Clean up the work chain."""
         super().on_terminated()
         if self.inputs.clean_workdir.value:
             self.report('cleaning remote folders')
-            if hasattr(self.ctx, 'epw'):
-                self.ctx.epw.outputs.remote_folder._clean()
+            if hasattr(self.ctx, 'b2w'):
+                self.ctx.b2w.outputs.remote_folder._clean()
             if hasattr(self.ctx, 'a2f'):
                 self.ctx.a2f.outputs.remote_folder._clean()

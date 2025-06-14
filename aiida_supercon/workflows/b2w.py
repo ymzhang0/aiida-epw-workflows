@@ -474,13 +474,13 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
         restart = self.inputs.restart
         
-        if restart.restart_mode.value in (RestartType.RESTART_PHONON.value, RestartType.RESTART_EPW.value):
-            self.ctx.parent_folder_scf = self.inputs.restart.overrides.w90_intp.get('parent_folder_scf')
-            inputs.parent_folder_nscf = self.inputs.restart.overrides.w90_intp.get('parent_folder_nscf')
-            inputs.parent_folder_chk = self.inputs.restart.overrides.w90_intp.get('parent_folder_chk')
+        if restart.restart_mode in (RestartType.RESTART_PHONON, RestartType.RESTART_EPW):
+            self.ctx.parent_folder_scf = restart.overrides.w90_intp.get('parent_folder_scf')
+            inputs.parent_folder_nscf = restart.overrides.w90_intp.get('parent_folder_nscf')
+            inputs.parent_folder_chk = restart.overrides.w90_intp.get('parent_folder_chk')
         
-        if restart.restart_mode.value in (RestartType.RESTART_WANNIER.value, RestartType.RESTART_EPW.value):
-            inputs.parent_folder_ph = self.inputs.restart.overrides.ph_base.get('parent_folder_ph')
+        if restart.restart_mode in (RestartType.RESTART_WANNIER, RestartType.RESTART_EPW):
+            inputs.parent_folder_ph = restart.overrides.ph_base.get('parent_folder_ph')
 
         self.ctx.inputs = inputs
         

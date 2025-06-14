@@ -75,12 +75,20 @@ class EpwParser(BaseParser):
             ('ibndmax', int, re.compile(r'ibndmax\s*=\s*(\d+)')),
             ('ebndmax', float, re.compile(r'ebndmax\s*=\s*([+-]?[\d\.]+)')),
             ('nbnd_skip', int, re.compile(r'^\s*Skipping the first\s+(\d+)\s+bands:')),
-            ('allen_dynes_tc', float, re.compile(r'^\s+Estimated Allen-Dynes Tc =\s+([\d\.]+) K')),
             ('fermi_energy_coarse', float, re.compile(r'^\s*Fermi energy coarse grid =\s*([+-]?[\d\.]+)\s+eV')),
             ('fermi_energy_fine', float, re.compile(r'^\s*Fermi energy is calculated from the fine k-mesh: Ef =\s*([+-]?[\d\.]+)\s+eV')),
             ('fine_q_mesh', lambda m: [int(x) for x in m.split()], re.compile(r'^\s*Using uniform q-mesh:\s+((?:\d+\s*)+)')),
             ('fine_k_mesh', lambda m: [int(x) for x in m.split()], re.compile(r'^\s*Using uniform k-mesh:\s+((?:\d+\s*)+)')),
-
+            ('fermi_level', float, re.compile(r'Fermi level \(eV\)\s*=\s*([\d\.D+-]+)')),
+            ('DOS', float, re.compile(r'DOS\(states/spin/eV/Unit Cell\)\s*=\s*([\d\.D+-]+)')),
+            ('electron_smearing', float, re.compile(r'Electron smearing \(eV\)\s*=\s*([\d\.D+-]+)')),
+            ('fermi_window', float, re.compile(r'Fermi window \(eV\)\s*=\s*([\d\.D+-]+)')),
+            ('lambda_coupling_strength', float, re.compile(r'Electron-phonon coupling strength\s*=\s*([\d\.]+)')),
+            ('Allen_Dynes_tc', float, re.compile(r'Estimated Allen-Dynes Tc\s*=\s*([\d\.]+) K for muc')),
+            ('muc', float, re.compile(r'for muc\s*=\s*([\d\.]+)')),
+            ('w_log', float, re.compile(r'Estimated w_log in Allen-Dynes Tc\s*=\s*([\d\.]+) meV')),
+            ('BCS_gap', float, re.compile(r'Estimated BCS superconducting gap\s*=\s*([\d\.]+) meV')),
+            ('ML_tc', float, re.compile(r'Estimated Tc from machine learning model\s*=\s*([\d\.]+) K')),
         )
         data_block_marker_parser = (
             ('max_eigenvalue', 'Superconducting transition temp. Tc', parse_max_eigenvalue),

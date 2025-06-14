@@ -14,18 +14,23 @@ from .iso import EpwIsoWorkChain
 from .aniso import EpwAnisoWorkChain
 from aiida.engine import calcfunction
 
-load_profile()
+from .intp import EpwBaseIntpWorkChain
 
 @calcfunction
 def split_list(list_node: orm.List) -> dict:
     return {f'el_{no}': orm.Float(el) for no, el in enumerate(list_node.get_list())}
 
-class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
+class EpwSuperConWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the electron-phonon coupling."""
-    __KPOINTS_GAMMA = [1, 1, 1]
     
-    _excluded_epw_inputs = (
-        'structure', 'clean_workdir', 'w90_chk_to_ukk_script')
+    _INTP_NAMESPACE = 'supercon'
+    
+    _blocked_keywords = [
+        ('epw', 'wannierize'),
+        ('epw', 'epwread'),
+        ('epw', 'epwwrite'),
+        ('epw', 'epwread'),
+    ]
     
     _excluded_a2f_inputs = (
         'structure', 'kfpoints_factor', 'parent_folder_epw', 'clean_workdir',
@@ -44,22 +49,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         """Define the work chain specification."""
         super().define(spec)
 
-        spec.input('structure', valid_type=orm.StructureData)
-        spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(False))
-        spec.input('qfpoints_distance', valid_type=orm.Float)
-        spec.input('kfpoints_factor', valid_type=orm.Int)
-        spec.input('parent_folder_epw', required=False, valid_type=(orm.RemoteData, orm.RemoteStashFolderData))
         spec.input('interpolation_distance', required=False, valid_type=(orm.Float, orm.List))
         spec.input('convergence_threshold', required=False, valid_type=orm.Float)
 
-        spec.expose_inputs(
-            EpwBaseWorkChain, namespace='epw', exclude=cls._excluded_epw_inputs,
-            namespace_options={
-                'required': False,
-                'populate_defaults': False,
-                'help': 'Inputs for the interpolation `EpwCalculation`s.'
-            }
-        )
+
         spec.expose_inputs(
             EpwA2fWorkChain, namespace='a2f', exclude=cls._excluded_a2f_inputs,
             namespace_options={
@@ -85,11 +78,11 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.outline(
-            cls.validate_inputs,
             cls.setup,
-            if_(cls.should_run_epw)(
-                cls.run_epw,
-                cls.inspect_epw,
+            cls.validate_inputs,
+            if_(cls.should_run_b2w)(
+                cls.run_b2w,
+                cls.inspect_b2w,
             ),
             if_(cls.should_run_conv)(
                 cls.run_conv,
@@ -143,7 +136,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             structure, 
             protocol=None, 
             overrides=None, 
-            parent_folder_epw=None,
+            b2w=None,
             interpolation_distance=None,
             convergence_threshold=None,
             **kwargs
@@ -157,9 +150,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         
         builder = cls.get_builder()
         builder.structure = structure
-        builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
-        builder.kfpoints_factor = orm.Int(inputs['kfpoints_factor'])
-        
         
         for (epw_namespace, epw_workchain_class) in (
             ('a2f', EpwA2fWorkChain),
@@ -167,7 +157,17 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             ('aniso', EpwAnisoWorkChain),
         ):
             epw_inputs = inputs.get(epw_namespace, None)
-            epw_builder = epw_workchain_class.get_builder()
+            epw_builder = epw_workchain_class.get_builder_from_protocol(
+                codes=codes,
+                structure=structure,
+                protocol='fast',
+                overrides=inputs.get(epw_namespace, None),
+                b2w=b2w,
+                wannier_projection_type=WannierProjectionType.ATOMIC_PROJECTORS_QE,
+                w90_chk_to_ukk_script = w90_script,
+                # reference_bands = bands_wc.outputs.band_structure,
+                # bands_kpoints = bands_wc.outputs.band_structure.creator.inputs.kpoints,
+                )
             epw_builder.pop('epw')
             epw_builder[epw_namespace]['code'] = codes['epw']
             epw_builder[epw_namespace]['metadata'] = epw_inputs[epw_namespace]['metadata']
@@ -175,19 +175,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 epw_builder[epw_namespace]['settings'] = orm.Dict(epw_inputs[epw_namespace]['settings'])
 
             epw_builder[epw_namespace]['parameters'] = orm.Dict(epw_inputs[epw_namespace].get('parameters', {}))
-
             builder[epw_namespace] = epw_builder
-
-        if not parent_folder_epw:
-            builder.epw = EpwBaseWorkChain.get_builder_from_protocol(
-                *args,
-                overrides=inputs.get('epw', None),
-                **kwargs
-            )
-            
-        else:
-            # TODO: Add check to make sure epw_folder is on same computer as epw_code
-            builder.parent_folder_epw = parent_folder_epw
 
             
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
@@ -201,6 +189,9 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
     def setup(self):
         """Setup steps, i.e. initialise context variables."""
+        super().setup()
+        
+        self.ctx.inputs = AttributeDict(self.inputs)
         
         if hasattr(self.inputs, 'interpolation_distance'):
             interpolation_distance = self.inputs.get('interpolation_distance')
@@ -215,93 +206,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             self.ctx.is_converged = False
 
         self.ctx.degaussq = None
-
-    @staticmethod
-    def get_kpoints_from_workchain(workchain):
-        """Get the kpoints from the workchain."""
-        if workchain.process_class is EpwWorkChain:
-            epw_calcjob = workchain.base.links.get_outgoing(link_label_filter='epw').first().node
-            create_qpoints_from_distance = workchain.base.links.get_outgoing(link_label_filter='create_qpoints_from_distance').first().node
-
-            qpoints = create_qpoints_from_distance.outputs.result
-            kpoints = orm.KpointsData()
-            kpoints.set_kpoints_mesh([
-                v * workchain.inputs.kpoints_factor_nscf.value 
-                for v in qpoints.get_kpoints_mesh()[0]
-                ])
-
-        elif workchain.process_class in (A2fWorkChain, IsoWorkChain):
-            epw_calcjob = workchain.base.links.get_outgoing(link_label_filter='a2f').first().node
-            kpoints = epw_calcjob.inputs.kpoints
-            qpoints = epw_calcjob.inputs.qpoints
-        else:
-            raise ValueError("`workchain` must be an `EpwWorkChain` or `A2fWorkChain` or `IsoWorkChain`.")
-
-        return kpoints, qpoints
-    
-    @staticmethod
-    def get_kpoints_from_inputs(
-        inputs, 
-        structure, 
-        call_link_label = 'create_kpoints_from_distance',
-        kpoints_arg = 'kpoints',
-        kpoints_distance_arg = 'kpoints_distance'
-    ):
-        if hasattr(inputs, kpoints_arg):
-            kpoints = inputs.get(kpoints_arg)
-        elif hasattr(inputs, kpoints_distance_arg):
-            _inputs = {
-                'structure': structure,
-                'distance': inputs.get(kpoints_distance_arg),
-                'force_parity': orm.Bool(False),
-                'metadata': {
-                    'call_link_label': call_link_label
-                }
-            }
-            kpoints = create_kpoints_from_distance(**_inputs)
-        else:
-            raise ValueError("Kpoints no specified in `parent_epw_folder`")
-        
-        return kpoints
-
-    def should_run_epw(self):
-        """Check if the epw loop should continue or not."""
-        
-        if hasattr(self.inputs, 'epw'):
-            self.report('Will run `epw` workchain from scratch')
-            return True
-        elif hasattr(self.inputs, 'parent_folder_epw'):
-            parent_epw_wc = self.inputs.parent_folder_epw.creator.caller
-            self.report(f'Will restart from previous `epw` workchain<{parent_epw_wc.pk}>')
-            if parent_epw_wc.process_class not in (EpwBaseWorkChain, EpwA2fWorkChain, EpwIsoWorkChain, EpwAnisoWorkChain):
-                raise ValueError("`parent_folder_epw` must be a `RemoteData` node from an `EpwWorkChain`.")
-            
-            self.ctx.epw = parent_epw_wc            
-            
-            return False
-        else:
-            raise ValueError("No `epw` or `parent_epw_folder` specified in inputs")
-
-    def run_epw(self):
-        """Run the ``restart`` EPW calculation for the current interpolation distance."""
-        inputs = AttributeDict(self.exposed_inputs(EpwBaseWorkChain, namespace='epw'))
-
-        inputs.structure = self.inputs.structure
-        
-        inputs.metadata.call_link_label = 'epw'
-        calcjob_node = self.submit(EpwBaseWorkChain, **inputs)
-
-        self.report(f'launching `epw` with PK {calcjob_node.pk}')
-
-        return ToContext(epw=calcjob_node)
-
-    def inspect_epw(self):
-        """Verify that the epw.x workflow finished successfully."""
-        epw_calculation = self.ctx.epw
-
-        if not epw_calculation.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {epw_calculation.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_EPW
 
     def should_run_conv(self):
         """Check if the conv loop should continue or not."""
@@ -380,99 +284,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 frequency = epw_calculation.outputs.a2f.get_array('frequency')
                 self.ctx.degaussq = frequency[-1] / 100
 
-    def run_a2f(self):
-        """Run the ``restart`` EPW calculation for the current interpolation distance."""
-        inputs = AttributeDict(self.exposed_inputs(EpwA2fWorkChain, namespace='a2f'))
-
-        inputs.structure = self.inputs.structure
-        inputs.parent_folder_epw = self.ctx.epw.outputs.epw_folder
-        inputs.qfpoints_distance = self.ctx.qfpoints_distance
-        inputs.kfpoints_factor = self.inputs.kfpoints_factor
-        inputs.metadata.call_link_label = 'a2f'
-        
-        workchain_node = self.submit(EpwA2fWorkChain, **inputs)
-
-        self.report(f'launching `a2f` with PK {workchain_node.pk}')
-
-        return ToContext(a2f=workchain_node)
-
-    def inspect_a2f(self):
-        """Verify that the a2f workflow finished successfully."""
-        a2f_workchain = self.ctx.a2f
-
-        if not a2f_workchain.is_finished_ok:
-            self.report(f'`a2f` failed with exit status {a2f_workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_A2F
-        
-    def should_run_iso(self):
-        """Check if the isotropic loop should continue or not."""
-        if hasattr(self.inputs, 'iso'):
-            self.report('Will run `iso` workchain from scratch')
-            return True
-        else:
-            return False
-
-    def run_iso(self):
-        """Run the ``restart`` EPW calculation for the current interpolation distance."""
-
-        inputs = AttributeDict(self.exposed_inputs(EpwIsoWorkChain, namespace='iso'))
-
-        inputs.structure = self.inputs.structure
-        inputs.parent_folder_epw = self.ctx.a2f.outputs.remote_folder
-        inputs.qfpoints_distance = self.ctx.qfpoints_distance
-        inputs.kfpoints_factor = self.inputs.kfpoints_factor
-
-        inputs.metadata.call_link_label = 'iso'
-        
-        workchain_node = self.submit(EpwIsoWorkChain, **inputs)
-
-        self.report(f'launching isotropic `epw` with PK {workchain_node.pk}')
-
-        return ToContext(iso=workchain_node)
-
-    def inspect_iso(self):
-        """Verify that the epw.x workflow finished successfully."""
-        iso = self.ctx.iso
-
-        if not iso.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {iso.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_EPW_ISO
-
-    def should_run_aniso(self):
-        """Check if the anisotropic loop should continue or not."""
-        
-        Tc_iso = self.ctx.iso.outputs.Tc_iso
-        if hasattr(self.inputs, 'aniso') and Tc_iso > 5.0:
-            self.report('Will run `aniso` workchain from scratch')
-            return True
-        else:
-            return False
-        
-    def run_aniso(self):
-        """Run the aniso ``epw.x`` calculation."""
-        
-        inputs = AttributeDict(self.exposed_inputs(EpwAnisoWorkChain, namespace='aniso'))
-
-        inputs.structure = self.inputs.structure
-        inputs.parent_folder_epw = self.ctx.iso.outputs.remote_folder
-        inputs.qfpoints_distance = self.ctx.qfpoints_distance
-        inputs.kfpoints_factor = self.inputs.kfpoints_factor
-
-        inputs.metadata.call_link_label = 'aniso'
-
-        workchain_node = self.submit(EpwAnisoWorkChain, **inputs)
-        self.report(f'launching anisotropic `epw` {workchain_node.pk}')
-
-        return ToContext(aniso=workchain_node)
-    
-    def inspect_aniso(self):
-        """Verify that the aniso epw.x workflow finished successfully."""
-        aniso_workchain = self.ctx.aniso
-
-        if not aniso_workchain.is_finished_ok:
-            self.report(f'Anisotropic `epw.x` failed with exit status {aniso_workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_EPW_ANISO
-        
     def results(self):
         """TODO"""
         

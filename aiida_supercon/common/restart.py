@@ -7,5 +7,8 @@ class RestartType(Enum):
     RESTART_PHONON = 'RESTART_PHONON'
     RESTART_EPW = 'RESTART_EPW'
     RESTART_A2F = 'RESTART_A2F'
+    RESTART_ISO = 'RESTART_ISO'
+    RESTART_ANISO = 'RESTART_ANISO'
+    RESTART_TRANSPORT = 'RESTART_TRANSPORT'
     # You can add more modes here later
     
