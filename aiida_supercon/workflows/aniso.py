@@ -77,6 +77,11 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         """Define the work chain specification."""
         super().define(spec)
 
+        spec.input('plot_gap_function', valid_type=orm.Bool, default=lambda: orm.Bool(True),
+            help='Whether to plot the gap function.')
+        spec.input('use_ir', valid_type=orm.Bool, default=lambda: orm.Bool(False),
+            help='Whether to use the intermediate representation.')
+
         spec.outline(
             cls.setup,
             if_(cls.should_run_b2w)(
@@ -88,12 +93,10 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             cls.inspect_process,
             cls.results
         )
-        spec.output('parameters', valid_type=orm.Dict,
-                    help='The `output_parameters` output node of the final EPW calculation.')
         spec.output('a2f', valid_type=orm.XyData,
-                    help='The contents of the `.a2f` file.')
+            help='The contents of the `.a2f` file.')
         # spec.output('Tc_aniso', valid_type=orm.Float,
-        #             help='The anisotropic Tc interpolated from the a2f file.')
+        #   help='The anisotropic Tc interpolated from the a2f file.')
         spec.exit_code(401, 'ERROR_SUB_PROCESS_EPW',
             message='The `epw` sub process failed')
         spec.exit_code(402, 'ERROR_SUB_PROCESS_ANISO',
@@ -123,7 +126,6 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             cls, 
             codes, 
             structure, 
-            parent_folder_epw=None,
             protocol=None, 
             from_workchain=None,
             overrides=None, 
@@ -145,12 +147,13 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
 
     def prepare_process(self):
         """Prepare the process for the current interpolation distance."""
-        inputs = self.ctx.inputs
         
-        parameters = inputs.epw.parameters.get_dict()
+        super().prepare_process()
+                
+        parameters = self.ctx.inputs.epw.parameters.get_dict()
         
         try:
-            settings = inputs.epw.settings.get_dict()
+            settings = self.ctx.inputs.epw.settings.get_dict()
         except AttributeError:
             settings = {}
 
@@ -158,7 +161,7 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             'out/aiida.dos', 'aiida.a2f*', 'aiida.phdos*', 
             'aiida.pade_aniso_gap0_*', 'aiida.imag_aniso_gap0*',
             'aiida.lambda_k_pairs']
-        
+                
         if self.inputs.plot_gap_function.value:
             for namespace, _parameters in self._frozen_plot_gap_function_parameters.items():
                 for keyword, value in _parameters.items():
@@ -168,8 +171,8 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
                 'aiida.lambda.frmsf',
                 ])
             
-        inputs.epw.parameters = orm.Dict(parameters)
-
+        self.ctx.inputs.epw.settings = orm.Dict(settings)
+        self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 
     def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""
@@ -182,13 +185,6 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         if False:
             return self.handle_temperature_out_of_range(aniso)
 
-
-        # inputs = {
-        #         'max_eigenvalue': self.ctx.aniso.outputs.max_eigenvalue,
-        #         'call_link_label': 'calculate_aniso_tc',
-        #     }
-        # Tc_aniso = calculate_aniso_tc(**inputs)
-        # self.ctx.Tc_aniso = Tc_aniso
 
     def results(self):
         """TODO"""

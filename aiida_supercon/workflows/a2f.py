@@ -109,9 +109,16 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
     def prepare_process(self):
         """Prepare the process for the current interpolation distance."""
         
-        inputs = self.ctx.inputs
+        super().prepare_process()
+        try:
+            settings = self.ctx.inputs.epw.settings.get_dict()
+        except AttributeError:
+            settings = {}
 
-
+        settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.a2f']
+        
+        self.ctx.inputs.epw.settings = orm.Dict(settings)
+        
     def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""
         intp = self.ctx.intp

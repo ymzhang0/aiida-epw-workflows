@@ -122,8 +122,8 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         ##       finished EpwIntpWorkChain as intp
         if from_workchain:
             if from_workchain.process_class == EpwB2WWorkChain:
-                if from_workchain.is_finished and from_workchain.process_class is EpwB2WWorkChain:
-                    builder.restart.restart_mode = orm.EnumData(RestartType.RESTART_A2F)
+                if from_workchain.is_finished:
+                    builder.restart.restart_mode = orm.EnumData(restart_intp)
                     builder.pop(cls._B2W_NAMESPACE)
                     builder.restart.overrides.parent_folder_epw = from_workchain.outputs.epw.remote_folder
                 else:
@@ -209,12 +209,10 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         if not b2w_workchain.is_finished_ok:
             self.report(f'`epw.x` failed with exit status {b2w_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_B2W
-        
-    def run_process(self):
+    
+    def prepare_process(self):
         """Prepare the process for the current interpolation distance."""
-        
-        inputs = self.ctx.inputs
-        parameters = inputs.parameters.get_dict()
+        parameters = self.ctx.inputs.epw.parameters.get_dict()
         
         if self.inputs.restart.restart_mode == RestartType.FROM_SCRATCH:
             b2w_workchain = self.ctx.b2w
@@ -231,8 +229,14 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             if keyword in b2w_parameters[namespace]:
                 parameters[namespace][keyword] = b2w_parameters[namespace][keyword]
         
-        inputs.parent_folder_epw = parent_folder_epw
-        inputs.epw.parameters = orm.Dict(parameters)
+        self.ctx.inputs.parent_folder_epw = parent_folder_epw
+        self.ctx.inputs.epw.parameters = orm.Dict(parameters)
+        
+        
+
+    def run_process(self):
+        """Prepare the process for the current interpolation distance."""
+        inputs = self.ctx.inputs
         
         inputs.metadata.call_link_label = self._INTP_NAMESPACE
         workchain_node = self.submit(EpwBaseWorkChain, **inputs)

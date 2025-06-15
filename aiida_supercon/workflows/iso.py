@@ -65,7 +65,9 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         """Define the work chain specification."""
         super().define(spec)
 
-
+        spec.input('linearized_Eliashberg', valid_type=orm.Bool, default=lambda: orm.Bool(True),
+            help='Whether to use the linearized Eliashberg function.')
+        
         spec.outline(
             cls.setup,
             cls.validate_parent_folders,
@@ -125,9 +127,17 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
     def prepare_process(self):
         """Prepare the process for the current interpolation distance."""
         
-        inputs = self.ctx.inputs
+        super().prepare_process()
 
+        try:
+            settings = self.ctx.inputs.epw.settings.get_dict()
+        except AttributeError:
+            settings = {}
+
+        settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.a2f']
         
+        self.ctx.inputs.epw.settings = orm.Dict(settings)
+                
     def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""
         intp = self.ctx.intp
@@ -137,7 +147,7 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             return self.exit_codes.ERROR_SUB_PROCESS_ISO
 
         inputs = {
-                'max_eigenvalue': self.ctx.iso.outputs.max_eigenvalue,
+                'max_eigenvalue':intp.outputs.max_eigenvalue,
                 'metadata': {
                     'call_link_label': 'calculate_iso_tc'
                 }

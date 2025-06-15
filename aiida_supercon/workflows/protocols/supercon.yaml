@@ -1,13 +1,12 @@
 default_inputs:
   clean_workdir: False
-  interpolation_distance:
+  interpolation_distances:
     - 0.2
     - 0.1
     - 0.08
     - 0.06
     - 0.05
-  convergence_threshold: 0.5
-  always_run_final: True
+  convergence_threshold: 0.1
   a2f:
     a2f:
       metadata:

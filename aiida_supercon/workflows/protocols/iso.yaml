@@ -12,6 +12,9 @@ default_inputs:
       parameters:
         INPUTEPW:
           eliashberg: True
+          epwread: True
+          epwwrite: False
+          ephwrite: True
           liso: True
           limag: True
           lpade: False
@@ -29,7 +32,7 @@ default_inputs:
           nsiter: 500
           wscut: 0.5
           broyden_beta: 0.4
-          conv_thr_iaxis: 0.0001
+          conv_thr_iaxis: 0.001
           nstemp: 40
           temps: '1 40'
           

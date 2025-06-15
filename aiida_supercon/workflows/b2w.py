@@ -223,7 +223,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
     
     _WANNIER_NAMESPACE = 'w90_intp'
     _PHONON_NAMESPACE = 'ph_base'
-    _EPW_NAMESPACE = 'epw'
+    _B2W_NAMESPACE = 'b2w'
     
     @classmethod
     def _define_restart(cls, spec):
@@ -284,7 +284,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
         spec.expose_inputs(
             EpwBaseWorkChain, 
-            namespace='epw',
+            namespace=cls._B2W_NAMESPACE,
             exclude=(
                 'clean_workdir', 'parent_folder_nscf', 'parent_folder_chk', 'parent_folder_ph', 'parent_folder_epw'
             ),
@@ -303,7 +303,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         # )
         spec.expose_outputs(
             EpwBaseWorkChain,
-            namespace='epw',
+            namespace=cls._B2W_NAMESPACE,
         )
 
         spec.outline(
@@ -317,8 +317,8 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
                 cls.run_ph,
                 cls.inspect_ph,
             ),
-            cls.run_epw,
-            cls.inspect_epw,
+            cls.run_b2w,
+            cls.inspect_b2w,
             cls.results,
         )
         spec.exit_code(403, 'ERROR_SUB_PROCESS_FAILED_PHONON',
@@ -337,7 +337,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
         from importlib_resources import files
         from . import protocols
-        return files(protocols) / 'b2w.yaml'
+        return files(protocols) / f'{cls._B2W_NAMESPACE}.yaml'
 
     @staticmethod
     def set_target_base(
@@ -457,7 +457,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             **kwargs
         )
 
-        builder.epw = epw_builder
+        builder[cls._B2W_NAMESPACE] = epw_builder
 
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
         builder._inputs(prune=True)
@@ -469,7 +469,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
 
         inputs = AttributeDict(
-            self.exposed_inputs(EpwBaseWorkChain, namespace='epw')
+            self.exposed_inputs(EpwBaseWorkChain, namespace=self._B2W_NAMESPACE)
             )
 
         restart = self.inputs.restart
@@ -581,7 +581,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             self.report(f'Electron-phonon PhBaseWorkChain failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PHONON
 
-    def run_epw(self):
+    def run_b2w(self):
         """Run the `epw.x` calculation."""       
         
         # inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw'))
@@ -592,17 +592,17 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         inputs.qfpoints = fpoints
         inputs.kfpoints_factor = orm.Int(self._KFPOINTS_FACTOR)
 
-        inputs.metadata.call_link_label = 'epw'
+        inputs.metadata.call_link_label = self._B2W_NAMESPACE
         self.set_target_base(inputs.epw, 'epw')
         
         workchain_node = self.submit(EpwBaseWorkChain, **inputs)
         self.report(f'launching `epw` {workchain_node.pk}')
 
-        return ToContext(workchain_epw=workchain_node)
+        return ToContext(workchain_b2w=workchain_node)
 
-    def inspect_epw(self):
+    def inspect_b2w(self):
         """Verify that the `epw.x` calculation finished successfully."""
-        workchain = self.ctx.workchain_epw
+        workchain = self.ctx.workchain_b2w
 
         if not workchain.is_finished_ok:
             self.report(f'`EpwBaseWorkChain` failed with exit status {workchain.exit_status}')
@@ -612,9 +612,9 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         """Add the most important results to the outputs of the work chain."""
         self.out_many(
                 self.exposed_outputs(
-                    self.ctx.workchain_epw,
+                    self.ctx.workchain_b2w,
                     EpwBaseWorkChain,
-                    namespace="epw",
+                    namespace=self._B2W_NAMESPACE,
                 ),
             )
     def on_terminated(self):
