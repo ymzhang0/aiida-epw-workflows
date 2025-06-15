@@ -295,12 +295,12 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             }
         )
 
-        spec.expose_outputs(
-            Wannier90OptimizeWorkChain,
-        )
-        spec.expose_outputs(
-            PhBaseWorkChain,
-        )
+        # spec.expose_outputs(
+        #     Wannier90OptimizeWorkChain,
+        # )
+        # spec.expose_outputs(
+        #     PhBaseWorkChain,
+        # )
         spec.expose_outputs(
             EpwBaseWorkChain,
             namespace='epw',

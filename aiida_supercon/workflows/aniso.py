@@ -8,10 +8,10 @@ from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
 from aiida_quantumespresso.calculations.epw import EpwCalculation
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-from .base import EpwBaseWorkChain
-from .a2f import EpwA2fWorkChain
-from .iso import EpwIsoWorkChain
+
 from .intp import EpwBaseIntpWorkChain
+
+from ..common.restart import RestartType
 
 from scipy.interpolate import interp1d
 import numpy
@@ -46,7 +46,7 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the anisotropic critical temperature."""
     
     _INTP_NAMESPACE = 'aniso'
-    
+    _RESTART_INTP = RestartType.RESTART_ANISO
     _frozen_restart_parameters = {
         'INPUTEPW': {
             'elph': False,
@@ -125,48 +125,22 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             structure, 
             parent_folder_epw=None,
             protocol=None, 
+            from_workchain=None,
             overrides=None, 
             **kwargs
         ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
-
-        :TODO:
         """
-        inputs = cls.get_protocol_inputs(protocol, overrides)
-
-        builder = cls.get_builder()
-        builder.structure = structure
-
-        if not parent_folder_epw:
-            builder.epw = EpwBaseWorkChain.get_builder_from_protocol(
-                codes=codes,
-                structure=structure,
-                protocol=protocol,
-                overrides=inputs.get('epw', None),
-                **kwargs
-            )
-            
-        else:
-            # TODO: Add cheeck to make sure epw_folder is on same computer as epw_code
-            builder.parent_folder_epw = parent_folder_epw
-
-        builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
-        builder.kfpoints_factor = orm.Int(inputs['kfpoints_factor'])
+        builder = super().get_builder_from_protocol(
+            codes, 
+            structure, 
+            protocol, 
+            from_workchain,
+            overrides,
+            restart_intp=cls._RESTART_INTP,
+            **kwargs
+        )
         
-        epw_inputs = inputs.get('aniso', None) 
-        
-        epw_builder = EpwCalculation.get_builder()
-        epw_builder.code = codes['epw']
-        epw_builder.metadata = epw_inputs['metadata']
-        if 'settings' in epw_inputs:
-            epw_builder.settings = orm.Dict(epw_inputs['settings'])
-
-        epw_builder.parameters = orm.Dict(epw_inputs.get('parameters', {}))
-        
-        builder.aniso  = epw_builder
-        builder.plot_gap_function = orm.Bool(epw_inputs.get('plot_gap_function', True))
-        builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
-
         return builder
 
     def prepare_process(self):
@@ -219,10 +193,10 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
     def results(self):
         """TODO"""
         
-        # self.out('Tc_a2f', self.ctx.Tc_a2f)
-        self.out('parameters', self.ctx.intp.outputs.output_parameters)
+        super().results()
+        
         self.out('a2f', self.ctx.intp.outputs.a2f)
-        # self.out('Tc_aniso', self.ctx.Tc_aniso)
+
     def on_terminated(self):
         """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
         super().on_terminated()

@@ -49,7 +49,8 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the Allen-Dynes critical temperature."""
     
     _INTP_NAMESPACE = 'iso'
-
+    _RESTART_INTP = RestartType.RESTART_ISO
+    
     _blocked_keywords = [
         ('INPUTEPW', 'use_ws'),
         ('INPUTEPW', 'nbndsub'),
@@ -104,54 +105,21 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             codes, 
             structure, 
             protocol=None, 
-            b2w=None,
+            from_workchain=None,
             overrides=None, 
             **kwargs
         ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol."""
-        inputs = cls.get_protocol_inputs(protocol, overrides)
-        builder = cls.get_builder()
-        builder.structure = structure
-
-        ## NOTE: It's user's obligation to provide the 
-        ##       finished EpwIntpWorkChain as intp
-        if b2w:
-            if b2w.is_finished and b2w.process_class in (
-                EpwB2WWorkChain, EpwBaseWorkChain
-            ):
-                builder.restart.restart_mode = orm.EnumData(RestartType.RESTART_ISO)
-                builder.pop(cls._B2W_NAMESPACE)
-                builder.restart.overrides.parent_folder_epw = b2w.outputs.epw.remote_folder
-            else:
-                raise ValueError("The `epw` must be a finished `EpwB2WWorkChain` or `EpwBaseWorkChain`.")
-
-        else:
-            builder.restart.restart_mode = orm.EnumData(RestartType.FROM_SCRATCH)
-            b2w_builder = EpwB2WWorkChain.get_builder_from_protocol(
-                codes=codes,
-                structure=structure,
-                protocol=protocol,
-                overrides=inputs.get(cls._B2W_NAMESPACE, None),
-                wannier_projection_type=kwargs.get('wannier_projection_type', None),
-                w90_chk_to_ukk_script = kwargs.get('w90_chk_to_ukk_script', None),
-            )
-            
-            b2w_builder.w90_intp.pop('open_grid')
-            b2w_builder.w90_intp.pop('projwfc')
-            
-            builder[cls._B2W_NAMESPACE] = b2w_builder
-            
-        builder[cls._INTP_NAMESPACE] = EpwBaseWorkChain.get_builder_from_protocol(
-            code=codes['epw'],
-            structure=structure,
-            protocol=protocol,
-            overrides=inputs.get(cls._INTP_NAMESPACE, None),
+        builder = super().get_builder_from_protocol(
+            codes, 
+            structure, 
+            protocol, 
+            from_workchain,
+            overrides,
+            restart_intp=cls._RESTART_INTP,
             **kwargs
         )
-
-
-        builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
-
+        
         return builder
 
     def prepare_process(self):
@@ -180,11 +148,11 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
     def results(self):
         """TODO"""
         
-        self.out('parameters', self.ctx.intp.outputs.output_parameters)
+        super().results()
+        
         self.out('a2f', self.ctx.intp.outputs.a2f)
         self.out('max_eigenvalue', self.ctx.intp.outputs.max_eigenvalue)
         self.out('Tc_iso', self.ctx.Tc_iso)
-        self.out('remote_folder', self.ctx.intp.outputs.remote_folder)
     def on_terminated(self):
         """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
         super().on_terminated()

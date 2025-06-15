@@ -102,7 +102,73 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         spec.exit_code(404, 'ERROR_INVALID_INPUT_A2F_NAMESPACE',
             message='The a2f namespace is not valid.')
 
+    @classmethod
+    def get_builder_from_protocol(
+            cls, 
+            codes, 
+            structure, 
+            protocol=None, 
+            from_workchain=None,
+            overrides=None,
+            restart_intp = None,
+            **kwargs
+        ):
+        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+        inputs = cls.get_protocol_inputs(protocol, overrides)
+        builder = cls.get_builder()
+        builder.structure = structure
 
+        ## NOTE: It's user's obligation to provide the 
+        ##       finished EpwIntpWorkChain as intp
+        if from_workchain:
+            if from_workchain.process_class == EpwB2WWorkChain:
+                if from_workchain.is_finished and from_workchain.process_class is EpwB2WWorkChain:
+                    builder.restart.restart_mode = orm.EnumData(RestartType.RESTART_A2F)
+                    builder.pop(cls._B2W_NAMESPACE)
+                    builder.restart.overrides.parent_folder_epw = from_workchain.outputs.epw.remote_folder
+                else:
+                    raise ValueError("The `epw` must be a finished `EpwB2WWorkChain` or `EpwBaseWorkChain`.")
+            elif (
+                issubclass(from_workchain.process_class, EpwBaseIntpWorkChain) and
+                from_workchain.is_finished
+            ):
+                b2w = from_workchain.base.links.get_outgoing(link_label_filter=cls._B2W_NAMESPACE).first().node
+                if not b2w.is_finished:
+                    raise ValueError("The `b2w` must be a finished `EpwB2WWorkChain`.")
+                builder.restart.restart_mode = orm.EnumData(restart_intp)
+                builder.pop(cls._B2W_NAMESPACE)
+                builder.restart.overrides.parent_folder_epw = b2w.outputs.epw.remote_folder
+            else:
+                raise ValueError("The `epw` must be a finished `EpwB2WWorkChain` or `EpwBaseWorkChain`.")
+        else:
+            builder.restart.restart_mode = orm.EnumData(RestartType.FROM_SCRATCH)
+            b2w_builder = EpwB2WWorkChain.get_builder_from_protocol(
+                codes=codes,
+                structure=structure,
+                protocol=protocol,
+                overrides=inputs.get(cls._B2W_NAMESPACE, None),
+                wannier_projection_type=kwargs.get('wannier_projection_type', None),
+                w90_chk_to_ukk_script = kwargs.get('w90_chk_to_ukk_script', None),
+            )
+            
+            b2w_builder.w90_intp.pop('open_grid')
+            b2w_builder.w90_intp.pop('projwfc')
+            
+            builder[cls._B2W_NAMESPACE] = b2w_builder
+            
+        builder[cls._INTP_NAMESPACE] = EpwBaseWorkChain.get_builder_from_protocol(
+            code=codes['epw'],
+            structure=structure,
+            protocol=protocol,
+            overrides=inputs.get(cls._INTP_NAMESPACE, None),
+            **kwargs
+        )
+
+
+        builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
+
+        return builder
+    
     def setup(self):
         """Setup steps, i.e. initialise context variables."""
         self.ctx.degaussq = None
@@ -144,41 +210,30 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             self.report(f'`epw.x` failed with exit status {b2w_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_B2W
         
-    def prepare_process(self):
-        """Prepare the process for the current interpolation distance."""
-        inputs = self.ctx.inputs
-        
-        
     def run_process(self):
         """Prepare the process for the current interpolation distance."""
         
         inputs = self.ctx.inputs
-
-        if self.inputs.restart.restart_mode == RestartType.FROM_SCRATCH:
-            intp_workchain = self.ctx.b2w
+        parameters = inputs.parameters.get_dict()
         
-            parameters = inputs.parameters.get_dict()
-            intp_parameters = intp_workchain.inputs.epw.parameters.get_dict()
-            
-            for namespace, _parameters in self._defaults_parameters.items():
-                for keyword, value in _parameters.items():
-                    parameters[namespace][keyword] = value
-            for namespace, keyword in self._blocked_keywords:
-                if keyword in intp_parameters[namespace]:
-                    parameters[namespace][keyword] = intp_parameters[namespace][keyword]
-            
-            inputs.parameters = orm.Dict(parameters)
+        if self.inputs.restart.restart_mode == RestartType.FROM_SCRATCH:
+            b2w_workchain = self.ctx.b2w
 
-            inputs.parent_folder_epw = intp_workchain.outputs.epw.remote_folder
-
-        elif self.ctx.restart.restart_mode == RestartType.RESTART_A2F:
-            inputs.parent_folder_epw = self.inputs.restart.overrides.parent_folder_epw
-            parameters = inputs.parameters.get_dict()
+            b2w_parameters = b2w_workchain.inputs.epw.parameters.get_dict()
             
-            for namespace, _parameters in self._defaults_parameters.items():
-                for keyword, value in _parameters.items():
-                    parameters[namespace][keyword] = value
+            parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
 
+        else:
+            parent_folder_epw = self.inputs.restart.overrides.parent_folder_epw
+            b2w_parameters = parent_folder_epw.creator.inputs.parameters.get_dict()
+        
+        for namespace, keyword in self._blocked_keywords:
+            if keyword in b2w_parameters[namespace]:
+                parameters[namespace][keyword] = b2w_parameters[namespace][keyword]
+        
+        inputs.parent_folder_epw = parent_folder_epw
+        inputs.epw.parameters = orm.Dict(parameters)
+        
         inputs.metadata.call_link_label = self._INTP_NAMESPACE
         workchain_node = self.submit(EpwBaseWorkChain, **inputs)
 
