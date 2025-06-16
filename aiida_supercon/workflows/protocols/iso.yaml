@@ -35,7 +35,7 @@ default_inputs:
           conv_thr_iaxis: 0.001
           nstemp: 40
           temps: '1 40'
-          
+          restart: True
 default_protocol: moderate
 protocols:
   moderate:

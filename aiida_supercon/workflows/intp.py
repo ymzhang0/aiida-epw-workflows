@@ -89,10 +89,13 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             cls.inspect_process,
             cls.results
         )
-        spec.output('parameters', valid_type=orm.Dict,
+        spec.output('output_parameters', valid_type=orm.Dict,
                     help='The `output_parameters` output node of the final EPW calculation.')
         spec.output('remote_folder', valid_type=orm.RemoteData,
                     help='The remote folder of the final EPW calculation.')
+        spec.output('retrieved', valid_type=orm.FolderData,
+                    help='The retrieved folder of the final EPW calculation.')
+        
         spec.exit_code(401, 'ERROR_SUB_PROCESS_EPW',
             message='The `epw` sub process failed')
         spec.exit_code(402, 'ERROR_SUB_PROCESS_EPW_A2F',
@@ -212,6 +215,8 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
     
     def prepare_process(self):
         """Prepare the process for the current interpolation distance."""
+        
+        
         parameters = self.ctx.inputs.epw.parameters.get_dict()
         
         if self.inputs.restart.restart_mode == RestartType.FROM_SCRATCH:
@@ -250,9 +255,9 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         """TODO"""
         
         # self.out('Tc_a2f', self.ctx.Tc_a2f)
-        self.out('parameters', self.ctx.intp.outputs.output_parameters)
+        self.out('output_parameters', self.ctx.intp.outputs.output_parameters)
         self.out('remote_folder', self.ctx.intp.outputs.remote_folder)
-        
+        self.out('retrieved', self.ctx.intp.outputs.retrieved)
 
     def on_terminated(self):
         """Clean up the work chain."""

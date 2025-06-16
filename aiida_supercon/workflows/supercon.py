@@ -2,7 +2,7 @@
 """Work chain for computing the critical temperature based off an `EpwWorkChain`."""
 from aiida import orm, load_profile
 from aiida.common import AttributeDict
-from aiida.engine import WorkChain, ToContext, if_, append_, calcfunction
+from aiida.engine import WorkChain, ToContext, if_, while_, append_, calcfunction
 
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
@@ -35,10 +35,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     
     _restart_from_ephmat = {
         'INPUTEPW': (
-            'elph', False,
-            'ep_coupling', False,
-            'ephwrite', False,
-            'restart', True,
+            ('elph',        False),
+            ('ep_coupling', False),
+            ('ephwrite',    False),
+            ('restart',     True),
         )
     }
     _excluded_intp_inputs = (
@@ -54,7 +54,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(True))
         spec.input('interpolation_distances', required=False, valid_type=orm.List)
         spec.input('convergence_threshold', required=False, valid_type=orm.Float)
-
+        spec.input('always_run_final', required=False, valid_type=orm.Bool, default=lambda: orm.Bool(True))    
         spec.input_namespace(
             'restart', required=True
             )
@@ -110,7 +110,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 cls.inspect_b2w,
             ),
             cls.prepare_intp,
-            if_(cls.should_run_conv)(
+            while_(cls.should_run_conv)(
                 cls.run_conv,
                 cls.inspect_conv,
             ),
@@ -212,10 +212,14 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             if EpwB2WWorkChain._B2W_NAMESPACE in epw_builder:
                 epw_builder.pop(EpwB2WWorkChain._B2W_NAMESPACE)
             
+            # epw_builder.pop('restart')
+            # if not from_workchain:
+            #     epw_builder.restart.restart_mode = orm.EnumData(epw_workchain_class._INTP_NAMESPACE)
             builder[epw_namespace] = epw_builder
 
         builder.interpolation_distances = orm.List(inputs.get('interpolation_distances', None))
         builder.convergence_threshold = orm.Float(inputs['convergence_threshold'])
+        builder.always_run_final = orm.Bool(inputs.get('always_run_final', True))
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
         return builder
@@ -225,12 +229,12 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if self.inputs.interpolation_distances:
             if isinstance(self.inputs.interpolation_distances, orm.List) and len(self.inputs.interpolation_distances) > 1:
                 if not self.inputs.convergence_threshold:
-                    self.exit_codes.ERROR_CONVERGENCE_THRESHOLD_NOT_SPECIFIED
+                    return self.exit_codes.ERROR_CONVERGENCE_THRESHOLD_NOT_SPECIFIED
             else:
-                self.exit_codes.ERROR_INVALID_INTERPOLATION_DISTANCE
+                return self.exit_codes.ERROR_INVALID_INTERPOLATION_DISTANCE
         else:
             if self.inputs.convergence_threshold:
-                self.exit_codes.ERROR_INVALID_INTERPOLATION_DISTANCE
+                return self.exit_codes.ERROR_INVALID_INTERPOLATION_DISTANCE
 
     def setup(self):
         """Setup steps, i.e. initialise context variables."""
@@ -277,6 +281,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     
     def prepare_intp(self):
         """Prepare the inputs for the interpolation workflow."""
+        
+        
+        self.ctx.inputs_a2f.restart.restart_mode = EpwA2fWorkChain._RESTART_INTP
+        
         parameters = self.ctx.inputs_a2f.a2f.epw.parameters.get_dict()
         
         if self.inputs.restart.restart_mode == RestartType.FROM_SCRATCH:
@@ -294,7 +302,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             if keyword in b2w_parameters[namespace]:
                 parameters[namespace][keyword] = b2w_parameters[namespace][keyword]
         
-        self.ctx.inputs_a2f.a2f.parent_folder_epw = parent_folder_epw
+        self.ctx.inputs_a2f.restart.overrides.parent_folder_epw = parent_folder_epw
         self.ctx.inputs_a2f.a2f.epw.parameters = orm.Dict(parameters)
         
     def should_run_conv(self):
@@ -307,7 +315,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             new_allen_dynes = self.ctx.epw_conv[-1].outputs.output_parameters['Allen_Dynes_Tc']
             self.ctx.is_converged = (
                 abs(prev_allen_dynes - new_allen_dynes) / new_allen_dynes
-                < self.inputs.convergence_threshold
+                < self.inputs.convergence_threshold.value
             )
             self.report(f'Checking convergence: old {prev_allen_dynes}; new {new_allen_dynes} -> Converged = {self.ctx.is_converged.value}')
             
@@ -315,9 +323,13 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             self.report('Not enough data to check convergence.')
 
         if len(self.ctx.interpolation_distances) == 0 and not self.ctx.is_converged:
-            self.exit_codes.ERROR_CONVERGENCE_NOT_REACHED
+            if self.inputs.always_run_final.value:
+                self.report('Allen-Dynes Tc is not converged, but will run the following workchains!.')
+                return False
+            else:   
+                return self.exit_codes.ERROR_CONVERGENCE_NOT_REACHED
 
-        return len(self.ctx.interpolation_distances) > 0 and not self.ctx.is_converged
+        return not self.ctx.is_converged
     
     def run_conv(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
@@ -370,24 +382,29 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if not a2f_workchain.is_finished_ok:
             self.report(f'`epw.x` failed with exit status {a2f_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_A2F
-
+        
+        self.ctx.final_interp = a2f_workchain
+        
     def run_iso(self):
         """Run the iso workflow."""
         inputs = self.ctx.inputs_iso
         
-        a2f_parameters = self.ctx.inputs_a2f.a2f.inputs.epw.parameters.get_dict()
-        parameters = inputs.iso.inputs.epw.parameters.get_dict()
+        a2f_parameters = self.ctx.inputs_a2f.a2f.epw.parameters.get_dict()
+        parameters = inputs.iso.epw.parameters.get_dict()
         
         for namespace, keyword in self._blocked_keywords:
             if keyword in a2f_parameters[namespace]:
                 parameters[namespace][keyword] = a2f_parameters[namespace][keyword]
         
-        for namespace, _params in self._restart_from_ephmat:
+        for namespace, _params in self._restart_from_ephmat.items():
             for key, value in _params:
                 parameters[namespace][key] = value
         
-        inputs.iso.inputs.epw.parameters = orm.Dict(parameters)
+        inputs.restart.restart_mode = EpwIsoWorkChain._RESTART_INTP
+        inputs.restart.overrides.parent_folder_epw = self.ctx.final_interp.outputs.remote_folder
+        inputs.iso.epw.parameters = orm.Dict(parameters)
         
+        inputs.iso.qfpoints_distance = self.ctx.final_interp.inputs.a2f.qfpoints_distance
         inputs.metadata.call_link_label = 'iso'
         workchain_node = self.submit(EpwIsoWorkChain, **inputs)
         return ToContext(iso=workchain_node)
@@ -404,19 +421,22 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         inputs = self.ctx.inputs_aniso
         inputs.metadata.call_link_label = 'aniso'
         
-        a2f_parameters = self.ctx.inputs_a2f.a2f.inputs.epw.parameters.get_dict()
-        parameters = inputs.aniso.inputs.epw.parameters.get_dict()
+        a2f_parameters = self.ctx.inputs_a2f.a2f.epw.parameters.get_dict()
+        parameters = inputs.aniso.epw.parameters.get_dict()
         
         for namespace, keyword in self._blocked_keywords:
             if keyword in a2f_parameters[namespace]:
                 parameters[namespace][keyword] = a2f_parameters[namespace][keyword] 
         
-        for namespace, _params in self._restart_from_ephmat:
+        for namespace, _params in self._restart_from_ephmat.items():
             for key, value in _params:
                 parameters[namespace][key] = value
         
-        inputs.aniso.inputs.epw.parameters = orm.Dict(parameters)
+        inputs.aniso.epw.parameters = orm.Dict(parameters)
         
+        inputs.restart.restart_mode = EpwAnisoWorkChain._RESTART_INTP
+        inputs.restart.overrides.parent_folder_epw = self.ctx.final_interp.outputs.remote_folder
+        inputs.aniso.qfpoints_distance = self.ctx.final_interp.inputs.a2f.qfpoints_distance
         workchain_node = self.submit(EpwAnisoWorkChain, **inputs)
         return ToContext(aniso=workchain_node)
 

@@ -12,12 +12,7 @@ from aiida_quantumespresso.workflows.protocols.utils import recursive_merge
 
 class EpwBaseWorkChainController(FromGroupSubmissionController):
     """A SubmissionController for submitting `ElectronPhononWorkChain`s."""
-    pw_code: str
-    ph_code: str
-    projwfc_code: str
-    pw2wannier90_code: str
-    wannier90_code: str
-    epw_code: str
+    codes = None
     protocol = None
     overrides: Optional[dict] = None
     electronic_type: ElectronicType = ElectronicType.METAL,
@@ -47,15 +42,8 @@ class EpwBaseWorkChainController(FromGroupSubmissionController):
             )
 
         process_class = self._process_class
-        codes = {
-            "pw": self.pw_code,
-            "ph": self.ph_code,
-            "projwfc": self.projwfc_code,
-            "pw2wannier90": self.pw2wannier90_code,
-            "wannier90": self.wannier90_code,
-            "epw": self.epw_code
-        }
-        codes = {key: orm.load_code(code_label) for key, code_label in codes.items()}
+
+        # codes = {key: orm.load_code(code_label) for key, code_label in codes.items()}
 
         overrides = copy.deepcopy(self.overrides)
 
@@ -63,7 +51,7 @@ class EpwBaseWorkChainController(FromGroupSubmissionController):
         w90_nscf_overrides = overrides.get('w90_bands', {}).pop('nscf', {})
 
         builder = process_class.get_builder_from_protocol(
-            codes=codes,
+            codes=self.codes,
             structure=structure,
             protocol=self.protocol,
             overrides=overrides,
@@ -113,10 +101,7 @@ class EpwBaseWorkChainController(FromGroupSubmissionController):
         #     remote_path='/users/mbercx/code/epw_julia/chk2ukk.jl',
         #     computer=orm.load_computer('eiger')
         # )
-        w90_script = orm.RemoteData(
-            remote_path='/pfs/lustrep3/projappl/project_465000106/juqiao/epw_julia/chk2ukk.jl',
-            computer=orm.load_computer('lumi')
-        )
-        builder.w90_chk_to_ukk_script = w90_script
+
+        builder.w90_chk_to_ukk_script = self.codes['wannier90']
 
         return builder

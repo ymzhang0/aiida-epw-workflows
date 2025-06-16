@@ -3,9 +3,9 @@ default_inputs:
   interpolation_distances:
     - 0.2
     - 0.1
-    - 0.08
-    - 0.06
-    - 0.05
+    # - 0.08
+    # - 0.06
+    # - 0.05
   convergence_threshold: 0.1
   a2f:
     a2f:

@@ -41,6 +41,23 @@ class EpwParser(BaseParser):
             self.out('a2f', a2f_xydata)
             parsed_data.update(parsed_a2f)
 
+        pattern_aniso = re.compile(r'aiida\.imag_aniso_gap\d+_(\d+)\.(\d+)$')
+
+        imag_aniso_filelist = [
+            (str(float(f"{match.group(1)}.{match.group(2)}")), filename)
+            for filename in self.retrieved.base.repository.list_object_names()
+            if (match := pattern_aniso.match(filename))
+        ]
+
+        if imag_aniso_filelist is not []:
+            aniso_gap_functions_arraydata = orm.ArrayData()
+            for T, imag_aniso_file in imag_aniso_filelist:
+                imag_aniso_file_content = self.retrieved.base.repository.get_object_content(imag_aniso_file)
+                aniso_gap_function = self.parse_aniso_gap_function(imag_aniso_file_content)
+                aniso_gap_functions_arraydata.set_array(T, aniso_gap_function)
+            
+            self.out('aniso_gap_functions', aniso_gap_functions_arraydata)
+        
         if 'max_eigenvalue' in parsed_data:
             self.out('max_eigenvalue', parsed_data.pop('max_eigenvalue'))
 
@@ -172,15 +189,13 @@ class EpwParser(BaseParser):
         return bands_data
 
     @staticmethod
-    def parse_gap_function(content):
+    def parse_aniso_gap_function(content):
         """Parse the contents of the `gap_function.dat` file."""
-        gap_function_array = numpy.array([line.split() for line in content.splitlines()[1:501]], dtype=float)
+        import io
+        gap_function = numpy.loadtxt(
+            io.StringIO((content)), 
+            dtype=float, 
+            comments='#'
+            )
 
-        gap_function_xydata = orm.XyData()
-        gap_function_xydata.set_array(
-            'frequency', gap_function_array[:, 0]
-        )
-        gap_function_xydata.set_array(
-            'gap_function', gap_function_array[:, 1:]
-        )
-        return gap_function_xydata
+        return gap_function

@@ -71,8 +71,8 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         )
         spec.output('a2f', valid_type=orm.XyData,
                     help='The contents of the `.a2f` file.')
-        spec.output('Tc_allen_dynes', valid_type=orm.Float,
-                    help='The Allen-Dynes Tc interpolated from the a2f file.')
+        # spec.output('Tc_allen_dynes', valid_type=orm.Float,
+        #             help='The Allen-Dynes Tc interpolated from the a2f file.')
 
     @classmethod
     def get_protocol_filepath(cls):
