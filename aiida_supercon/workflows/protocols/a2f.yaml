@@ -1,30 +1,27 @@
 default_inputs:
   clean_workdir: False
-  interpolation_distances:
-    - 0.2
-    - 0.1
-    # - 0.08
-    # - 0.06
-    # - 0.05
-  convergence_threshold: 0.1
   a2f:
-    a2f:
+    epw:
       metadata:
         options:
           withmpi: True
-
-  iso:
-    iso:
-      metadata:
-        options:
-          withmpi: True
-
-  aniso:
-    aniso:
-      metadata:
-        options:
-          withmpi: True
-
+      parameters:
+        INPUTEPW:
+          eliashberg: True
+          elph: True
+          ep_coupling: True
+          epwread: True
+          epwwrite: False
+          ephwrite: True
+          wannierize: False
+          muc: 0.13
+          mp_mesh_k: True
+          degaussw: 0.01
+          eps_acustic: 0.1
+          iverbosity: 1
+          fsthick: 0.8
+          restart: True
+          temps: 1
 
 default_protocol: moderate
 protocols:
@@ -32,7 +29,5 @@ protocols:
     description: 'Protocol to perform a electron-phonon calculation at normal precision at moderate computational cost.'
   precise:
     description: 'Protocol to perform a electron-phonon calculation at high precision at higher computational cost.'
-    qfpoints_distance: 0.05
   fast:
     description: 'Protocol to perform a electron-phonon calculation at low precision at minimal computational cost for testing purposes.'
-    qfpoints_distance: 0.2
