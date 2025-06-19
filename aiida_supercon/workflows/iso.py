@@ -17,40 +17,14 @@ import warnings
 
 from .intp import EpwBaseIntpWorkChain
 from .b2w import EpwB2WWorkChain
-from .base import EpwBaseWorkChain
 
-from ..common.restart import RestartType
+from .utils.calculators import calculate_iso_tc
 
-@calcfunction
-def calculate_iso_tc(max_eigenvalue: orm.XyData) -> orm.Float:
-    me_array = max_eigenvalue.get_array('max_eigenvalue')
-    if me_array[:, 1].max() < 1.0:
-        return orm.Float(0.0)
-    else:
-        return orm.Float(float(interp1d(me_array[:, 1], me_array[:, 0])(1.0)))
-
-@calcfunction
-def calculate_Allen_Dynes_tc(a2f: orm.ArrayData, mustar = 0.13) -> orm.Float:
-    w        = a2f.get_array('frequency')
-    # Here we preassume that there are 10 smearing values for a2f calculation
-    spectral = a2f.get_array('a2f')[:, 9]   
-    mev2K    = 11.604525006157
-
-    _lambda  = 2*numpy.trapz(numpy.divide(spectral, w), x=w)
-
-    # wlog =  np.exp(np.average(np.divide(alpha, w), weights=np.log(w)))
-    wlog     =  numpy.exp(2/_lambda*numpy.trapz(numpy.multiply(numpy.divide(spectral, w), numpy.log(w)), x=w))
-
-    Tc = wlog/1.2*numpy.exp(-1.04*(1+_lambda)/(_lambda-mustar*(1+0.62*_lambda))) * mev2K
-
-
-    return orm.Float(Tc)
 
 class EpwIsoWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the Allen-Dynes critical temperature."""
     
     _INTP_NAMESPACE = 'iso'
-    _RESTART_INTP = RestartType.RESTART_ISO
     
     _blocked_keywords = [
         ('INPUTEPW', 'use_ws'),
@@ -66,6 +40,8 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         """Define the work chain specification."""
         super().define(spec)
 
+        spec.input('estimated_Tc_iso', valid_type=orm.Float, default=lambda: orm.Float(40.0),
+            help='The estimated Tc for the iso calculation.')
         spec.input('linearized_Eliashberg', valid_type=orm.Bool, default=lambda: orm.Bool(True),
             help='Whether to use the linearized Eliashberg function.')
         
@@ -80,17 +56,16 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             cls.inspect_process,
             cls.results
         )
-        spec.output('parameters', valid_type=orm.Dict,
-                    help='The `output_parameters` output node of the final EPW calculation.')
-        spec.output('a2f', valid_type=orm.XyData,
-                    help='The contents of the `.a2f` file.')
-        spec.output('max_eigenvalue', valid_type=orm.XyData,
-            help='The temperature dependence of the max eigenvalue for the final EPW.')
+        # spec.output('parameters', valid_type=orm.Dict,
+        #             help='The `output_parameters` output node of the final EPW calculation.')
+        # spec.output('a2f', valid_type=orm.XyData,
+        #             help='The contents of the `.a2f` file.')
+        # spec.output('max_eigenvalue', valid_type=orm.XyData,
+        #     help='The temperature dependence of the max eigenvalue for the final EPW.')
 
         spec.output('Tc_iso', valid_type=orm.Float,
                     help='The isotropic Tc interpolated from the a2f file.')
-        spec.exit_code(401, 'ERROR_SUB_PROCESS_EPW',
-            message='The `epw` sub process failed')
+
         spec.exit_code(402, 'ERROR_SUB_PROCESS_ISO',
             message='The `iso` sub process failed')
 
@@ -103,37 +78,13 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
     
     @classmethod
     def get_builder_restart(
-        cls, from_iso_workchain=None, **kwargs
+        cls, from_iso_workchain
         ):
-        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
-        builder = cls.get_builder()
-        parent_builder = from_iso_workchain.get_builder_restart()
-        
-        b2w = from_iso_workchain.base.links.get_outgoing(
-            link_label_filter=cls._B2W_NAMESPACE
-            ).first()
-        
-        if not b2w or b2w.node.is_finished_ok:
-            builder.pop(cls._B2W_NAMESPACE)
-        else:
-            b2w_builder = EpwB2WWorkChain.get_builder_restart(from_b2w_workchain=b2w.node)
-            builder[cls._B2W_NAMESPACE]._data = b2w_builder._data
-        
-        a2f = from_iso_workchain.base.links.get_outgoing(
-            link_label_filter=cls._INTP_NAMESPACE
-            ).first()
 
+        return super()._get_builder_restart(
+            from_intp_workchain=from_iso_workchain,
+            )
         
-        if a2f and a2f.node.is_finished_ok:
-            warnings.warn(
-                f"The ISO workchain <{from_iso_workchain.pk}> is already finished.",
-                stacklevel=2
-                )
-            return
-        else:
-            builder[cls._INTP_NAMESPACE]._data = parent_builder[cls._INTP_NAMESPACE]._data
-        
-        return builder
 
     @classmethod
     def get_builder_from_protocol(
@@ -150,7 +101,6 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             structure, 
             protocol, 
             overrides,
-            restart_intp=cls._RESTART_INTP,
             **kwargs
         )
         
@@ -161,12 +111,26 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         
         super().prepare_process()
 
+        parameters = self.ctx.inputs.epw.parameters.get_dict()
+        temps = f'{self._MIN_TEMP} {self.inputs.estimated_Tc_iso}'
+        parameters['INPUTEPW']['temps'] = temps
+        
+        self.ctx.inputs.epw.parameters = orm.Dict(parameters)
+
         try:
             settings = self.ctx.inputs.epw.settings.get_dict()
         except AttributeError:
             settings = {}
 
-        settings['ADDITIONAL_RETRIEVE_LIST'] = ['aiida.a2f']
+        settings['ADDITIONAL_RETRIEVE_LIST'] = [
+            'aiida.a2f',
+            'aiida.a2f_proj',
+            'out/aiida.dos',
+            'aiida.phdos',
+            'aiida.phdos_proj',
+            'aiida.lambda_FS',
+            'aiida.lambda_k_pairs'
+            ]
         
         self.ctx.inputs.epw.settings = orm.Dict(settings)
                 
@@ -193,5 +157,5 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         super().results()
         
         # self.out('a2f', self.ctx.intp.outputs.a2f)
-        # self.out('max_eigenvalue', self.ctx.intp.outputs.max_eigenvalue)
-        # self.out('Tc_iso', self.ctx.Tc_iso)
+        self.out('max_eigenvalue', self.ctx.intp.outputs.max_eigenvalue)
+        self.out('Tc_iso', self.ctx.Tc_iso)

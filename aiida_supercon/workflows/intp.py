@@ -84,15 +84,18 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_outputs(
-            EpwBaseWorkChain, namespace=cls._INTP_NAMESPACE,
+            EpwBaseWorkChain, 
+            namespace=cls._INTP_NAMESPACE,
+            exclude=(
+                'remote_folder',
+                'output_parameters',
+            )
         )
         spec.output('output_parameters', valid_type=orm.Dict,
                     help='The `output_parameters` output node of the final EPW calculation.')
         spec.output('remote_folder', valid_type=orm.RemoteData,
                     help='The remote folder of the final EPW calculation.')
-        spec.output('retrieved', valid_type=orm.FolderData,
-                    help='The retrieved folder of the final EPW calculation.')
-        
+
         spec.exit_code(401, 'ERROR_SUB_PROCESS_B2W',
             message='The `B2W` sub process failed')
 
@@ -109,6 +112,49 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         except AttributeError:
             return None
         
+
+    @classmethod
+    def _get_builder_restart(
+        cls, 
+        from_intp_workchain=None,
+        ):
+        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+        builder = from_intp_workchain.get_builder_restart()
+        # parent_builder = from_intp_workchain.get_builder_restart()
+        
+        b2w = EpwBaseIntpWorkChain.get_descendant(
+            from_intp_workchain,
+            cls._B2W_NAMESPACE
+            )
+        
+        if (
+            cls._B2W_NAMESPACE not in from_intp_workchain.inputs 
+            or 
+            b2w.is_finished_ok
+            ):
+            
+            builder.pop(cls._B2W_NAMESPACE)
+        else:
+            b2w_builder = EpwB2WWorkChain.get_builder_restart(
+                from_b2w_workchain=b2w
+                )
+            builder[cls._B2W_NAMESPACE]._data = b2w_builder._data
+        
+        intp = EpwBaseIntpWorkChain.get_descendant(
+            from_intp_workchain,
+            cls._INTP_NAMESPACE
+            )
+        
+        if intp and intp.is_finished_ok:
+            warnings.warn(
+                f"The Workchain <{from_intp_workchain.pk}> is already finished.",
+                stacklevel=2
+                )
+            return
+        else:
+            builder[cls._INTP_NAMESPACE].parent_folder_epw = intp.inputs.parent_folder_epw
+        
+            return builder
     
     @classmethod
     def get_builder_restart_from_b2w(
@@ -182,8 +228,7 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             structure=structure,
             protocol=protocol,
             overrides=inputs.get(cls._B2W_NAMESPACE, {}),
-            wannier_projection_type=kwargs.get('wannier_projection_type', None),
-            w90_chk_to_ukk_script = kwargs.get('w90_chk_to_ukk_script', None),
+            **kwargs
         )
         
         b2w_builder.w90_intp.pop('open_grid')
@@ -196,7 +241,6 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             structure=structure,
             protocol=protocol,
             overrides=inputs.get(cls._INTP_NAMESPACE, None),
-            **kwargs
         )
         
         builder[cls._INTP_NAMESPACE]._data = intp_builder._data
@@ -290,9 +334,9 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
                 )
         )
         
-        self.out('output_parameters', self.ctx.intp.outputs.output_parameters)
-        self.out('remote_folder', self.ctx.intp.outputs.remote_folder)
-        self.out('retrieved', self.ctx.intp.outputs.retrieved)
+        self.out('output_parameters', self.ctx.workchain_intp.outputs.output_parameters)
+        self.out('remote_folder', self.ctx.workchain_intp.outputs.remote_folder)
+        # self.out('retrieved', self.ctx.intp.outputs.retrieved)
 
     def on_terminated(self):
         """Clean up the work chain."""

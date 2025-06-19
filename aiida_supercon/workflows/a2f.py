@@ -78,11 +78,15 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         spec.inputs[cls._INTP_NAMESPACE].validator = cls.validate_inputs
         spec.inputs.validator = cls.validate_inputs
         
-        spec.output('a2f', valid_type=orm.XyData,
-                    help='The contents of the `.a2f` file.')
+        # spec.output('a2f', valid_type=orm.XyData,
+        #             help='The contents of the `.a2f` file.')
         # spec.output('Tc_allen_dynes', valid_type=orm.Float,
         #             help='The Allen-Dynes Tc interpolated from the a2f file.')
 
+        spec.exit_code(
+            402, 'ERROR_SUB_PROCESS_A2F',
+            message='The `epw.x` workflow failed.'
+            )
     @classmethod
     def get_protocol_filepath(cls):
         """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
@@ -93,40 +97,50 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
     @classmethod
     def get_builder_restart(
         cls, 
-        from_a2f_workchain=None,
-        **kwargs
+        from_a2f_workchain
         ):
-        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
-        builder = cls.get_builder()
-        parent_builder = from_a2f_workchain.get_builder_restart()
         
-        b2w = from_a2f_workchain.base.links.get_outgoing(
-            link_label_filter=cls._B2W_NAMESPACE
-            ).first()
+        return super()._get_builder_restart(
+            from_intp_workchain=from_a2f_workchain,
+            )
         
-        if cls._B2W_NAMESPACE not in from_a2f_workchain.inputs or b2w.node.is_finished_ok:
-            builder.pop(cls._B2W_NAMESPACE)
-        else:
-            b2w_builder = EpwB2WWorkChain.get_builder_restart(
-                from_b2w_workchain=b2w.node
-                )
-            builder[cls._B2W_NAMESPACE]._data = b2w_builder._data
+    # @classmethod
+    # def get_builder_restart(
+    #     cls, 
+    #     from_a2f_workchain=None,
+    #     **kwargs
+    #     ):
+    #     """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+    #     builder = cls.get_builder()
+    #     parent_builder = from_a2f_workchain.get_builder_restart()
         
-        a2f = from_a2f_workchain.base.links.get_outgoing(
-            link_label_filter=cls._INTP_NAMESPACE
-            ).first()
+    #     b2w = from_a2f_workchain.base.links.get_outgoing(
+    #         link_label_filter=cls._B2W_NAMESPACE
+    #         ).first()
+        
+    #     if cls._B2W_NAMESPACE not in from_a2f_workchain.inputs or b2w.node.is_finished_ok:
+    #         builder.pop(cls._B2W_NAMESPACE)
+    #     else:
+    #         b2w_builder = EpwB2WWorkChain.get_builder_restart(
+    #             from_b2w_workchain=b2w.node
+    #             )
+    #         builder[cls._B2W_NAMESPACE]._data = b2w_builder._data
+        
+    #     a2f = from_a2f_workchain.base.links.get_outgoing(
+    #         link_label_filter=cls._INTP_NAMESPACE
+    #         ).first()
 
         
-        if a2f and a2f.node.is_finished_ok:
-            warnings.warn(
-                f"The A2F workchain <{from_a2f_workchain.pk}> is already finished.",
-                stacklevel=2
-                )
-            return
-        else:
-            builder[cls._INTP_NAMESPACE]._data = parent_builder[cls._INTP_NAMESPACE]._data
+    #     if a2f and a2f.node.is_finished_ok:
+    #         warnings.warn(
+    #             f"The A2F workchain <{from_a2f_workchain.pk}> is already finished.",
+    #             stacklevel=2
+    #             )
+    #         return
+    #     else:
+    #         builder[cls._INTP_NAMESPACE]._data = parent_builder[cls._INTP_NAMESPACE]._data
         
-        return builder
+    #     return builder
     
     # @classmethod
     # def get_builder_from_b2w(
@@ -211,6 +225,16 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         except AttributeError:
             settings = {}
         
+        settings['ADDITIONAL_RETRIEVE_LIST'] = [
+            'aiida.a2f',
+            'aiida.a2f_proj',
+            'out/aiida.dos',
+            'aiida.phdos',
+            'aiida.phdos_proj',
+            'aiida.lambda_FS',
+            'aiida.lambda_k_pairs'
+            ]
+        
         self.ctx.inputs.epw.settings = orm.Dict(settings)
         
     def inspect_process(self):
@@ -219,7 +243,7 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
 
         if not intp_workchain.is_finished_ok:
             self.report(f'`epw.x` failed with exit status {intp_workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_EPW_A2F
+            return self.exit_codes.ERROR_SUB_PROCESS_A2F
 
     def results(self):
         """TODO"""

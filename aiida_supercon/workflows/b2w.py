@@ -467,9 +467,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
     def get_builder_restart_from_phonon(
         cls, 
         codes, protocol=None, overrides=None,
-        wannier_projection_type=WannierProjectionType.ATOMIC_PROJECTORS_QE,
-        reference_bands=None, bands_kpoints=None,
-        w90_chk_to_ukk_script=None,
         from_ph_workchain=None,
         **kwargs
         )-> ProcessBuilder:
@@ -501,11 +498,10 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         w90_intp = Wannier90OptimizeWorkChain.get_builder_from_protocol(
             codes=codes,
             structure=structure,
+            protocol=protocol,
             overrides=inputs.get(cls._W90_NAMESPACE, {}),
             pseudo_family=inputs.get(cls._W90_NAMESPACE, {}).get('pseudo_family', None),
-            projection_type=wannier_projection_type,
-            reference_bands=reference_bands,
-            bands_kpoints=bands_kpoints,
+            **kwargs
         )
         
         builder[cls._W90_NAMESPACE]._data = w90_intp._data
@@ -517,7 +513,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             structure=structure,
             protocol=protocol,
             overrides=inputs.get(cls._EPW_NAMESPACE, {}),
-            w90_chk_to_ukk_script=w90_chk_to_ukk_script,
             **kwargs
         )
         
@@ -671,6 +666,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             projection_type=wannier_projection_type,
             reference_bands=reference_bands,
             bands_kpoints=bands_kpoints,
+            print_summary=False,
         )
         w90_intp.pop('projwfc', None)
         w90_intp.pop('open_grid', None)
@@ -818,7 +814,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             self.report(f'Electron-phonon `PhBaseWorkChain` failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PHONON
 
-
     def run_epw(self):
         """Run the `epw.x` calculation."""       
         
@@ -845,7 +840,9 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             self.report(f'`EpwBaseWorkChain` failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_EPW
 
-
+        ## TODO: If the workchain finished OK, we will clean the remote folder:
+        ## rm out/aiida.epb*, out/aiida.wfc*, out/aiida.save/*
+        
     def results(self):
         """Add the most important results to the outputs of the work chain."""
         if 'workchain_w90_intp' in self.ctx:
