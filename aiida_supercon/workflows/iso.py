@@ -33,7 +33,7 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         ('INPUTEPW', 'vme'),
     ]
     
-    _min_temp = 1.0
+    _MIN_TEMP = 1.0
     
     @classmethod
     def define(cls, spec):
@@ -112,7 +112,7 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         super().prepare_process()
 
         parameters = self.ctx.inputs.epw.parameters.get_dict()
-        temps = f'{self._MIN_TEMP} {self.inputs.estimated_Tc_iso}'
+        temps = f'{self._MIN_TEMP} {self.inputs.estimated_Tc_iso.value*1.5}'
         parameters['INPUTEPW']['temps'] = temps
         
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
@@ -157,5 +157,5 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         super().results()
         
         # self.out('a2f', self.ctx.intp.outputs.a2f)
-        self.out('max_eigenvalue', self.ctx.intp.outputs.max_eigenvalue)
+        # self.out('max_eigenvalue', self.ctx.workchain_intp.outputs.max_eigenvalue)
         self.out('Tc_iso', self.ctx.Tc_iso)

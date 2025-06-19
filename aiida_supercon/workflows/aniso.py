@@ -53,7 +53,7 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         }
     }
     
-    _min_temp = 3.5
+    _MIN_TEMP = 3.5
     
     @classmethod
     def define(cls, spec):
@@ -147,7 +147,7 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
                 
         parameters = self.ctx.inputs.epw.parameters.get_dict()
         
-        temps = f'{self._MIN_TEMP} {self.inputs.estimated_Tc_aniso}'
+        temps = f'{self._MIN_TEMP} {self.inputs.estimated_Tc_aniso.value*1.5}'
         parameters['INPUTEPW']['temps'] = temps
         
         try:
@@ -179,7 +179,13 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             filirobj = self.ctx.inputs.epw.code.filepath_executable.parent.parent / 'EPW' / 'irobjs' / self._DEFAULT_FILIROBJ
 
             parameters['INPUTEPW']['filirobj'] = str(filirobj)
+        
+            # IR representation is not compatible with eps_acustic.
+            # It might be a bug in the EPW code. 
+            # I simply pop it out here.
             
+            parameters['INPUTEPW'].pop('eps_acustic')
+
         self.ctx.inputs.epw.settings = orm.Dict(settings)
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 

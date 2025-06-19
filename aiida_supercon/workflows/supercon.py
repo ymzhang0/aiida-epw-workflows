@@ -131,8 +131,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 cls.run_iso,
                 cls.inspect_iso,
             ),
-            cls.run_aniso,
-            cls.inspect_aniso,
+            if_(cls.should_run_aniso)(
+                cls.run_aniso,
+                cls.inspect_aniso,
+            ),
             cls.results
         )
         # spec.output('parameters', valid_type=orm.Dict,
@@ -394,7 +396,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 return builder
         else:
             builder.pop(EpwA2fWorkChain._B2W_NAMESPACE)
-            builder[EpwA2fWorkChain._INTP_NAMESPACE][EpwA2fWorkChain._INTP_NAMESPACE].parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
             
         # If interpolation list is not an input port, it must be that the previous
         # workchain has finished convergence test. Or it start from a given grid without convergence test.
@@ -412,10 +413,13 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                     initial_interpolation_distances.remove(a2f_conv_workchain.node.inputs.a2f.qfpoints_distance.value)
             
             if len(initial_interpolation_distances) > 0:
+                builder[EpwA2fWorkChain._INTP_NAMESPACE][EpwA2fWorkChain._INTP_NAMESPACE].parent_folder_epw = a2f_conv_workchains[0].node.inputs[EpwA2fWorkChain._INTP_NAMESPACE].parent_folder_epw
                 builder.interpolation_distances = orm.List(initial_interpolation_distances)
                 return builder
             
             else:
+                builder[EpwIsoWorkChain._INTP_NAMESPACE][EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw = a2f_conv_workchains[-1].node.outputs.remote_folder
+
                 builder.pop(EpwA2fWorkChain._INTP_NAMESPACE)
                 builder.pop('interpolation_distances')
                 builder.pop('convergence_threshold')
@@ -431,6 +435,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                     )
                 if a2f_workchain and a2f_workchain.is_finished_ok:
                     builder.pop(EpwA2fWorkChain._INTP_NAMESPACE)
+                    builder[EpwIsoWorkChain._INTP_NAMESPACE][EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw = a2f_workchain.outputs.parent_folder_epw
                 else:
                     a2f_builder = EpwA2fWorkChain.get_builder_restart(
                         from_a2f_workchain=a2f_workchain,
@@ -448,12 +453,16 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 )
             if iso_workchain and iso_workchain.is_finished_ok:
                 builder.pop(EpwIsoWorkChain._INTP_NAMESPACE)
-            else:
+            elif iso_workchain:
                 iso_builder = EpwIsoWorkChain.get_builder_restart(
                     from_iso_workchain=iso_workchain,
                 )
+                # builder[EpwIsoWorkChain._INTP_NAMESPACE][EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw = iso_workchain.inputs[EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw
                 builder[EpwIsoWorkChain._INTP_NAMESPACE]._data = iso_builder._data
                 return builder
+            else:
+                builder[EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw = iso_workchain.inputs[EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw
+                return builder  
         else:
             builder.pop(EpwIsoWorkChain._INTP_NAMESPACE)
             
@@ -464,11 +473,14 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 )
             if aniso_workchain and aniso_workchain.is_finished_ok:
                 raise Warning('The `EpwSuperConWorkChain` has already finished.')
-            else:
+            elif aniso_workchain:
                 aniso_builder = EpwAnisoWorkChain.get_builder_restart(
                     from_aniso_workchain=aniso_workchain,
                     )
                 builder[EpwAnisoWorkChain._INTP_NAMESPACE]._data = aniso_builder._data
+                return builder
+            else:
+                builder[EpwAnisoWorkChain._INTP_NAMESPACE][EpwAnisoWorkChain._INTP_NAMESPACE].parent_folder_epw = iso_workchain.outputs.remote_folder
                 return builder
         else:
             raise Warning('The `EpwSuperConWorkChain` has already finished.')
@@ -553,16 +565,13 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         
         self.ctx.inputs_aniso = AttributeDict(self.exposed_inputs(EpwAnisoWorkChain, namespace=EpwAnisoWorkChain._INTP_NAMESPACE))
         
-        if hasattr(self.inputs, 'interpolation_distances'):
+        if 'interpolation_distances' in self.inputs:
             self.report("Will check convergence")
             self.ctx.interpolation_distances = self.inputs.get('interpolation_distances').get_list()
             self.ctx.interpolation_distances.sort()
-            self.ctx.do_conv = True
             self.ctx.final_a2f = None
             self.ctx.allen_dynes_values = []
             self.ctx.is_converged = False
-        else:
-            self.ctx.do_conv = False
 
     def should_run_b2w(self):
         """Check if the b2w workflow should continue or not."""
@@ -617,7 +626,8 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             
     def should_run_conv(self):
         """Check if the conv loop should continue or not."""
-        if not self.ctx.do_conv:
+        
+        if 'interpolation_distances' not in self.inputs:
             return False
 
         try:
@@ -684,7 +694,11 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
     def should_run_a2f(self):
         """Check if the a2f workflow should continue or not."""
-        return EpwA2fWorkChain._INTP_NAMESPACE in self.inputs
+        return (
+            EpwA2fWorkChain._INTP_NAMESPACE in self.inputs
+            and
+            'interpolation_distances' not in self.inputs
+        )
     
     def run_a2f(self):
         """Run the a2f workflow."""
@@ -706,7 +720,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     def should_run_iso(self):
         """Check if the iso workflow should continue or not."""
         
-        Allen_Dynes_Tc = self.ctx.inputs_iso.inputs[EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw.creator.outputs.output_parameters['Allen_Dynes_Tc']
+        if EpwIsoWorkChain._INTP_NAMESPACE not in self.inputs:
+            return False
+        
+        Allen_Dynes_Tc = self.ctx.inputs_iso[EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw.creator.outputs.output_parameters['Allen_Dynes_Tc']
         
         if Allen_Dynes_Tc < EpwIsoWorkChain._MIN_TEMP:
             return self.exit_codes.ERROR_ISOTROPIC_TC_TOO_LOW
@@ -756,7 +773,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     def should_run_aniso(self):
         """Check if the aniso workflow should continue or not."""
         
-        Tc_iso = self.ctx.inputs_iso.inputs[EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw.creator.caller.caller.outputs.Tc_iso.value
+        Tc_iso = self.ctx.inputs_aniso[EpwAnisoWorkChain._INTP_NAMESPACE].parent_folder_epw.creator.caller.caller.outputs.Tc_iso.value
         
         if Tc_iso < EpwAnisoWorkChain._MIN_TEMP:
             return self.exit_codes.ERROR_ANISOTROPIC_TC_TOO_LOW

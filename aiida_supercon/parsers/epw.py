@@ -77,25 +77,18 @@ class EpwParser(BaseParser):
 
         pattern_aniso = re.compile(r'aiida\.imag_aniso_gap\d+_(\d+)\.(\d+)$')
 
-        imag_aniso_filelist = [
-            (str(float(f"{match.group(1)}.{match.group(2)}")), filename)
+        imag_aniso_filecontents = [
+            (str(float(f"{match.group(1)}.{match.group(2)}")), self.retrieved.base.repository.get_object_content(filename))
             for filename in self.retrieved.base.repository.list_object_names()
             if (match := pattern_aniso.match(filename))
         ]
 
-        if imag_aniso_filelist != []:
+        if imag_aniso_filecontents != []:
             aniso_gap_functions_arraydata = orm.ArrayData()
-            Ts = []
-            aniso_gap_functions_arrays = []
-            for T, imag_aniso_file in imag_aniso_filelist:
-                imag_aniso_file_content = self.retrieved.base.repository.get_object_content(imag_aniso_file)
-                aniso_gap_function = self.parse_aniso_gap_function(imag_aniso_file_content)
-                # aniso_gap_functions_arraydata.set_array(T, aniso_gap_function)
-                Ts.append(T)
-                aniso_gap_functions_arrays.append(aniso_gap_function)
+            for T, imag_aniso_filecontent in imag_aniso_filecontents:
+                aniso_gap_function = self.parse_aniso_gap_function(imag_aniso_filecontent)
+                aniso_gap_functions_arraydata.set_array(T.replace('.', '_'), aniso_gap_function)
             
-            aniso_gap_functions_arraydata.set_array('temps', numpy.array(Ts))
-            aniso_gap_functions_arraydata.set_array('aniso_gap_functions', numpy.array(aniso_gap_functions_arrays))
             self.out('aniso_gap_functions', aniso_gap_functions_arraydata)
         
         if 'max_eigenvalue' in parsed_data:
