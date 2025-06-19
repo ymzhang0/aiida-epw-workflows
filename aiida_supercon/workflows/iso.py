@@ -13,6 +13,7 @@ from aiida.engine import calcfunction
 
 from scipy.interpolate import interp1d
 import numpy
+import warnings
 
 from .intp import EpwBaseIntpWorkChain
 from .b2w import EpwB2WWorkChain
@@ -70,7 +71,6 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         
         spec.outline(
             cls.setup,
-            cls.validate_parent_folders,
             if_(cls.should_run_b2w)(
                 cls.run_b2w,
                 cls.inspect_b2w,
@@ -102,12 +102,45 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         return files(protocols) / f'{cls._INTP_NAMESPACE}.yaml'
     
     @classmethod
+    def get_builder_restart(
+        cls, from_iso_workchain=None, **kwargs
+        ):
+        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+        builder = cls.get_builder()
+        parent_builder = from_iso_workchain.get_builder_restart()
+        
+        b2w = from_iso_workchain.base.links.get_outgoing(
+            link_label_filter=cls._B2W_NAMESPACE
+            ).first()
+        
+        if not b2w or b2w.node.is_finished_ok:
+            builder.pop(cls._B2W_NAMESPACE)
+        else:
+            b2w_builder = EpwB2WWorkChain.get_builder_restart(from_b2w_workchain=b2w.node)
+            builder[cls._B2W_NAMESPACE]._data = b2w_builder._data
+        
+        a2f = from_iso_workchain.base.links.get_outgoing(
+            link_label_filter=cls._INTP_NAMESPACE
+            ).first()
+
+        
+        if a2f and a2f.node.is_finished_ok:
+            warnings.warn(
+                f"The ISO workchain <{from_iso_workchain.pk}> is already finished.",
+                stacklevel=2
+                )
+            return
+        else:
+            builder[cls._INTP_NAMESPACE]._data = parent_builder[cls._INTP_NAMESPACE]._data
+        
+        return builder
+
+    @classmethod
     def get_builder_from_protocol(
             cls, 
             codes, 
             structure, 
             protocol=None, 
-            from_workchain=None,
             overrides=None, 
             **kwargs
         ):
@@ -116,7 +149,6 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             codes, 
             structure, 
             protocol, 
-            from_workchain,
             overrides,
             restart_intp=cls._RESTART_INTP,
             **kwargs
@@ -140,14 +172,14 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
                 
     def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""
-        intp = self.ctx.intp
+        intp_workchain = self.ctx.workchain_intp
 
-        if not intp.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {intp.exit_status}')
+        if not intp_workchain.is_finished_ok:
+            self.report(f'`epw.x` failed with exit status {intp_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_ISO
 
         inputs = {
-                'max_eigenvalue':intp.outputs.max_eigenvalue,
+                'max_eigenvalue':intp_workchain.outputs.max_eigenvalue,
                 'metadata': {
                     'call_link_label': 'calculate_iso_tc'
                 }
@@ -160,27 +192,6 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         
         super().results()
         
-        self.out('a2f', self.ctx.intp.outputs.a2f)
-        self.out('max_eigenvalue', self.ctx.intp.outputs.max_eigenvalue)
-        self.out('Tc_iso', self.ctx.Tc_iso)
-    def on_terminated(self):
-        """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
-        super().on_terminated()
-
-        if self.inputs.clean_workdir.value is False:
-            self.report('remote folders will not be cleaned')
-            return
-
-        cleaned_calcs = []
-
-        for called_descendant in self.node.called_descendants:
-            if isinstance(called_descendant, orm.CalcJobNode):
-                try:
-                    called_descendant.outputs.remote_folder._clean()  # pylint: disable=protected-access
-                    cleaned_calcs.append(called_descendant.pk)
-                except (IOError, OSError, KeyError):
-                    pass
-
-        if cleaned_calcs:
-            self.report(f"cleaned remote folders of calculations: {' '.join(map(str, cleaned_calcs))}")
-
+        # self.out('a2f', self.ctx.intp.outputs.a2f)
+        # self.out('max_eigenvalue', self.ctx.intp.outputs.max_eigenvalue)
+        # self.out('Tc_iso', self.ctx.Tc_iso)

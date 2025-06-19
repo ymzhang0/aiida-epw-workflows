@@ -12,10 +12,10 @@ from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance i
 from .intp import EpwBaseIntpWorkChain
 
 from ..common.restart import RestartType
-
 from scipy.interpolate import interp1d
 import numpy
 
+from importlib.resources import files
 
 @calcfunction
 def calculate_iso_tc(max_eigenvalue: orm.XyData) -> orm.Float:
@@ -46,7 +46,7 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the anisotropic critical temperature."""
     
     _INTP_NAMESPACE = 'aniso'
-    _RESTART_INTP = RestartType.RESTART_ANISO
+    
     _frozen_restart_parameters = {
         'INPUTEPW': {
             'elph': False,
@@ -64,12 +64,23 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         ('INPUTEPW', 'vme'),
     ]
     
-    
+    _DEFAULT_FILIROBJ = "ir_nlambda6_ndigit8.dat"
     _frozen_plot_gap_function_parameters = {
         'INPUTEPW': {
             'iverbosity': 2,
         }
     }
+    
+    _frozen_ir_parameters = {
+        'INPUTEPW': {
+            'fbw': True,
+            'muchem': True,
+            'gridsamp': 2,
+            'broyden_beta': -0.7,
+            'filirobj': './' + _DEFAULT_FILIROBJ,
+        }
+    }
+    
     _min_temp = 3.5
     
     @classmethod
@@ -81,7 +92,12 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             help='Whether to plot the gap function.')
         spec.input('use_ir', valid_type=orm.Bool, default=lambda: orm.Bool(False),
             help='Whether to use the intermediate representation.')
-
+        # spec.input(
+        #     'filirobj', 
+        #     valid_type=orm.SinglefileData, 
+        #     help='The file containing the intermediate representation.',
+        #     required=False,
+        # )
         spec.outline(
             cls.setup,
             if_(cls.should_run_b2w)(
@@ -115,11 +131,10 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
     def validate_inputs(cls, value, port_namespace):  # pylint: disable=unused-argument
         """Validate the top level namespace."""
 
-        # if not ('qfpoints_distance' in port_namespace or 'qfpoints' in port_namespace):
-        #     return "Neither `qfpoints` nor `qfpoints_distance` were specified."
-
         if not ('parent_epw_folder' in port_namespace or 'epw' in port_namespace):
             return "Only one of `parent_epw_folder` or `epw` can be accepted."
+        
+        return None
 
     @classmethod
     def get_builder_from_protocol(
@@ -127,7 +142,6 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             codes, 
             structure, 
             protocol=None, 
-            from_workchain=None,
             overrides=None, 
             **kwargs
         ):
@@ -137,9 +151,7 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             codes, 
             structure, 
             protocol, 
-            from_workchain,
             overrides,
-            restart_intp=cls._RESTART_INTP,
             **kwargs
         )
         
@@ -171,15 +183,26 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
                 'aiida.lambda.frmsf',
                 ])
             
+        from importlib.resources import files
+        if self.inputs.use_ir.value:
+            for namespace, _parameters in self._frozen_ir_parameters.items():
+                for keyword, value in _parameters.items():
+                    parameters[namespace][keyword] = value
+            
+            filirobj = orm.SinglefileData(
+                file=files('aiida_supercon.workflows.data.irobjs').joinpath(cls._DEFAULT_FILIROBJ)
+            )
+            
+        
         self.ctx.inputs.epw.settings = orm.Dict(settings)
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 
     def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""
-        intp = self.ctx.intp
+        intp_workchain = self.ctx.workchain_intp
 
-        if not intp.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {intp.exit_status}')
+        if not intp_workchain.is_finished_ok:
+            self.report(f'`epw.x` failed with exit status {intp_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_ANISO
         
         if False:
@@ -191,28 +214,7 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         
         super().results()
         
-        self.out('a2f', self.ctx.intp.outputs.a2f)
-
-    def on_terminated(self):
-        """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
-        super().on_terminated()
-
-        if self.inputs.clean_workdir.value is False:
-            self.report('remote folders will not be cleaned')
-            return
-
-        cleaned_calcs = []
-
-        for called_descendant in self.node.called_descendants:
-            if isinstance(called_descendant, orm.CalcJobNode):
-                try:
-                    called_descendant.outputs.remote_folder._clean()  # pylint: disable=protected-access
-                    cleaned_calcs.append(called_descendant.pk)
-                except (IOError, OSError, KeyError):
-                    pass
-
-        if cleaned_calcs:
-            self.report(f"cleaned remote folders of calculations: {' '.join(map(str, cleaned_calcs))}")
+        # self.out('a2f', self.ctx.workchain_intp.outputs.a2f)
 
     def report_error_handled(self, calculation, action):
         """Report an action taken for a calculation that has failed.

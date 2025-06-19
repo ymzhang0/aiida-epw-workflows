@@ -49,13 +49,19 @@ class EpwParser(BaseParser):
             if (match := pattern_aniso.match(filename))
         ]
 
-        if imag_aniso_filelist is not []:
+        if imag_aniso_filelist != []:
             aniso_gap_functions_arraydata = orm.ArrayData()
+            Ts = []
+            aniso_gap_functions_arrays = []
             for T, imag_aniso_file in imag_aniso_filelist:
                 imag_aniso_file_content = self.retrieved.base.repository.get_object_content(imag_aniso_file)
                 aniso_gap_function = self.parse_aniso_gap_function(imag_aniso_file_content)
-                aniso_gap_functions_arraydata.set_array(T, aniso_gap_function)
+                # aniso_gap_functions_arraydata.set_array(T, aniso_gap_function)
+                Ts.append(T)
+                aniso_gap_functions_arrays.append(aniso_gap_function)
             
+            aniso_gap_functions_arraydata.set_array('temps', numpy.array(Ts))
+            aniso_gap_functions_arraydata.set_array('aniso_gap_functions', numpy.array(aniso_gap_functions_arrays))
             self.out('aniso_gap_functions', aniso_gap_functions_arraydata)
         
         if 'max_eigenvalue' in parsed_data:
