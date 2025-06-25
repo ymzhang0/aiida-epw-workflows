@@ -15,9 +15,10 @@ from ..common.restart import RestartType
 from .base import EpwBaseWorkChain
 from .b2w import EpwB2WWorkChain
 import warnings
+
 class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
     """Work chain to compute the Allen-Dynes critical temperature."""
-    
+
     # --- Child classes should override these placeholders ---
     _B2W_NAMESPACE = 'b2w'  # e.g., 'intp' for A2fWorkChain
     _INTP_NAMESPACE = 'intp'  # e.g., 'a2f' for A2fWorkChain
@@ -29,7 +30,7 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         ('INPUTEPW', 'bands_skipped'),
         ('INPUTEPW', 'vme'),
     ]
-    
+
     @classmethod
     def define(cls, spec):
         """Define the work chain specification."""
@@ -38,9 +39,10 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         # TODO: Seems we don't need structure input port here
         spec.input('structure', valid_type=orm.StructureData)
         spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(False))
-        
+
         spec.expose_inputs(
             EpwB2WWorkChain, namespace=cls._B2W_NAMESPACE, exclude=(
+                'structure',
                 'clean_workdir',
             ),
             namespace_options={
@@ -49,10 +51,11 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
                 'help': 'Inputs for the interpolation `EpwCalculation`s.'
             }
         )
-        
+
         # spec.inputs[cls._B2W_NAMESPACE].validator = None
         spec.expose_inputs(
             EpwBaseWorkChain, namespace=cls._INTP_NAMESPACE, exclude=(
+                'structure',
                 'clean_workdir',
                 'parent_folder_nscf',
                 'parent_folder_ph',
@@ -76,15 +79,15 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             cls.results
         )
         spec.expose_outputs(
-            EpwB2WWorkChain, 
-            namespace=cls._B2W_NAMESPACE, 
+            EpwB2WWorkChain,
+            namespace=cls._B2W_NAMESPACE,
             namespace_options={
                 'required': False,
                 'help': 'Outputs for the `EpwB2WWorkChain`.'
             }
         )
         spec.expose_outputs(
-            EpwBaseWorkChain, 
+            EpwBaseWorkChain,
             namespace=cls._INTP_NAMESPACE,
             exclude=(
                 'remote_folder',
@@ -111,40 +114,58 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
                 ).first().node
         except AttributeError:
             return None
-        
+
+    @classmethod
+    def get_protocol_filepath(cls):
+        """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
+        from importlib_resources import files
+        from . import protocols
+        return files(protocols) / f'{cls._INTP_NAMESPACE}.yaml'
+
+    @classmethod
+    def get_protocol_overrides(cls) -> dict:
+        """Get the ``overrides`` for various input arguments of the ``get_builder_from_protocol()`` method."""
+        from importlib_resources import files
+        import yaml
+
+        from . import protocols
+
+        path = files(protocols) / f"{cls._INTP_NAMESPACE}.yaml"
+        with path.open() as file:
+            return yaml.safe_load(file).get('default_inputs')
 
     @classmethod
     def _get_builder_restart(
-        cls, 
+        cls,
         from_intp_workchain=None,
         ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol."""
         builder = from_intp_workchain.get_builder_restart()
         # parent_builder = from_intp_workchain.get_builder_restart()
-        
+
         b2w = EpwBaseIntpWorkChain.get_descendant(
             from_intp_workchain,
             cls._B2W_NAMESPACE
             )
-        
+
         if (
-            cls._B2W_NAMESPACE not in from_intp_workchain.inputs 
-            or 
+            cls._B2W_NAMESPACE not in from_intp_workchain.inputs
+            or
             b2w.is_finished_ok
             ):
-            
+
             builder.pop(cls._B2W_NAMESPACE)
         else:
             b2w_builder = EpwB2WWorkChain.get_builder_restart(
                 from_b2w_workchain=b2w
                 )
             builder[cls._B2W_NAMESPACE]._data = b2w_builder._data
-        
+
         intp = EpwBaseIntpWorkChain.get_descendant(
             from_intp_workchain,
             cls._INTP_NAMESPACE
             )
-        
+
         if intp and intp.is_finished_ok:
             warnings.warn(
                 f"The Workchain <{from_intp_workchain.pk}> is already finished.",
@@ -153,9 +174,9 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             return
         else:
             builder[cls._INTP_NAMESPACE].parent_folder_epw = intp.inputs.parent_folder_epw
-        
+
             return builder
-    
+
     @classmethod
     def get_builder_restart_from_b2w(
         cls,
@@ -165,20 +186,20 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         **kwargs
         ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol."""
-        
+
         inputs = cls.get_protocol_inputs(protocol, overrides)
-        
+
         builder = cls.get_builder()
 
 
         if not from_b2w_workchain or not from_b2w_workchain.process_class == EpwB2WWorkChain:
             raise ValueError('Currently we only accept `EpwB2WWorkChain`')
-        
+
         structure = from_b2w_workchain.inputs.structure
         code = from_b2w_workchain.inputs[EpwB2WWorkChain._EPW_NAMESPACE]['epw'].code
-        
+
         builder.structure = structure
-        
+
         if from_b2w_workchain.is_finished_ok:
             builder.pop(cls._B2W_NAMESPACE)
         else:
@@ -188,11 +209,11 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
                 overrides=overrides.get(cls._B2W_NAMESPACE, None),
                 **kwargs
                 )
-            
+
             # Actually there is no exclusion of EpwB2WWorkChain namespace
             # So we need to set the _data manually
             builder[cls._B2W_NAMESPACE]._data = b2w_builder._data
-            
+
         intp_builder = EpwBaseWorkChain.get_builder_from_protocol(
             code=code,
             structure=structure,
@@ -200,21 +221,21 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             overrides=inputs.get(cls._INTP_NAMESPACE, None),
             **kwargs
             )
-        
+
         intp_builder.parent_folder_epw = from_b2w_workchain.outputs.epw.remote_folder
-        
+
         builder[cls._INTP_NAMESPACE]._data = intp_builder._data
-        
+
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
-        
+
         return builder
-        
+
     @classmethod
     def get_builder_from_protocol(
-            cls, 
-            codes, 
-            structure, 
-            protocol=None, 
+            cls,
+            codes,
+            structure,
+            protocol=None,
             overrides=None,
             **kwargs
         ):
@@ -230,43 +251,43 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             overrides=inputs.get(cls._B2W_NAMESPACE, {}),
             **kwargs
         )
-        
-        b2w_builder.w90_intp.pop('open_grid')
-        b2w_builder.w90_intp.pop('projwfc')
-        
+
+        # b2w_builder.w90_intp.pop('open_grid')
+        # b2w_builder.w90_intp.pop('projwfc')
+
         builder[cls._B2W_NAMESPACE]._data = b2w_builder._data
-        
+
         intp_builder = EpwBaseWorkChain.get_builder_from_protocol(
             code=codes['epw'],
             structure=structure,
             protocol=protocol,
             overrides=inputs.get(cls._INTP_NAMESPACE, None),
         )
-        
+
         builder[cls._INTP_NAMESPACE]._data = intp_builder._data
 
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
         return builder
-    
+
     def setup(self):
         """Setup steps, i.e. initialise context variables."""
         self.ctx.degaussq = None
         inputs = self.exposed_inputs(EpwBaseWorkChain, namespace=self._INTP_NAMESPACE)
-                
+        inputs.structure = self.inputs.structure
         self.ctx.inputs = inputs
-        
+
     def should_run_b2w(self):
         """Check if the epw loop should continue or not."""
         return self._B2W_NAMESPACE in self.inputs
-    
+
     def run_b2w(self):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
 
         self.report(f'Running B2W...')
         inputs = self.exposed_inputs(EpwB2WWorkChain, namespace=self._B2W_NAMESPACE)
-        
-        
+        inputs.structure = self.inputs.structure
+
         inputs.metadata.call_link_label = self._B2W_NAMESPACE
         workchain_node = self.submit(EpwB2WWorkChain, **inputs)
 
@@ -287,26 +308,26 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         # And the parameter of EpwB2WWorkChain is deduced from the parent_folder_epw
         self.ctx.inputs.parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
 
-        
+
     def prepare_process(self):
         """Prepare the process for the current interpolation distance."""
-        
+
 
         parameters = self.ctx.inputs.epw.parameters.get_dict()
-        
+
         b2w_parameters = self.ctx.inputs.parent_folder_epw.creator.inputs.parameters.get_dict()
-                        
+
         for namespace, keyword in self._blocked_keywords:
             if keyword in b2w_parameters[namespace]:
                 parameters[namespace][keyword] = b2w_parameters[namespace][keyword]
-        
+
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
-        
-        
+
+
     def run_process(self):
         """Prepare the process for the current interpolation distance."""
         inputs = self.ctx.inputs
-        
+
         inputs.metadata.call_link_label = self._INTP_NAMESPACE
         workchain_node = self.submit(EpwBaseWorkChain, **inputs)
 
@@ -316,24 +337,24 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
 
     def results(self):
         """TODO"""
-        
+
         if 'workchain_b2w' in self.ctx:
             self.out_many(
                 self.exposed_outputs(
-                    self.ctx.workchain_b2w, 
-                    EpwB2WWorkChain, 
+                    self.ctx.workchain_b2w,
+                    EpwB2WWorkChain,
                     namespace=self._B2W_NAMESPACE
                     )
             )
-        
+
         self.out_many(
             self.exposed_outputs(
-                self.ctx.workchain_intp, 
-                EpwBaseWorkChain, 
+                self.ctx.workchain_intp,
+                EpwBaseWorkChain,
                 namespace=self._INTP_NAMESPACE
                 )
         )
-        
+
         self.out('output_parameters', self.ctx.workchain_intp.outputs.output_parameters)
         self.out('remote_folder', self.ctx.workchain_intp.outputs.remote_folder)
         # self.out('retrieved', self.ctx.intp.outputs.retrieved)

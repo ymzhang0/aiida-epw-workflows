@@ -1,7 +1,8 @@
 default_inputs:
   clean_workdir: False
-
   iso:
+    kfpoints_factor: 2
+    qfpoints_distance: 0.5
     epw:
       metadata:
         options:

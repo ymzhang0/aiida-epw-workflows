@@ -1,40 +1,29 @@
 # -*- coding: utf-8 -*-
 """Work chain for computing the critical temperature based off an `EpwWorkChain`."""
-from aiida import orm, load_profile
-from aiida.common import AttributeDict
-from aiida.engine import WorkChain, ToContext, while_, if_, append_
 
-from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
-
-from aiida_quantumespresso.calculations.epw import EpwCalculation
-from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-
-from aiida.engine import calcfunction
-
-from scipy.interpolate import interp1d
-import numpy
-import warnings
 
 from .intp import EpwBaseIntpWorkChain
-from .b2w import EpwB2WWorkChain
 
 from .utils.calculators import calculate_iso_tc
 
+from aiida import orm
+
+from aiida.engine import if_
 
 class EpwIsoWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the Allen-Dynes critical temperature."""
-    
+
     _INTP_NAMESPACE = 'iso'
-    
+
     _blocked_keywords = [
         ('INPUTEPW', 'use_ws'),
         ('INPUTEPW', 'nbndsub'),
         ('INPUTEPW', 'bands_skipped'),
         ('INPUTEPW', 'vme'),
     ]
-    
-    _min_temp = 1.0
-    
+
+    _MIN_TEMP = 1.0
+
     @classmethod
     def define(cls, spec):
         """Define the work chain specification."""
@@ -44,7 +33,7 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             help='The estimated Tc for the iso calculation.')
         spec.input('linearized_Eliashberg', valid_type=orm.Bool, default=lambda: orm.Bool(True),
             help='Whether to use the linearized Eliashberg function.')
-        
+
         spec.outline(
             cls.setup,
             if_(cls.should_run_b2w)(
@@ -69,13 +58,13 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         spec.exit_code(402, 'ERROR_SUB_PROCESS_ISO',
             message='The `iso` sub process failed')
 
-    @classmethod
-    def get_protocol_filepath(cls):
-        """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
-        from importlib_resources import files
-        from . import protocols
-        return files(protocols) / f'{cls._INTP_NAMESPACE}.yaml'
-    
+    # @classmethod
+    # def get_protocol_filepath(cls):
+    #     """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
+    #     from importlib_resources import files
+    #     from . import protocols
+    #     return files(protocols) / f'{cls._INTP_NAMESPACE}.yaml'
+
     @classmethod
     def get_builder_restart(
         cls, from_iso_workchain
@@ -84,37 +73,37 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         return super()._get_builder_restart(
             from_intp_workchain=from_iso_workchain,
             )
-        
+
 
     @classmethod
     def get_builder_from_protocol(
-            cls, 
-            codes, 
-            structure, 
-            protocol=None, 
-            overrides=None, 
+            cls,
+            codes,
+            structure,
+            protocol=None,
+            overrides=None,
             **kwargs
         ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol."""
         builder = super().get_builder_from_protocol(
-            codes, 
-            structure, 
-            protocol, 
+            codes,
+            structure,
+            protocol,
             overrides,
             **kwargs
         )
-        
+
         return builder
 
     def prepare_process(self):
         """Prepare the process for the current interpolation distance."""
-        
+
         super().prepare_process()
 
         parameters = self.ctx.inputs.epw.parameters.get_dict()
         temps = f'{self._MIN_TEMP} {self.inputs.estimated_Tc_iso}'
         parameters['INPUTEPW']['temps'] = temps
-        
+
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 
         try:
@@ -131,9 +120,9 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             'aiida.lambda_FS',
             'aiida.lambda_k_pairs'
             ]
-        
+
         self.ctx.inputs.epw.settings = orm.Dict(settings)
-                
+
     def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""
         intp_workchain = self.ctx.workchain_intp
@@ -153,9 +142,9 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
 
     def results(self):
         """TODO"""
-        
+
         super().results()
-        
+
         # self.out('a2f', self.ctx.intp.outputs.a2f)
         self.out('max_eigenvalue', self.ctx.intp.outputs.max_eigenvalue)
         self.out('Tc_iso', self.ctx.Tc_iso)
