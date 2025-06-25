@@ -24,7 +24,7 @@ default_inputs:
         iverbosity: 1
         temps: 300
         vme: 'dipole'
-        use_ws: True
+        # use_ws: True
 
 default_protocol: moderate
 protocols:
