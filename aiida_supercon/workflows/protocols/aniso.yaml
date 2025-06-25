@@ -1,6 +1,9 @@
 default_inputs:
   clean_workdir: False
-
+  estimated_Tc_aniso: 40.0
+  plot_gap_function: True
+  fbw: True
+  use_ir: False
   aniso:
     epw:
       metadata:
@@ -19,8 +22,8 @@ default_inputs:
           wannierize: False
           muc: 0.13
           degaussw: 0.025
-          eps_acustic: 0.1
-          iverbosity: 1
+          # eps_acustic: 0.1
+          # iverbosity: 1
           fsthick: 0.8
           nqstep: 500
           nsiter: 500

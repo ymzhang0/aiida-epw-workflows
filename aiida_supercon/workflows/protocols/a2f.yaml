@@ -8,8 +8,8 @@ default_inputs:
       parameters:
         INPUTEPW:
           eliashberg: True
-          elph: True
-          ep_coupling: True
+          # elph: True
+          # ep_coupling: True
           epwread: True
           epwwrite: False
           ephwrite: True
@@ -17,8 +17,8 @@ default_inputs:
           muc: 0.13
           mp_mesh_k: True
           degaussw: 0.025
-          eps_acustic: 0.1
-          iverbosity: 1
+          # eps_acustic: 0.1
+          # iverbosity: 1
           fsthick: 0.8
           # restart: True
           temps: 1

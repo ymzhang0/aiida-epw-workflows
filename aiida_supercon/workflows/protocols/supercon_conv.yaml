@@ -38,7 +38,7 @@ default_inputs:
         epbread: False
         epbwrite: False
         ephwrite: True
-        eps_acustic: 1
+        eps_acoustic: 1
         epwread: True
         epwwrite: False
         etf_mem: 1

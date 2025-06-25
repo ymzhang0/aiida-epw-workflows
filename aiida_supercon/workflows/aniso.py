@@ -13,7 +13,35 @@ from .intp import EpwBaseIntpWorkChain
 
 
 from importlib.resources import files
+"""
+NOTE:
 
+In this workchain, I use epw.x from EPW 5.9 where the IR representation is implemented.
+
+However, this version of epw.x made several changes that are not compatible with the previous versions.
+
+1.  It fix the typo in previous versions, that is, `eps_acustic` -> `eps_acoustic`.
+
+2.  The format of crystal.fmt file is changed. Previously it is:
+        nat
+        nmode
+        nelec
+        ...
+    And now it is:
+        nat
+        nmode
+        nelec   nbndskp
+        ...
+    
+3.  The epw.x from EPW 5.9 can't prefix.ukk generated from wannier90.
+    Not sure why but I can't fix it. 
+    
+4.  The `epw.x` from EPW 5.9 will try to read 'vmedata.fmt' even if 
+    I set vme = 'dipole'.
+    
+I would suggest to start only from the existing prefix.ephmat folder.
+But this requires another input code. I would temporarily mute use_ir.
+"""
 class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the anisotropic critical temperature."""
     
@@ -36,13 +64,20 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         ('INPUTEPW', 'vme'),
     ]
     
-    _DEFAULT_FILIROBJ = "ir_nlambda6_ndigit8.dat"
+    
     _frozen_plot_gap_function_parameters = {
         'INPUTEPW': {
             'iverbosity': 2,
         }
     }
     
+    _frozen_fbw_parameters = {
+        'INPUTEPW': {
+            'fbw': True,
+        }
+    }
+    
+    _DEFAULT_FILIROBJ = "ir_nlambda6_ndigit8.dat"
     _frozen_ir_parameters = {
         'INPUTEPW': {
             'fbw': True,
@@ -64,14 +99,11 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             help='Whether to plot the gap function.')
         spec.input('estimated_Tc_aniso', valid_type=orm.Float, default=lambda: orm.Float(40.0),
             help='The estimated Tc for the aniso calculation.')
+        spec.input('fbw', valid_type=orm.Bool, default=lambda: orm.Bool(False),
+            help='Whether to use the full bandwidth.')
         spec.input('use_ir', valid_type=orm.Bool, default=lambda: orm.Bool(False),
             help='Whether to use the intermediate representation.')
-        # spec.input(
-        #     'filirobj', 
-        #     valid_type=orm.SinglefileData, 
-        #     help='The file containing the intermediate representation.',
-        #     required=False,
-        # )
+
         spec.outline(
             cls.setup,
             if_(cls.should_run_b2w)(
@@ -130,6 +162,8 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
         """
+        inputs = cls.get_protocol_inputs(protocol, overrides)
+        
         builder = super().get_builder_from_protocol(
             codes, 
             structure, 
@@ -137,6 +171,10 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             overrides,
             **kwargs
         )
+        
+        builder.plot_gap_function = orm.Bool(inputs.get('plot_gap_function', True))
+        builder.fbw = orm.Bool(inputs.get('fbw', False))
+        builder.use_ir = orm.Bool(inputs.get('use_ir', False))
         
         return builder
 
@@ -169,7 +207,12 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
                 'aiida.imag_aniso_gap0_*.frmsf',
                 'aiida.lambda.frmsf',
                 ])
-            
+        
+        if self.inputs.fbw.value:
+            for namespace, _parameters in self._frozen_fbw_parameters.items():
+                for keyword, value in _parameters.items():
+                    parameters[namespace][keyword] = value
+        
         from importlib.resources import files
         if self.inputs.use_ir.value:
             for namespace, _parameters in self._frozen_ir_parameters.items():
@@ -180,11 +223,11 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
 
             parameters['INPUTEPW']['filirobj'] = str(filirobj)
         
-            # IR representation is not compatible with eps_acustic.
+            # EPW 5.9 (IR representation) can't recognize eps_acustic.
             # It might be a bug in the EPW code. 
             # I simply pop it out here.
             
-            parameters['INPUTEPW'].pop('eps_acustic')
+            # parameters['INPUTEPW'].pop('eps_acustic')
 
         self.ctx.inputs.epw.settings = orm.Dict(settings)
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)

@@ -24,8 +24,8 @@ default_inputs:
           tc_linear: True
           tc_linear_solver: 'power'
           degaussw: 0.025
-          eps_acustic: 0.1
-          iverbosity: 1
+          # eps_acustic: 0.1
+          # iverbosity: 1
           fsthick: 0.8
           muc: 0.13
           nqstep: 500

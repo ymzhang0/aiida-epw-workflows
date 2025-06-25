@@ -127,57 +127,6 @@ from .utils.kpoints import is_compatible
 
 from .base import EpwBaseWorkChain
 
-# def validate_inputs_restart(inputs, ctx=None):
-#     """
-#     Validate the inputs based on the chosen `restart_mode`.
-#     This function is called by AiiDA before the workchain runs.
-#     """
-#     # The `inputs` argument is a dictionary-like object with the user-provided inputs
-#     restart_mode = inputs['restart_mode'].value # .value gives the string, e.g., 'from_phonon'
-
-#     if restart_mode == RestartType.FROM_SCRATCH.value:
-#         overrides = inputs.get('overrides', None)
-#         if overrides:
-#             return "For 'FROM_SCRATCH' mode, the 'overrides' namespace should not be provided."
-
-#     elif restart_mode == RestartType.RESTART_WANNIER.value:
-#         overrides = inputs.get('overrides', None)
-#         if overrides:
-#             if 'ph_base' not in overrides or not (
-#                 'parent_folder_ph' in overrides['ph_base']
-#                 ):
-#                 return "For 'RESTART_WANNIER' mode, 'overrides.ph_base' must be provided."
-#         else:
-            # return "For 'RESTART_WANNIER' mode, the 'overrides.ph_base' namespace is required."
-    # elif restart_mode == RestartType.RESTART_EPW.value:
-    #     overrides = inputs.get('overrides', None)
-    #     if overrides:
-    #         if 'epw' not in overrides or not (
-    #             'parent_folder_epw' in overrides['epw']
-    #             ):
-    #             return "For 'RESTART_EPW' mode, 'overrides.epw' must be provided."
-    #     else:
-    #         return "For 'RESTART_EPW' mode, the 'overrides' namespace is required."
-        
-    #     # Check that the required data for this mode is present
-    #     required_keys = ['w90_intp', 'ph_base', 'epw']
-    #     for key in required_keys:
-    #         if key not in inputs['overrides']:
-    #             return f"For 'FROM_PHONON' mode, 'overrides.{key}' must be provided."
-    # if restart_mode == RestartType.RESTART_PHONON.value:
-    #     overrides = inputs.get('overrides', None)
-    #     if overrides:
-    #         if 'w90_intp' not in overrides:
-    #             return "For 'RESTART_PHONON' mode, 'overrides.ph_base' must be provided."
-    #         if 'ph_base' in overrides:
-    #             return "For 'RESTART_PHONON' mode, 'overrides.ph_base' should not be provided."
-    #     else:
-    #         return "For 'RESTART_PHONON' mode, the 'overrides' namespace is required."
-
-    # If everything is fine, return None
-    # return None
-        
-
         
 class EpwB2WWorkChain(ProtocolMixin, WorkChain):
     """Main work chain to start calculating properties using EPW.
@@ -221,7 +170,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         if hasattr(inputs, 'w90_intp'):
             validate_inputs_w90_intp(inputs)
         else:
-            print('validate nothing')
+            pass
         
         return None
 
@@ -473,6 +422,9 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
         """
         
+        if from_ph_workchain.process_label != 'PhBaseWorkChain':
+            raise ValueError('Currently we only accept a finished `PhBaseWorkChain`')
+        
         inputs = cls.get_protocol_inputs(protocol, overrides)
         
         from aiida_quantumespresso.calculations.pw import PwCalculation
@@ -480,8 +432,8 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         if not from_ph_workchain or not from_ph_workchain.is_finished_ok:
             raise ValueError('Currently we only accept a finished `PhBaseWorkChain`')
                 
-        builder = cls.get_builder()
-        builder.pop(cls._PH_NAMESPACE)
+        # builder = cls.get_builder()
+        # builder.pop(cls._PH_NAMESPACE)
 
         # Currently we assume that the parent folder is created by a `PwCalculation`
         # So a StructureData is always associated with it.
@@ -489,22 +441,35 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         
         parent_calcjob = from_ph_workchain.inputs.ph.parent_folder.creator
         
-        if parent_calcjob.process_class != PwCalculation:
+        if parent_calcjob.process_label != 'PwCalculation':
             raise ValueError('Cannot find the structure associated with this `PhBaseWorkChain`')
         
         structure = parent_calcjob.inputs.structure
         
-        builder.structure = structure
-        w90_intp = Wannier90OptimizeWorkChain.get_builder_from_protocol(
+        builder = cls.get_builder_from_protocol(
             codes=codes,
             structure=structure,
             protocol=protocol,
-            overrides=inputs.get(cls._W90_NAMESPACE, {}),
-            pseudo_family=inputs.get(cls._W90_NAMESPACE, {}).get('pseudo_family', None),
+            overrides=inputs,
             **kwargs
         )
         
-        builder[cls._W90_NAMESPACE]._data = w90_intp._data
+        builder.pop(cls._PH_NAMESPACE)
+        # builder.structure = structure
+        # w90_intp = Wannier90OptimizeWorkChain.get_builder_from_protocol(
+        #     codes=codes,
+        #     structure=structure,
+        #     protocol=protocol,
+        #     overrides=inputs.get(cls._W90_NAMESPACE, {}),
+        #     pseudo_family=inputs.get(cls._W90_NAMESPACE, {}).get('pseudo_family', None),
+        #     projection_type=kwargs.get('wannier_projection_type', WannierProjectionType.ATOMIC_PROJECTORS_QE),
+        #     reference_bands=kwargs.get('reference_bands', None),
+        #     bands_kpoints=kwargs.get('bands_kpoints', None),
+        # )
+        
+        builder[cls._W90_NAMESPACE].pop('projwfc', None)
+        builder[cls._W90_NAMESPACE].pop('open_grid', None)
+        # builder[cls._W90_NAMESPACE]._data = w90_intp._data
         
         builder[cls._W90_NAMESPACE].optimize_disproj = orm.Bool(False)
         
@@ -523,7 +488,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         if 'qpoints_distance' in from_ph_workchain.inputs:
             builder.qpoints_distance = orm.Float(from_ph_workchain.inputs.qpoints_distance)
         
-        builder.kpoints_factor_nscf = orm.Int(inputs.get('kpoints_factor_nscf'))
+        # builder.kpoints_factor_nscf = orm.Int(inputs.get('kpoints_factor_nscf'))
         
         return builder
 
@@ -698,7 +663,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         builder[cls._EPW_NAMESPACE]._data = epw._data
 
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
-        builder._inputs(prune=True)
+        # builder._inputs(prune=True)
 
         return builder
 
@@ -750,6 +715,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             self.exposed_inputs(Wannier90OptimizeWorkChain, namespace=self._W90_NAMESPACE)
         )
         
+        # TODO: Remove this once we have a better way to handle the kpoints
         try:
             settings = inputs.wannier90.wannier90.settings.get_dict()
         except AttributeError:
@@ -761,7 +727,10 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = self._W90_NAMESPACE
         
         set_kpoints(inputs, self.ctx.kpoints_nscf, Wannier90OptimizeWorkChain)
-
+        
+        # TODO: Remove this once we have a better way to handle the kpoints
+        inputs.scf.pop('kpoints', None)
+        
         workchain_node = self.submit(Wannier90OptimizeWorkChain, **inputs)
         self.report(f'launching wannier90 work chain {workchain_node.pk}')
 
@@ -780,7 +749,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         if not workchain.is_finished_ok:
             self.report(f'`Wannier90BandsWorkChain` failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90
-
         
     def should_run_ph(self):
         """Check if the phonon workflow should be run."""

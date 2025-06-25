@@ -231,17 +231,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 ).all()
         except AttributeError:
             return None
-    @classmethod
-    def get_builder_restart_from_ph(
-        cls,
-        from_ph_workchain: orm.WorkChainNode,
-        protocol=None,
-        overrides=None,
-        **kwargs
-        ):
-        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
-        pass
-    
+
     def get_builder_restart_from_b2w(
         cls,
         from_b2w_workchain: orm.WorkChainNode,
@@ -484,7 +474,108 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 return builder
         else:
             raise Warning('The `EpwSuperConWorkChain` has already finished.')
-                
+    
+    @classmethod
+    def get_builder_restart_from_ph(
+            cls, 
+            from_ph_workchain: orm.WorkChainNode,
+            codes,
+            protocol=None,
+            overrides=None,
+            **kwargs
+        ):
+        """Return a builder prepopulated with inputs selected according to the chosen protocol.
+
+        :TODO:
+        """
+        
+        structure = from_ph_workchain.inputs.ph.parent_folder.creator.inputs.structure
+        
+        inputs = cls.get_protocol_inputs(protocol, overrides)
+        
+        b2w_builder = EpwB2WWorkChain.get_builder_restart_from_phonon(
+            from_ph_workchain=from_ph_workchain,
+            codes=codes,
+            protocol=protocol,
+            overrides=inputs.get(EpwA2fWorkChain._B2W_NAMESPACE, None),
+            **kwargs
+        )
+        
+        # b2w_builder.w90_intp.pop('open_grid')
+        # b2w_builder.w90_intp.pop('projwfc')
+        
+        builder = cls.get_builder_from_protocol(
+            codes=codes,
+            structure=structure,
+            protocol=protocol,
+            overrides=inputs,
+            **kwargs
+        )
+        
+        builder[EpwA2fWorkChain._B2W_NAMESPACE]._data = b2w_builder._data
+            
+        return builder
+
+    @classmethod
+    def get_builder_restart_from_epw_stash(
+            cls, 
+            from_epw_stash_folder,
+            protocol=None,
+            overrides=None,
+            **kwargs
+        ):
+        """Return a builder prepopulated with inputs selected according to the chosen protocol.
+
+        :TODO:
+        """
+        
+        if not isinstance(from_epw_stash_folder, (orm.RemoteData, orm.RemoteStashFolderData)):
+            raise ValueError('The `from_epw_stash_folder` must be a `RemoteData` or `RemoteStashFolderData` node.')
+        
+        structure = from_epw_stash_folder.creator.caller.inputs.structure
+        code = from_epw_stash_folder.creator.inputs.code
+        
+        args = (code, structure, protocol)
+        
+        inputs = cls.get_protocol_inputs(protocol, overrides)
+        
+
+        builder = cls.get_builder()
+        
+        builder.pop(EpwA2fWorkChain._B2W_NAMESPACE)
+
+        from aiida_quantumespresso.workflows.protocols.utils import recursive_merge
+        
+        for epw_class in (
+            EpwA2fWorkChain,
+            EpwIsoWorkChain,
+            EpwAnisoWorkChain,
+        ):
+            epw_namespace = epw_class._INTP_NAMESPACE
+            
+            overrides_intp = recursive_merge(
+                epw_class.get_protocol_overrides().get('default_inputs').get(epw_namespace, None), 
+                overrides.get(epw_namespace, None).get(epw_namespace, None)
+            )
+            epw_builder = EpwBaseWorkChain.get_builder_from_protocol(
+                *args,
+                overrides=overrides_intp,
+                **kwargs
+            )
+            
+            builder[epw_namespace].pop(EpwA2fWorkChain._B2W_NAMESPACE)
+            builder[epw_namespace].structure = structure
+            builder[epw_namespace][epw_namespace]._data = epw_builder._data
+            
+        builder[EpwA2fWorkChain._INTP_NAMESPACE][EpwA2fWorkChain._INTP_NAMESPACE].parent_folder_epw = from_epw_stash_folder
+        
+        builder.interpolation_distances = orm.List(inputs.get('interpolation_distances', None))
+        builder.convergence_threshold = orm.Float(inputs['convergence_threshold'])
+        builder.always_run_final = orm.Bool(inputs.get('always_run_final', True))
+        builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
+        
+        return builder
+                                        
     @classmethod
     def get_builder_from_protocol(
             cls, 
@@ -600,7 +691,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if not b2w_workchain.is_finished_ok:
             self.report(f'`epw.x` failed with exit status {b2w_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_B2W
-    
+
     def prepare_intp(self):
         """Prepare the inputs for the interpolation workflow."""
         

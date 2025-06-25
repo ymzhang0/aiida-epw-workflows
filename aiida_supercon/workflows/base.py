@@ -316,6 +316,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         if not w90_workchain:
             # If there's no caller, we can't use Strategies 2 & 3.
             # We must fall back to the last resort.
+            self.report("K-point mesh search: Deduce from coordinates...")
             return self._deduce_mesh_from_explicit_kpoints(pw_calc.inputs.kpoints)
 
         # Check if the caller is a Wannier90 workchain and look for `mp_grid`.
@@ -327,6 +328,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         elif w90_workchain.process_class is Wannier90BandsWorkChain:
             wannier_params = w90_workchain.inputs.wannier.parameters.get_dict()
         else:
+            self.report("K-point mesh search: Deduce from coordinates...")
             return self._deduce_mesh_from_explicit_kpoints(pw_calc.inputs.kpoints)
     
         if 'mp_grid' in wannier_params:
@@ -339,7 +341,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
     def _deduce_mesh_from_explicit_kpoints(self, kpoints_node):
         """The fallback strategy: deduce mesh from a list of k-points."""
-        self.report("K-point mesh search: Deduce from coordinates...")
+        # self.report("K-point mesh search: Deduce from coordinates...")
         try:
             import numpy as np
             explicit_kpoints = kpoints_node.get_kpoints()
@@ -582,3 +584,14 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """
         self.report_error_handled(calculation, 'known unrecoverable failure detected, aborting...')
         return ProcessHandlerReport(True, self.exit_codes.ERROR_KNOWN_UNRECOVERABLE_FAILURE)
+
+    @process_handler(priority=413, exit_codes=[
+        EpwCalculation.exit_codes.ERROR_CONVERGENCE_TC_LINEAR_NOT_REACHED,
+    ])
+    def handle_convergence_tc_linear_not_reached(self, calculation):
+        """Handle `ERROR_CONVERGENCE_TC_LINEAR_NOT_REACHED`: consider finished."""
+        self.ctx.is_finished = True
+        action = 'Convergence (tc_linear) was not reached. But it is acceptable if Tc can be estimated.'
+        self.report_error_handled(calculation, action)
+        self.results()  # Call the results method to attach the output nodes
+        return ProcessHandlerReport(True, self.exit_codes.ERROR_CONVERGENCE_TC_LINEAR_NOT_REACHED)

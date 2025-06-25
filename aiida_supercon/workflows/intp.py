@@ -112,7 +112,18 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         except AttributeError:
             return None
         
+    @classmethod
+    def get_protocol_overrides(cls) -> dict:
+        """Get the ``overrides`` for various input arguments of the ``get_builder_from_protocol()`` method."""
+        from importlib_resources import files
+        import yaml
 
+        from . import protocols
+
+        path = files(protocols) / f"{cls._INTP_NAMESPACE}.yaml"
+        with path.open() as file:
+            return yaml.safe_load(file)
+        
     @classmethod
     def _get_builder_restart(
         cls, 
