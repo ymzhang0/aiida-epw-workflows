@@ -1,15 +1,19 @@
-# .readthedocs.yml
+# .readthedocs.yml - Final Correct Version
 
 version: 2
 
-# Specify the build environment
-# This section is required for the v2 config file.
+# 1. Specify the build environment
 build:
   os: "ubuntu-22.04"
   tools:
     python: "3.11"
 
-# Specify how to install Python dependencies
+# 2. Specify the path to the Sphinx configuration file
+#    THIS IS THE NEW PART
+sphinx:
+  configuration: docs/conf.py
+
+# 3. Specify how to install Python dependencies
 python:
   install:
     - method: pip
