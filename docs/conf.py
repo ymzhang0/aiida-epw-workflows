@@ -6,9 +6,9 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'aiida-qe-super'
+project = 'aiida-epw'
 copyright = '2024, Marnik Bercx'
-author = 'Marnik Bercx'
+author = 'Marnik Bercx, Yiming Zhang'
 release = '0.1.0'
 
 # -- General configuration ---------------------------------------------------
