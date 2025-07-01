@@ -32,6 +32,15 @@ dependencies = [
 Source = "https://github.com/mbercx/aiida-supercon"
 
 [project.optional-dependencies]
+
+# Group for documentation-specific dependencies
+docs = [
+    "myst-parser",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-book-theme"
+]
+
 dev = [
     "pytest",
     "pre-commit",
@@ -52,11 +61,12 @@ dev = [
 [project.entry-points.'aiida.workflows']
 'epw.base' = 'aiida_supercon.workflows.base:EpwBaseWorkChain'
 'epw.intp' = 'aiida_supercon.workflows.intp:EpwIntpWorkChain'
+'epw.bands' = 'aiida_supercon.workflows.bands:EpwBandsWorkChain'
 'epw.a2f' = 'aiida_supercon.workflows.a2f:EpwA2fWorkChain'
 'epw.iso' = 'aiida_supercon.workflows.iso:EpwIsoWorkChain'
-'epw.aniso' = 'aiida_supercon.workflows.aniso.EpwAnisoWorkChain'
-'epw.supercon' = 'aiida_supercon.workflows.supercon.EpwSuperConWorkChain'
-'epw.transport' = 'aiida_supercon.workflows.transport.EpwTransportWorkChain'
+'epw.aniso' = 'aiida_supercon.workflows.aniso:EpwAnisoWorkChain'
+'epw.supercon' = 'aiida_supercon.workflows.supercon:EpwSuperConWorkChain'
+'epw.transport' = 'aiida_supercon.workflows.transport:EpwTransportWorkChain'
 
 [tool.flit.module]
 name = "aiida_supercon"
