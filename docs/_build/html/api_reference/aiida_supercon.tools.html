@@ -1,458 +1,292 @@
 
+
 <!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-
-<html lang="en" data-content_root="../" >
-
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-
-    <title>aiida_supercon.tools package &#8212; aiida-epw 0.1.0 documentation</title>
-  
-  
-  
-  <script data-cfasync="false">
-    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
-    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
-  </script>
-  
-  <!-- Loaded before other Sphinx assets -->
-  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>aiida_supercon.tools package &mdash; aiida-epw 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
 
   
-  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
-<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
-<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
-
-    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
-    <link rel="stylesheet" href="../_static/styles/sphinx-book-theme.css?digest=14f4ca6b54d191a8c7657f6c759bf11a5fb86285" type="text/css" />
-  
-  <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
-<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
-  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
-
-    <script src="../_static/documentation_options.js?v=c88f2e48"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
-    <script src="../_static/scripts/sphinx-book-theme.js?digest=5a5c038af52cf7bc1a1ec88eea08e6366ee68824"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'api_reference/aiida_supercon.tools';</script>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=2389946f"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="aiida_supercon.workflows package" href="aiida_supercon.workflows.html" />
-    <link rel="prev" title="aiida_supercon.parsers package" href="aiida_supercon.parsers.html" />
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <meta name="docsearch:language" content="en"/>
-  </head>
-  
-  
-  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+    <link rel="prev" title="aiida_supercon.parsers package" href="aiida_supercon.parsers.html" /> 
+</head>
 
-  
-  
-  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
-  
-  <div id="pst-scroll-pixel-helper"></div>
-  
-  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
-    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
 
-  
-  <input type="checkbox"
-          class="sidebar-toggle"
-          id="pst-primary-sidebar-checkbox"/>
-  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
-  
-  <input type="checkbox"
-          class="sidebar-toggle"
-          id="pst-secondary-sidebar-checkbox"/>
-  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
-  
-  <div class="search-button__wrapper">
-    <div class="search-button__overlay"></div>
-    <div class="search-button__search-container">
-<form class="bd-search d-flex align-items-center"
-      action="../search.html"
-      method="get">
-  <i class="fa-solid fa-magnifying-glass"></i>
-  <input type="search"
-         class="form-control"
-         name="q"
-         id="search-input"
-         placeholder="Search..."
-         aria-label="Search..."
-         autocomplete="off"
-         autocorrect="off"
-         autocapitalize="off"
-         spellcheck="false"/>
-  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
-</form></div>
-  </div>
-
-  <div class="pst-async-banner-revealer d-none">
-  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            aiida-epw
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
 </div>
-
-  
-    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
-    </header>
-  
-
-  <div class="bd-container">
-    <div class="bd-container__inner bd-page-width">
-      
-      
-      
-      <div class="bd-sidebar-primary bd-sidebar">
-        
-
-  
-  <div class="sidebar-header-items sidebar-primary__section">
-    
-    
-    
-    
-  </div>
-  
-    <div class="sidebar-primary-items__start sidebar-primary__section">
-        <div class="sidebar-primary-item">
-
-  
-    
-  
-
-<a class="navbar-brand logo" href="../index.html">
-  
-  
-  
-  
-  
-  
-    <p class="title logo__title">aiida-epw 0.1.0 documentation</p>
-  
-</a></div>
-        <div class="sidebar-primary-item"><nav class="bd-links" id="bd-docs-nav" aria-label="Main">
-    <div class="bd-toc-item navbar-nav active">
-        <p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="current nav bd-sidenav">
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Quick Start</a></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../developer_guide/index.html">Developer Guide</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../developer_guide/workflows.html">Project Structure</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../developer_guide/index.html">Developer Guide</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">aiida_supercon</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="aiida_supercon.html">aiida_supercon package</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="aiida_supercon.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="aiida_supercon.data.html">aiida_supercon.data package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="aiida_supercon.parsers.html">aiida_supercon.parsers package</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">aiida_supercon.tools package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="aiida_supercon.workflows.html">aiida_supercon.workflows package</a></li>
 </ul>
-</details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="modules.html">aiida_supercon</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l2 current active has-children"><a class="reference internal" href="aiida_supercon.html">aiida_supercon package</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l3"><a class="reference internal" href="aiida_supercon.data.html">aiida_supercon.data package</a></li>
-<li class="toctree-l3"><a class="reference internal" href="aiida_supercon.parsers.html">aiida_supercon.parsers package</a></li>
-<li class="toctree-l3 current active"><a class="current reference internal" href="#">aiida_supercon.tools package</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="aiida_supercon.workflows.html">aiida_supercon.workflows package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l4"><a class="reference internal" href="aiida_supercon.workflows.controllers.html">aiida_supercon.workflows.controllers package</a></li>
-<li class="toctree-l4"><a class="reference internal" href="aiida_supercon.workflows.protocols.html">aiida_supercon.workflows.protocols package</a></li>
-</ul>
-</details></li>
-</ul>
-</details></li>
-</ul>
-</details></li>
-</ul>
-
-    </div>
-</nav></div>
-    </div>
-  
-  
-  <div class="sidebar-primary-items__end sidebar-primary__section">
-  </div>
-  
-  <div id="rtd-footer-container"></div>
-
-
-      </div>
-      
-      <main id="main-content" class="bd-main" role="main">
-        
-        
-
-<div class="sbt-scroll-pixel-helper"></div>
-
-          <div class="bd-content">
-            <div class="bd-article-container">
-              
-              <div class="bd-header-article d-print-none">
-<div class="header-article-items header-article__inner">
-  
-    <div class="header-article-items__start">
-      
-        <div class="header-article-item"><label class="sidebar-toggle primary-toggle btn btn-sm" for="__primary" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
-  <span class="fa-solid fa-bars"></span>
-</label></div>
-      
-    </div>
-  
-  
-    <div class="header-article-items__end">
-      
-        <div class="header-article-item">
-
-<div class="article-header-buttons">
-
-
-
-
-
-<div class="dropdown dropdown-download-buttons">
-  <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Download this page">
-    <i class="fas fa-download"></i>
-  </button>
-  <ul class="dropdown-menu">
-      
-      
-      
-      <li><a href="../_sources/api_reference/aiida_supercon.tools.rst" target="_blank"
-   class="btn btn-sm btn-download-source-button dropdown-item"
-   title="Download source file"
-   data-bs-placement="left" data-bs-toggle="tooltip"
->
-  
-
-<span class="btn__icon-container">
-  <i class="fas fa-file"></i>
-  </span>
-<span class="btn__text-container">.rst</span>
-</a>
 </li>
-      
-      
-      
-      
-      <li>
-<button onclick="window.print()"
-  class="btn btn-sm btn-download-pdf-button dropdown-item"
-  title="Print to PDF"
-  data-bs-placement="left" data-bs-toggle="tooltip"
->
-  
-
-<span class="btn__icon-container">
-  <i class="fas fa-file-pdf"></i>
-  </span>
-<span class="btn__text-container">.pdf</span>
-</button>
-</li>
-      
-  </ul>
-</div>
-
-
-
-
-<button onclick="toggleFullScreen()"
-  class="btn btn-sm btn-fullscreen-button"
-  title="Fullscreen mode"
-  data-bs-placement="bottom" data-bs-toggle="tooltip"
->
-  
-
-<span class="btn__icon-container">
-  <i class="fas fa-expand"></i>
-  </span>
-
-</button>
-
-
-
-<script>
-document.write(`
-  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
-    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
-    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
-    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
-  </button>
-`);
-</script>
-
-
-<script>
-document.write(`
-  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
-    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
-  </button>
-`);
-</script>
-<label class="sidebar-toggle secondary-toggle btn btn-sm" for="__secondary"title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
-    <span class="fa-solid fa-list"></span>
-</label>
-</div></div>
-      
-    </div>
-  
-</div>
-</div>
-              
-              
-
-<div id="jb-print-docs-body" class="onlyprint">
-    <h1>aiida_supercon.tools package</h1>
-    <!-- Table of contents -->
-    <div id="print-main-content">
-        <div id="jb-print-toc">
-            
-            <div>
-                <h2> Contents </h2>
-            </div>
-            <nav aria-label="Page">
-                <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#submodules">Submodules</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-tools-calculators-module">aiida_supercon.tools.calculators module</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-tools-chk2ukk-module">aiida_supercon.tools.chk2ukk module</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-tools-dos-module">aiida_supercon.tools.dos module</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-tools-parsers-module">aiida_supercon.tools.parsers module</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-tools-plot-module">aiida_supercon.tools.plot module</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-contents">Module contents</a></li>
+<li class="toctree-l3"><a class="reference internal" href="aiida_supercon.html#module-aiida_supercon">Module contents</a></li>
 </ul>
-            </nav>
+</li>
+</ul>
+</li>
+</ul>
+
         </div>
-    </div>
-</div>
+      </div>
+    </nav>
 
-              
-                
-<div id="searchbox"></div>
-                <article class="bd-article">
-                  
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">aiida-epw</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">&lt;no title&gt;</a></li>
+          <li class="breadcrumb-item"><a href="modules.html">aiida_supercon</a></li>
+          <li class="breadcrumb-item"><a href="aiida_supercon.html">aiida_supercon package</a></li>
+      <li class="breadcrumb-item active">aiida_supercon.tools package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api_reference/aiida_supercon.tools.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
   <section id="aiida-supercon-tools-package">
-<h1>aiida_supercon.tools package<a class="headerlink" href="#aiida-supercon-tools-package" title="Link to this heading">#</a></h1>
+<h1>aiida_supercon.tools package<a class="headerlink" href="#aiida-supercon-tools-package" title="Link to this heading"></a></h1>
 <section id="submodules">
-<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">#</a></h2>
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
 </section>
-<section id="aiida-supercon-tools-calculators-module">
-<h2>aiida_supercon.tools.calculators module<a class="headerlink" href="#aiida-supercon-tools-calculators-module" title="Link to this heading">#</a></h2>
+<section id="module-aiida_supercon.tools.calculators">
+<span id="aiida-supercon-tools-calculators-module"></span><h2>aiida_supercon.tools.calculators module<a class="headerlink" href="#module-aiida_supercon.tools.calculators" title="Link to this heading"></a></h2>
+<p>Calculators for the superconductivity analysis.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.calculators.allen_dynes">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.calculators.</span></span><span class="sig-name descname"><span class="pre">allen_dynes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lambo</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">omega_log</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mu_star</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/calculators.html#allen_dynes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.calculators.allen_dynes" title="Link to this definition"></a></dt>
+<dd><p>Calculate the Allen-Dynes critical temperature Tc.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.calculators.calculate_lambda_omega">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.calculators.</span></span><span class="sig-name descname"><span class="pre">calculate_lambda_omega</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">frequency</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spectrum</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">_SupportsArray</span><span class="p"><span class="pre">[</span></span><span class="pre">dtype</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">_NestedSequence</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">complex</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span></span></span><a class="reference internal" href="../_modules/aiida_supercon/tools/calculators.html#calculate_lambda_omega"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.calculators.calculate_lambda_omega" title="Link to this definition"></a></dt>
+<dd><p>Calculate lambda and omega_log from the parsed a2F spectrum.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>frequency</strong> – Frequency array on which the a2F spectrum is defined [meV].</p></li>
+<li><p><strong>spectrum</strong> – a2F spectral function values.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple of the calculated lambda and omega_log values.</p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 <section id="aiida-supercon-tools-chk2ukk-module">
-<h2>aiida_supercon.tools.chk2ukk module<a class="headerlink" href="#aiida-supercon-tools-chk2ukk-module" title="Link to this heading">#</a></h2>
+<h2>aiida_supercon.tools.chk2ukk module<a class="headerlink" href="#aiida-supercon-tools-chk2ukk-module" title="Link to this heading"></a></h2>
 </section>
-<section id="aiida-supercon-tools-dos-module">
-<h2>aiida_supercon.tools.dos module<a class="headerlink" href="#aiida-supercon-tools-dos-module" title="Link to this heading">#</a></h2>
+<section id="module-aiida_supercon.tools.dos">
+<span id="aiida-supercon-tools-dos-module"></span><h2>aiida_supercon.tools.dos module<a class="headerlink" href="#module-aiida_supercon.tools.dos" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.dos.get_dos_data">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.dos.</span></span><span class="sig-name descname"><span class="pre">get_dos_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdos_wc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/dos.html#get_dos_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.dos.get_dos_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.dos.get_fermi_dos">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.dos.</span></span><span class="sig-name descname"><span class="pre">get_fermi_dos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdos_data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/dos.html#get_fermi_dos"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.dos.get_fermi_dos" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.dos.get_number_of_electrons_from_pseudos">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.dos.</span></span><span class="sig-name descname"><span class="pre">get_number_of_electrons_from_pseudos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">structure</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pseudo_family</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/dos.html#get_number_of_electrons_from_pseudos"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.dos.get_number_of_electrons_from_pseudos" title="Link to this definition"></a></dt>
+<dd><p>Return the number of electrons that will be present in the structure for each element using pseudos from the given pseudo family.
+:param structure: a <code class="docutils literal notranslate"><span class="pre">StructureData</span></code> node
+:param pseudos_family: AiiDA group of <code class="docutils literal notranslate"><span class="pre">UpfData</span></code> of a given pseudo family
+:returns: the number of electrons and kind charge</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.dos.get_pdos">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.dos.</span></span><span class="sig-name descname"><span class="pre">get_pdos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdos_orbitals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">element</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orbital</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/dos.html#get_pdos"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.dos.get_pdos" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.dos.get_states">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.dos.</span></span><span class="sig-name descname"><span class="pre">get_states</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdos_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">energy_range</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/dos.html#get_states"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.dos.get_states" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.dos.get_super_metric">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.dos.</span></span><span class="sig-name descname"><span class="pre">get_super_metric</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdos_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">super_fermi_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">considered_states_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">states_above_thresh</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.01</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/dos.html#get_super_metric"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.dos.get_super_metric" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.dos.get_widget_data">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.dos.</span></span><span class="sig-name descname"><span class="pre">get_widget_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bands_wc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdos_wc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/dos.html#get_widget_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.dos.get_widget_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 </section>
-<section id="aiida-supercon-tools-parsers-module">
-<h2>aiida_supercon.tools.parsers module<a class="headerlink" href="#aiida-supercon-tools-parsers-module" title="Link to this heading">#</a></h2>
+<section id="module-aiida_supercon.tools.parsers">
+<span id="aiida-supercon-tools-parsers-module"></span><h2>aiida_supercon.tools.parsers module<a class="headerlink" href="#module-aiida_supercon.tools.parsers" title="Link to this heading"></a></h2>
+<p>Parsers for the various superconductivity outputs.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.parsers.parse_a2F">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.parsers.</span></span><span class="sig-name descname"><span class="pre">parse_a2F</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_content</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/parsers.html#parse_a2F"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.parsers.parse_a2F" title="Link to this definition"></a></dt>
+<dd><p>Parse a Quantum ESPRESSO <code class="docutils literal notranslate"><span class="pre">.a2F</span></code> file containing the spectral function.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.parsers.parse_epw_a2f">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.parsers.</span></span><span class="sig-name descname"><span class="pre">parse_epw_a2f</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_content</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/parsers.html#parse_epw_a2f"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.parsers.parse_epw_a2f" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.parsers.parse_lambda">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.parsers.</span></span><span class="sig-name descname"><span class="pre">parse_lambda</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_content</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/parsers.html#parse_lambda"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.parsers.parse_lambda" title="Link to this definition"></a></dt>
+<dd><p>Parse a Quantum ESPRESSO <code class="docutils literal notranslate"><span class="pre">lambda</span></code> file.</p>
+</dd></dl>
+
 </section>
-<section id="aiida-supercon-tools-plot-module">
-<h2>aiida_supercon.tools.plot module<a class="headerlink" href="#aiida-supercon-tools-plot-module" title="Link to this heading">#</a></h2>
+<section id="module-aiida_supercon.tools.plot">
+<span id="aiida-supercon-tools-plot-module"></span><h2>aiida_supercon.tools.plot module<a class="headerlink" href="#module-aiida_supercon.tools.plot" title="Link to this heading"></a></h2>
+<p>Temporary home for various plotting tools.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.plot.check_wannier_bands">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.plot.</span></span><span class="sig-name descname"><span class="pre">check_wannier_bands</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">w90_bands_workchain</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bands_workchain_qe</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/plot.html#check_wannier_bands"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.plot.check_wannier_bands" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.plot.check_wannier_optimize">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.plot.</span></span><span class="sig-name descname"><span class="pre">check_wannier_optimize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">w90_optimize_workchain</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/plot.html#check_wannier_optimize"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.plot.check_wannier_optimize" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.plot.create_xticks">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.plot.</span></span><span class="sig-name descname"><span class="pre">create_xticks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">seekpath_params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/plot.html#create_xticks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.plot.create_xticks" title="Link to this definition"></a></dt>
+<dd><p>Create xticks and xtick_labels for a band structure plot from the Seek-path parameters.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.plot.create_xticks_bands">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.plot.</span></span><span class="sig-name descname"><span class="pre">create_xticks_bands</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bands</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">BandsData</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/aiida_supercon/tools/plot.html#create_xticks_bands"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.plot.create_xticks_bands" title="Link to this definition"></a></dt>
+<dd><p>Create xticks and xtick_labels for a band structure plot.</p>
+<p>Takes a BandsData object and returns a tuple of xticks and xtick_labels. The script takes care
+of two things:</p>
+<ol class="arabic simple">
+<li><p>If the last label of a segment is not the same as the first label of the next segment, a
+vertical line is added between the two symmetry point labels.</p></li>
+<li><p>In case the label is “GAMMA”, it is replaced with the greek capital letter gamma, as is the
+convention.</p></li>
+</ol>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.plot.find_clusters">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.plot.</span></span><span class="sig-name descname"><span class="pre">find_clusters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">temps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delta_nk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">threshold</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/plot.html#find_clusters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.plot.find_clusters" title="Link to this definition"></a></dt>
+<dd><p>Find the clusters of temperatures where the gap is above a certain threshold</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.plot.fitting_function">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.plot.</span></span><span class="sig-name descname"><span class="pre">fitting_function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">T</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delta_zero</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Tc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/plot.html#fitting_function"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.plot.fitting_function" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.plot.plot_a2f">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.plot.</span></span><span class="sig-name descname"><span class="pre">plot_a2f</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a2f</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">XyData</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/plot.html#plot_a2f"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.plot.plot_a2f" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.plot.plot_aniso">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.plot.</span></span><span class="sig-name descname"><span class="pre">plot_aniso</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">epw_calc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_temps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_fit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/plot.html#plot_aniso"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.plot.plot_aniso" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.plot.plot_bands">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.plot.</span></span><span class="sig-name descname"><span class="pre">plot_bands</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bands</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">BandsData</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_energy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seekpath_params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/plot.html#plot_bands"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.plot.plot_bands" title="Link to this definition"></a></dt>
+<dd><p>Plot a band structure from a <code class="docutils literal notranslate"><span class="pre">BandsData</span></code> node.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="aiida_supercon.tools.plot.plot_bands_comparison">
+<span class="sig-prename descclassname"><span class="pre">aiida_supercon.tools.plot.</span></span><span class="sig-name descname"><span class="pre">plot_bands_comparison</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bands_qe</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bands_w90</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fermi_qe</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fermi_w90</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aiida_supercon/tools/plot.html#plot_bands_comparison"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aiida_supercon.tools.plot.plot_bands_comparison" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 </section>
-<section id="module-contents">
-<h2>Module contents<a class="headerlink" href="#module-contents" title="Link to this heading">#</a></h2>
+<section id="module-aiida_supercon.tools">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-aiida_supercon.tools" title="Link to this heading"></a></h2>
 </section>
 </section>
 
 
-                </article>
-              
-
-              
-              
-              
-              
-                <footer class="prev-next-footer d-print-none">
-                  
-<div class="prev-next-area">
-    <a class="left-prev"
-       href="aiida_supercon.parsers.html"
-       title="previous page">
-      <i class="fa-solid fa-angle-left"></i>
-      <div class="prev-next-info">
-        <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">aiida_supercon.parsers package</p>
-      </div>
-    </a>
-    <a class="right-next"
-       href="aiida_supercon.workflows.html"
-       title="next page">
-      <div class="prev-next-info">
-        <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">aiida_supercon.workflows package</p>
-      </div>
-      <i class="fa-solid fa-angle-right"></i>
-    </a>
-</div>
-                </footer>
-              
-            </div>
-            
-            
-              
-                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
-
-
-  <div class="sidebar-secondary-item">
-  <div class="page-toc tocsection onthispage">
-    <i class="fa-solid fa-list"></i> Contents
-  </div>
-  <nav class="bd-toc-nav page-toc">
-    <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#submodules">Submodules</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-tools-calculators-module">aiida_supercon.tools.calculators module</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-tools-chk2ukk-module">aiida_supercon.tools.chk2ukk module</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-tools-dos-module">aiida_supercon.tools.dos module</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-tools-parsers-module">aiida_supercon.tools.parsers module</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-tools-plot-module">aiida_supercon.tools.plot module</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-contents">Module contents</a></li>
-</ul>
-  </nav></div>
-
-</div></div>
-              
-            
+           </div>
           </div>
-          <footer class="bd-footer-content">
-            
-<div class="bd-footer-content__inner container">
-  
-  <div class="footer-item">
-    
-<p class="component-author">
-By Marnik Bercx, Yiming Zhang
-</p>
-
-  </div>
-  
-  <div class="footer-item">
-    
-
-  <p class="copyright">
-    
-      © Copyright 2024, Marnik Bercx.
-      <br/>
-    
-  </p>
-
-  </div>
-  
-  <div class="footer-item">
-    
-  </div>
-  
-  <div class="footer-item">
-    
-  </div>
-  
-</div>
-          </footer>
-        
-
-      </main>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="aiida_supercon.parsers.html" class="btn btn-neutral float-left" title="aiida_supercon.parsers package" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="aiida_supercon.workflows.html" class="btn btn-neutral float-right" title="aiida_supercon.workflows package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
-  </div>
-  
-  <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
-<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-  <footer class="bd-footer">
-  </footer>
-  </body>
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Marnik Bercx.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
 </html>

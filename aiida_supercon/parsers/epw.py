@@ -264,6 +264,7 @@ class EpwParser(BaseParser):
 
         return lambda_k_pairs_xydata
 
+    @staticmethod
     def parse_bands(content):
         """Parse the contents of a band structure file."""
         nbnd, nks = (

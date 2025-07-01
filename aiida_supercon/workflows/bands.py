@@ -24,6 +24,11 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
         ('INPUTEPW', 'vme'),
     ]
 
+    _frozen_bands_parameters = {
+        'INPUTEPW': {
+            'band_plot': True,
+        }
+    }
     @classmethod
     def validate_inputs(cls, inputs, ctx=None):
         """Validate the inputs."""
@@ -34,21 +39,20 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
         """Define the work chain specification."""
         super().define(spec)
 
-        # spec.outline(
-        #     cls.setup,
-        #     if_(cls.should_run_b2w)(
-        #         cls.run_b2w,
-        #         cls.inspect_b2w,
-        #     ),
-        #     cls.prepare_process,
-        #     cls.run_process,
-        #     cls.inspect_process,
-        #     cls.results
-        # )
 
         spec.inputs[cls._INTP_NAMESPACE].validator = cls.validate_inputs
         spec.inputs.validator = cls.validate_inputs
 
+        spec.input(
+            'bands_kpoints_distance', valid_type=orm.Float, required=False,
+            help='The distance between the kpoints in the band structure.')
+
+        spec.output(
+            "seekpath_parameters",
+            valid_type=orm.Dict,
+            required=False,
+            help="The parameters used in the SeeKpath call to normalize the input or relaxed structure.",
+        )
         spec.output('el_band_structure', valid_type=orm.BandsData,
                     help='The electronic band structure.')
         spec.output('ph_band_structure', valid_type=orm.BandsData,
@@ -58,6 +62,7 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
             402, 'ERROR_SUB_PROCESS_BANDS',
             message='The `epw.x` workflow failed.'
             )
+
     @classmethod
     def get_protocol_filepath(cls):
         """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
@@ -102,12 +107,16 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
         from aiida_quantumespresso.calculations.functions.seekpath_structure_analysis import seekpath_structure_analysis
 
         inputs = {
-            'reference_distance': self.inputs.get('bands_kpoints_distance', None),
+            "structure": self.inputs.structure,
             'metadata': {
                 'call_link_label': 'seekpath'
             }
         }
-        result = seekpath_structure_analysis(self.inputs.structure, **inputs)
+
+        if 'bands_kpoints_distance' in self.inputs:
+            inputs['reference_distance'] = self.inputs.bands_kpoints_distance
+
+        result = seekpath_structure_analysis(**inputs)
         self.ctx.bands_kpoints = result['explicit_kpoints']
 
         self.out('seekpath_parameters', result['parameters'])
@@ -121,6 +130,14 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
 
         self.ctx.inputs.qfpoints = self.ctx.bands_kpoints
         self.ctx.inputs.kfpoints = self.ctx.bands_kpoints
+
+        parameters = self.ctx.inputs.epw.parameters.get_dict()
+
+        for namespace, _parameters in self._frozen_bands_parameters.items():
+            for keyword, value in _parameters.items():
+                parameters[namespace][keyword] = value
+
+        self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 
     def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""

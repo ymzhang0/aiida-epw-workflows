@@ -1,0 +1,423 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>aiida_supercon.workflows.aniso &mdash; aiida-epw 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=2389946f"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            aiida-epw
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorial.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../developer_guide/index.html">Developer Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_reference/modules.html">aiida_supercon</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">aiida-epw</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">aiida_supercon.workflows.aniso</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for aiida_supercon.workflows.aniso</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;Work chain for computing the critical temperature based off an `EpwWorkChain`.&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">aiida</span><span class="w"> </span><span class="kn">import</span> <span class="n">orm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">aiida.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">AttributeDict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">aiida.engine</span><span class="w"> </span><span class="kn">import</span> <span class="n">WorkChain</span><span class="p">,</span> <span class="n">ToContext</span><span class="p">,</span> <span class="n">if_</span><span class="p">,</span> <span class="n">process_handler</span><span class="p">,</span> <span class="n">calcfunction</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">aiida_quantumespresso.workflows.protocols.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProtocolMixin</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">aiida_quantumespresso.calculations.epw</span><span class="w"> </span><span class="kn">import</span> <span class="n">EpwCalculation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">aiida_quantumespresso.calculations.functions.create_kpoints_from_distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_kpoints_from_distance</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.intp</span><span class="w"> </span><span class="kn">import</span> <span class="n">EpwBaseIntpWorkChain</span>
+
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">importlib.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">NOTE:</span>
+
+<span class="sd">In this workchain, I use epw.x from EPW 5.9 where the IR representation is implemented.</span>
+
+<span class="sd">However, this version of epw.x made several changes that are not compatible with the previous versions.</span>
+
+<span class="sd">1.  It fix the typo in previous versions, that is, `eps_acustic` -&gt; `eps_acoustic`.</span>
+
+<span class="sd">2.  The format of crystal.fmt file is changed. Previously it is:</span>
+<span class="sd">        nat</span>
+<span class="sd">        nmode</span>
+<span class="sd">        nelec</span>
+<span class="sd">        ...</span>
+<span class="sd">    And now it is:</span>
+<span class="sd">        nat</span>
+<span class="sd">        nmode</span>
+<span class="sd">        nelec   nbndskp</span>
+<span class="sd">        ...</span>
+
+<span class="sd">3.  The epw.x from EPW 5.9 can&#39;t prefix.ukk generated from wannier90.</span>
+<span class="sd">    Not sure why but I can&#39;t fix it.</span>
+
+<span class="sd">4.  The `epw.x` from EPW 5.9 will try to read &#39;vmedata.fmt&#39; even if</span>
+<span class="sd">    I set vme = &#39;dipole&#39;.</span>
+
+<span class="sd">I would suggest to start only from the existing prefix.ephmat folder.</span>
+<span class="sd">But this requires another input code. I would temporarily mute use_ir.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="EpwAnisoWorkChain">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EpwAnisoWorkChain</span><span class="p">(</span><span class="n">EpwBaseIntpWorkChain</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Work chain to compute the superconductivity based on anisotropic Migdal-Eliashberg theory.</span>
+<span class="sd">    This workchain aims to implement the IR representation which allows calculation on low temperatures.</span>
+
+<span class="sd">    However, this version of epw.x made several changes that are not compatible with the previous versions.</span>
+
+<span class="sd">    1.  It fix the typo in previous versions, that is, `eps_acustic` -&gt; `eps_acoustic`.</span>
+
+<span class="sd">    2.  The format of crystal.fmt file is changed. Previously it is:</span>
+<span class="sd">            nat</span>
+<span class="sd">            nmode</span>
+<span class="sd">            nelec</span>
+<span class="sd">            ...</span>
+<span class="sd">        And now it is:</span>
+<span class="sd">            nat</span>
+<span class="sd">            nmode</span>
+<span class="sd">            nelec   nbndskp</span>
+<span class="sd">            ...</span>
+
+<span class="sd">    3.  The epw.x from EPW 5.9 can&#39;t prefix.ukk generated from wannier90.</span>
+<span class="sd">        Not sure why but I can&#39;t fix it.</span>
+
+<span class="sd">    4.  The `epw.x` from EPW 5.9 will try to read &#39;vmedata.fmt&#39; even if</span>
+<span class="sd">        I set vme = &#39;dipole&#39;.</span>
+
+<span class="sd">        I would suggest to start only from the existing prefix.ephmat folder.</span>
+<span class="sd">        But this requires another input code. I would temporarily mute use_ir.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">_INTP_NAMESPACE</span> <span class="o">=</span> <span class="s1">&#39;aniso&#39;</span>
+
+    <span class="n">_frozen_restart_parameters</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;INPUTEPW&#39;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s1">&#39;elph&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s1">&#39;ep_coupling&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s1">&#39;epwread&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="s1">&#39;epwwrite&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s1">&#39;ephwrite&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s1">&#39;restart&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="n">_frozen_plot_gap_function_parameters</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;INPUTEPW&#39;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s1">&#39;iverbosity&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="n">_frozen_fbw_parameters</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;INPUTEPW&#39;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s1">&#39;fbw&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="n">_DEFAULT_FILIROBJ</span> <span class="o">=</span> <span class="s2">&quot;ir_nlambda6_ndigit8.dat&quot;</span>
+    <span class="n">_frozen_ir_parameters</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;INPUTEPW&#39;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s1">&#39;fbw&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="s1">&#39;muchem&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="s1">&#39;gridsamp&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+            <span class="s1">&#39;broyden_beta&#39;</span><span class="p">:</span> <span class="o">-</span><span class="mf">0.7</span><span class="p">,</span>
+            <span class="c1"># &#39;filirobj&#39;: &#39;./&#39; + _DEFAULT_FILIROBJ,</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="n">_MIN_TEMP</span> <span class="o">=</span> <span class="mf">3.5</span>
+
+<div class="viewcode-block" id="EpwAnisoWorkChain.define">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain.define">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">define</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">spec</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Define the work chain specification.&quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">define</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+
+        <span class="n">spec</span><span class="o">.</span><span class="n">input</span><span class="p">(</span><span class="s1">&#39;plot_gap_function&#39;</span><span class="p">,</span> <span class="n">valid_type</span><span class="o">=</span><span class="n">orm</span><span class="o">.</span><span class="n">Bool</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">orm</span><span class="o">.</span><span class="n">Bool</span><span class="p">(</span><span class="kc">True</span><span class="p">),</span>
+            <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Whether to plot the gap function.&#39;</span><span class="p">)</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">input</span><span class="p">(</span><span class="s1">&#39;estimated_Tc_aniso&#39;</span><span class="p">,</span> <span class="n">valid_type</span><span class="o">=</span><span class="n">orm</span><span class="o">.</span><span class="n">Float</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">orm</span><span class="o">.</span><span class="n">Float</span><span class="p">(</span><span class="mf">40.0</span><span class="p">),</span>
+            <span class="n">help</span><span class="o">=</span><span class="s1">&#39;The estimated Tc for the aniso calculation.&#39;</span><span class="p">)</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">input</span><span class="p">(</span><span class="s1">&#39;fbw&#39;</span><span class="p">,</span> <span class="n">valid_type</span><span class="o">=</span><span class="n">orm</span><span class="o">.</span><span class="n">Bool</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">orm</span><span class="o">.</span><span class="n">Bool</span><span class="p">(</span><span class="kc">False</span><span class="p">),</span>
+            <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Whether to use the full bandwidth.&#39;</span><span class="p">)</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">input</span><span class="p">(</span><span class="s1">&#39;use_ir&#39;</span><span class="p">,</span> <span class="n">valid_type</span><span class="o">=</span><span class="n">orm</span><span class="o">.</span><span class="n">Bool</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">orm</span><span class="o">.</span><span class="n">Bool</span><span class="p">(</span><span class="kc">False</span><span class="p">),</span>
+            <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Whether to use the intermediate representation.&#39;</span><span class="p">)</span>
+
+        <span class="c1"># spec.outline(</span>
+        <span class="c1">#     cls.setup,</span>
+        <span class="c1">#     if_(cls.should_run_b2w)(</span>
+        <span class="c1">#         cls.run_b2w,</span>
+        <span class="c1">#         cls.inspect_b2w,</span>
+        <span class="c1">#     ),</span>
+        <span class="c1">#     cls.prepare_process,</span>
+        <span class="c1">#     cls.run_process,</span>
+        <span class="c1">#     cls.inspect_process,</span>
+        <span class="c1">#     cls.results</span>
+        <span class="c1"># )</span>
+        <span class="c1"># spec.output(&#39;a2f&#39;, valid_type=orm.XyData,</span>
+        <span class="c1">#     help=&#39;The contents of the `.a2f` file.&#39;)</span>
+        <span class="c1"># spec.output(&#39;Tc_aniso&#39;, valid_type=orm.Float,</span>
+        <span class="c1">#   help=&#39;The anisotropic Tc interpolated from the a2f file.&#39;)</span>
+
+        <span class="n">spec</span><span class="o">.</span><span class="n">exit_code</span><span class="p">(</span><span class="mi">402</span><span class="p">,</span> <span class="s1">&#39;ERROR_SUB_PROCESS_ANISO&#39;</span><span class="p">,</span>
+            <span class="n">message</span><span class="o">=</span><span class="s1">&#39;The `aniso` sub process failed&#39;</span><span class="p">)</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">exit_code</span><span class="p">(</span><span class="mi">403</span><span class="p">,</span> <span class="s1">&#39;ERROR_TEMPERATURE_OUT_OF_RANGE&#39;</span><span class="p">,</span>
+            <span class="n">message</span><span class="o">=</span><span class="s1">&#39;The `aniso` calculation have less than two temperatures within aniso Tc &#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EpwAnisoWorkChain.get_protocol_filepath">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain.get_protocol_filepath">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_protocol_filepath</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols.&quot;&quot;&quot;</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">importlib_resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">protocols</span>
+        <span class="k">return</span> <span class="n">files</span><span class="p">(</span><span class="n">protocols</span><span class="p">)</span> <span class="o">/</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">cls</span><span class="o">.</span><span class="n">_INTP_NAMESPACE</span><span class="si">}</span><span class="s1">.yaml&#39;</span></div>
+
+
+<div class="viewcode-block" id="EpwAnisoWorkChain.validate_inputs">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain.validate_inputs">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_inputs</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">port_namespace</span><span class="p">):</span>  <span class="c1"># pylint: disable=unused-argument</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Validate the top level namespace.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="s1">&#39;parent_epw_folder&#39;</span> <span class="ow">in</span> <span class="n">port_namespace</span> <span class="ow">or</span> <span class="s1">&#39;epw&#39;</span> <span class="ow">in</span> <span class="n">port_namespace</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s2">&quot;Only one of `parent_epw_folder` or `epw` can be accepted.&quot;</span>
+
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="EpwAnisoWorkChain.get_builder_restart">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain.get_builder_restart">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_builder_restart</span><span class="p">(</span>
+        <span class="bp">cls</span><span class="p">,</span>
+        <span class="n">from_aniso_workchain</span>
+        <span class="p">):</span>
+
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_get_builder_restart</span><span class="p">(</span>
+            <span class="n">from_intp_workchain</span><span class="o">=</span><span class="n">from_aniso_workchain</span><span class="p">,</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EpwAnisoWorkChain.get_builder_from_protocol">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain.get_builder_from_protocol">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_builder_from_protocol</span><span class="p">(</span>
+            <span class="bp">cls</span><span class="p">,</span>
+            <span class="n">codes</span><span class="p">,</span>
+            <span class="n">structure</span><span class="p">,</span>
+            <span class="n">protocol</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">overrides</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a builder prepopulated with inputs selected according to the chosen protocol.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">inputs</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">get_protocol_inputs</span><span class="p">(</span><span class="n">protocol</span><span class="p">,</span> <span class="n">overrides</span><span class="p">)</span>
+
+        <span class="n">builder</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_builder_from_protocol</span><span class="p">(</span>
+            <span class="n">codes</span><span class="p">,</span>
+            <span class="n">structure</span><span class="p">,</span>
+            <span class="n">protocol</span><span class="p">,</span>
+            <span class="n">overrides</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+
+        <span class="n">builder</span><span class="o">.</span><span class="n">plot_gap_function</span> <span class="o">=</span> <span class="n">orm</span><span class="o">.</span><span class="n">Bool</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;plot_gap_function&#39;</span><span class="p">,</span> <span class="kc">True</span><span class="p">))</span>
+        <span class="n">builder</span><span class="o">.</span><span class="n">fbw</span> <span class="o">=</span> <span class="n">orm</span><span class="o">.</span><span class="n">Bool</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;fbw&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">))</span>
+        <span class="n">builder</span><span class="o">.</span><span class="n">use_ir</span> <span class="o">=</span> <span class="n">orm</span><span class="o">.</span><span class="n">Bool</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;use_ir&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">builder</span></div>
+
+
+<div class="viewcode-block" id="EpwAnisoWorkChain.prepare_process">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain.prepare_process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare_process</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare the process for the current interpolation distance.&quot;&quot;&quot;</span>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">prepare_process</span><span class="p">()</span>
+
+        <span class="n">parameters</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">epw</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">get_dict</span><span class="p">()</span>
+
+        <span class="n">temps</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_MIN_TEMP</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">estimated_Tc_aniso</span><span class="o">.</span><span class="n">value</span><span class="o">*</span><span class="mf">1.5</span><span class="si">}</span><span class="s1">&#39;</span>
+        <span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;INPUTEPW&#39;</span><span class="p">][</span><span class="s1">&#39;temps&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">temps</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">settings</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">epw</span><span class="o">.</span><span class="n">settings</span><span class="o">.</span><span class="n">get_dict</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">settings</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;ADDITIONAL_RETRIEVE_LIST&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s1">&#39;out/aiida.dos&#39;</span><span class="p">,</span> <span class="s1">&#39;aiida.a2f*&#39;</span><span class="p">,</span> <span class="s1">&#39;aiida.phdos*&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;aiida.pade_aniso_gap0_*&#39;</span><span class="p">,</span> <span class="s1">&#39;aiida.imag_aniso_gap0*&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;aiida.lambda_k_pairs&#39;</span><span class="p">,</span> <span class="s1">&#39;aiida.lambda_FS&#39;</span>
+            <span class="p">]</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">plot_gap_function</span><span class="o">.</span><span class="n">value</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">namespace</span><span class="p">,</span> <span class="n">_parameters</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frozen_plot_gap_function_parameters</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">keyword</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">_parameters</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="n">parameters</span><span class="p">[</span><span class="n">namespace</span><span class="p">][</span><span class="n">keyword</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+            <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;ADDITIONAL_RETRIEVE_LIST&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span>
+                <span class="s1">&#39;aiida.imag_aniso_gap0_*.frmsf&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;aiida.lambda.frmsf&#39;</span><span class="p">,</span>
+                <span class="p">])</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">fbw</span><span class="o">.</span><span class="n">value</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">namespace</span><span class="p">,</span> <span class="n">_parameters</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frozen_fbw_parameters</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">keyword</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">_parameters</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="n">parameters</span><span class="p">[</span><span class="n">namespace</span><span class="p">][</span><span class="n">keyword</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+
+        <span class="kn">from</span><span class="w"> </span><span class="nn">importlib.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">use_ir</span><span class="o">.</span><span class="n">value</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">namespace</span><span class="p">,</span> <span class="n">_parameters</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frozen_ir_parameters</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">keyword</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">_parameters</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="n">parameters</span><span class="p">[</span><span class="n">namespace</span><span class="p">][</span><span class="n">keyword</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+
+            <span class="n">filirobj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">epw</span><span class="o">.</span><span class="n">code</span><span class="o">.</span><span class="n">filepath_executable</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s1">&#39;EPW&#39;</span> <span class="o">/</span> <span class="s1">&#39;irobjs&#39;</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">_DEFAULT_FILIROBJ</span>
+
+            <span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;INPUTEPW&#39;</span><span class="p">][</span><span class="s1">&#39;filirobj&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">filirobj</span><span class="p">)</span>
+
+            <span class="c1"># EPW 5.9 (IR representation) can&#39;t recognize eps_acustic.</span>
+            <span class="c1"># It might be a bug in the EPW code.</span>
+            <span class="c1"># I simply pop it out here.</span>
+
+            <span class="c1"># parameters[&#39;INPUTEPW&#39;].pop(&#39;eps_acustic&#39;)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">epw</span><span class="o">.</span><span class="n">settings</span> <span class="o">=</span> <span class="n">orm</span><span class="o">.</span><span class="n">Dict</span><span class="p">(</span><span class="n">settings</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">epw</span><span class="o">.</span><span class="n">parameters</span> <span class="o">=</span> <span class="n">orm</span><span class="o">.</span><span class="n">Dict</span><span class="p">(</span><span class="n">parameters</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EpwAnisoWorkChain.inspect_process">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain.inspect_process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">inspect_process</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Verify that the epw.x workflow finished successfully.&quot;&quot;&quot;</span>
+        <span class="n">intp_workchain</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">workchain_intp</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">intp_workchain</span><span class="o">.</span><span class="n">is_finished_ok</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">report</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;`epw.x` failed with exit status </span><span class="si">{</span><span class="n">intp_workchain</span><span class="o">.</span><span class="n">exit_status</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">exit_codes</span><span class="o">.</span><span class="n">ERROR_SUB_PROCESS_ANISO</span>
+
+        <span class="k">if</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_temperature_out_of_range</span><span class="p">(</span><span class="n">aniso</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EpwAnisoWorkChain.results">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain.results">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">results</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;TODO&quot;&quot;&quot;</span>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">results</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="EpwAnisoWorkChain.report_error_handled">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain.report_error_handled">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">report_error_handled</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calculation</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Report an action taken for a calculation that has failed.</span>
+
+<span class="sd">        This should be called in a registered error handler if its condition is met and an action was taken.</span>
+
+<span class="sd">        :param calculation: the failed calculation node</span>
+<span class="sd">        :param action: a string message with the action taken</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">arguments</span> <span class="o">=</span> <span class="p">[</span><span class="n">calculation</span><span class="o">.</span><span class="n">process_label</span><span class="p">,</span> <span class="n">calculation</span><span class="o">.</span><span class="n">pk</span><span class="p">,</span> <span class="n">calculation</span><span class="o">.</span><span class="n">exit_status</span><span class="p">,</span> <span class="n">calculation</span><span class="o">.</span><span class="n">exit_message</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">report</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">&lt;</span><span class="si">{}</span><span class="s1">&gt; failed with exit status </span><span class="si">{}</span><span class="s1">: </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="o">*</span><span class="n">arguments</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">report</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Action taken: </span><span class="si">{</span><span class="n">action</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EpwAnisoWorkChain.handle_temperature_out_of_range">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.aniso.EpwAnisoWorkChain.handle_temperature_out_of_range">[docs]</a>
+    <span class="nd">@process_handler</span><span class="p">(</span><span class="n">priority</span><span class="o">=</span><span class="mi">403</span><span class="p">,)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_temperature_out_of_range</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calculation</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Handle calculations with an exit status below 400 which are unrecoverable, so abort the work chain.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">calculation</span><span class="o">.</span><span class="n">exit_status</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">exit_codes</span><span class="o">.</span><span class="n">ERROR_TEMPERATURE_OUT_OF_RANGE</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">report_error_handled</span><span class="p">(</span><span class="n">calculation</span><span class="p">,</span> <span class="s1">&#39;unrecoverable error, aborting...&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">ProcessHandlerReport</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exit_codes</span><span class="o">.</span><span class="n">ERROR_TEMPERATURE_OUT_OF_RANGE</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Marnik Bercx.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

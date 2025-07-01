@@ -21,7 +21,6 @@ default_inputs:
           temps: 300
           vme: 'dipole'
           wannierize: False
-          band_plot: True
 
 default_protocol: moderate
 protocols:

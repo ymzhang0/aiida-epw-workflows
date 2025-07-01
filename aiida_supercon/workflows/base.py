@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
 """Workchain to run a Quantum ESPRESSO pw.x calculation with automated error handling and restarts."""
 from aiida import orm
-from aiida.common import AttributeDict
-from aiida.common import NotExistent
+from aiida.common import AttributeDict, NotExistent
 
 from aiida.engine import BaseRestartWorkChain, ProcessHandlerReport, process_handler, while_
 from aiida.plugins import CalculationFactory
 
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
 from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
@@ -103,7 +101,12 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             )
 
         spec.input(
-            'kfpoints_factor', valid_type=orm.Int,
+            'kfpoints', valid_type=orm.KpointsData, required=False,
+            help='fine kpoint mesh'
+            )
+
+        spec.input(
+            'kfpoints_factor', valid_type=orm.Int, required=False,
             help='fine kpoint mesh factor'
             )
 
@@ -494,11 +497,14 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             return self.exit_codes.ERROR_INCOMPATIBLE_COARSE_GRIDS
 
         if all(key not in self.inputs for key in ['qfpoints', 'qfpoints_distance']):
-            return self.exit_codes.ERROR_INVALID_INPUT_KPOINTS
+            raise ValueError('qfpoints or qfpoints_distance are required')
 
-        try:
+        if all(key not in self.inputs for key in ['kfpoints', 'kfpoints_factor']):
+            raise ValueError('kfpoints or kfpoints_factor are required')
+
+        if 'qfpoints' in self.inputs:
             qfpoints = self.inputs.qfpoints
-        except AttributeError:
+        else:
             inputs = {
                 'structure': self.inputs.structure,
                 'distance': self.inputs.qfpoints_distance,
@@ -509,9 +515,12 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             }
             qfpoints = create_kpoints_from_distance(**inputs)  # pylint: disable=unexpected-keyword-arg
 
-        qfpoints_mesh = qfpoints.get_kpoints_mesh()[0]
-        kfpoints = orm.KpointsData()
-        kfpoints.set_kpoints_mesh([v * self.inputs.kfpoints_factor.value for v in qfpoints_mesh])
+        if 'kfpoints' in self.inputs:
+            kfpoints = self.inputs.kfpoints
+        else:
+            qfpoints_mesh = qfpoints.get_kpoints_mesh()[0]
+            kfpoints = orm.KpointsData()
+            kfpoints.set_kpoints_mesh([v * self.inputs.kfpoints_factor.value for v in qfpoints_mesh])
 
         self.ctx.inputs.qfpoints = qfpoints
         self.ctx.inputs.kfpoints = kfpoints

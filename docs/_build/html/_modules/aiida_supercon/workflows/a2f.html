@@ -1,0 +1,288 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>aiida_supercon.workflows.a2f &mdash; aiida-epw 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=2389946f"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            aiida-epw
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorial.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../developer_guide/index.html">Developer Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_reference/modules.html">aiida_supercon</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">aiida-epw</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">aiida_supercon.workflows.a2f</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for aiida_supercon.workflows.a2f</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;Work chain for computing the critical temperature based off an `EpwWorkChain`.&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">aiida</span><span class="w"> </span><span class="kn">import</span> <span class="n">orm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">aiida.engine</span><span class="w"> </span><span class="kn">import</span> <span class="n">calcfunction</span><span class="p">,</span> <span class="n">ToContext</span><span class="p">,</span> <span class="n">if_</span>
+
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.intp</span><span class="w"> </span><span class="kn">import</span> <span class="n">EpwBaseIntpWorkChain</span>
+
+<div class="viewcode-block" id="EpwA2fWorkChain">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.a2f.EpwA2fWorkChain">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EpwA2fWorkChain</span><span class="p">(</span><span class="n">EpwBaseIntpWorkChain</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Work chain to compute the Allen-Dynes critical temperature.</span>
+<span class="sd">    It will run the `EpwB2WWorkChain` and then the `EpwBaseWorkChain`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">_INTP_NAMESPACE</span> <span class="o">=</span> <span class="s1">&#39;a2f&#39;</span>
+    <span class="n">_ALL_NAMESPACES</span> <span class="o">=</span> <span class="p">[</span><span class="n">EpwBaseIntpWorkChain</span><span class="o">.</span><span class="n">_B2W_NAMESPACE</span><span class="p">,</span> <span class="n">_INTP_NAMESPACE</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="EpwA2fWorkChain.validate_inputs">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.a2f.EpwA2fWorkChain.validate_inputs">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_inputs</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Validate the inputs.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="EpwA2fWorkChain.define">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.a2f.EpwA2fWorkChain.define">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">define</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">spec</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Define the work chain specification.&quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">define</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+
+        <span class="c1"># spec.outline(</span>
+        <span class="c1">#     cls.setup,</span>
+        <span class="c1">#     if_(cls.should_run_b2w)(</span>
+        <span class="c1">#         cls.run_b2w,</span>
+        <span class="c1">#         cls.inspect_b2w,</span>
+        <span class="c1">#     ),</span>
+        <span class="c1">#     cls.prepare_process,</span>
+        <span class="c1">#     cls.run_process,</span>
+        <span class="c1">#     cls.inspect_process,</span>
+        <span class="c1">#     cls.results</span>
+        <span class="c1"># )</span>
+
+        <span class="n">spec</span><span class="o">.</span><span class="n">inputs</span><span class="p">[</span><span class="bp">cls</span><span class="o">.</span><span class="n">_INTP_NAMESPACE</span><span class="p">]</span><span class="o">.</span><span class="n">validator</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">validate_inputs</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">validator</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">validate_inputs</span>
+
+        <span class="n">spec</span><span class="o">.</span><span class="n">exit_code</span><span class="p">(</span>
+            <span class="mi">402</span><span class="p">,</span> <span class="s1">&#39;ERROR_SUB_PROCESS_A2F&#39;</span><span class="p">,</span>
+            <span class="n">message</span><span class="o">=</span><span class="s1">&#39;The `epw.x` workflow failed.&#39;</span>
+            <span class="p">)</span></div>
+
+<div class="viewcode-block" id="EpwA2fWorkChain.get_protocol_filepath">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.a2f.EpwA2fWorkChain.get_protocol_filepath">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_protocol_filepath</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols.</span>
+<span class="sd">        :return: The path to the protocol file.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">importlib_resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">protocols</span>
+        <span class="k">return</span> <span class="n">files</span><span class="p">(</span><span class="n">protocols</span><span class="p">)</span> <span class="o">/</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">cls</span><span class="o">.</span><span class="n">_INTP_NAMESPACE</span><span class="si">}</span><span class="s1">.yaml&#39;</span></div>
+
+
+<div class="viewcode-block" id="EpwA2fWorkChain.get_builder_restart">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.a2f.EpwA2fWorkChain.get_builder_restart">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_builder_restart</span><span class="p">(</span>
+        <span class="bp">cls</span><span class="p">,</span>
+        <span class="n">from_a2f_workchain</span>
+        <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a builder prepopulated with inputs extracted from the a2f workchain.</span>
+<span class="sd">        :param from_a2f_workchain: The a2f workchain.</span>
+<span class="sd">        :return: The builder.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_get_builder_restart</span><span class="p">(</span>
+            <span class="n">from_intp_workchain</span><span class="o">=</span><span class="n">from_a2f_workchain</span><span class="p">,</span>
+            <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="EpwA2fWorkChain.get_builder_from_protocol">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.a2f.EpwA2fWorkChain.get_builder_from_protocol">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_builder_from_protocol</span><span class="p">(</span>
+            <span class="bp">cls</span><span class="p">,</span>
+            <span class="n">codes</span><span class="p">,</span>
+            <span class="n">structure</span><span class="p">,</span>
+            <span class="n">protocol</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">overrides</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a builder prepopulated with inputs selected according to the chosen protocol.</span>
+<span class="sd">        :param codes: The codes should be a dictionary with the following keys:</span>
+<span class="sd">            - pw: The code for the pw.x calculation.</span>
+<span class="sd">            - ph: The code for the ph.x calculation.</span>
+<span class="sd">            - epw: The code for the epw.x calculation.</span>
+<span class="sd">            - pw2wannier90: The code for the pw2wannier90.x calculation.</span>
+<span class="sd">            - wannier: The code for the wannier90.x calculation.</span>
+<span class="sd">        :param structure: The structure.</span>
+<span class="sd">        :param protocol: The protocol.</span>
+<span class="sd">        :param overrides: The overrides.</span>
+<span class="sd">        :return: The builder.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">builder</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_builder_from_protocol</span><span class="p">(</span>
+            <span class="n">codes</span><span class="p">,</span>
+            <span class="n">structure</span><span class="p">,</span>
+            <span class="n">protocol</span><span class="p">,</span>
+            <span class="n">overrides</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">builder</span></div>
+
+
+<div class="viewcode-block" id="EpwA2fWorkChain.calculate_degaussq">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.a2f.EpwA2fWorkChain.calculate_degaussq">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">calculate_degaussq</span><span class="p">(</span><span class="n">workchain_a2f</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate the degaussq for the a2f calculation based on the `ph.x` results.</span>
+<span class="sd">        :param workchain_a2f: The a2f workchain.</span>
+<span class="sd">        :return: The degaussq.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span>
+
+        <span class="n">output_parameters</span> <span class="o">=</span> <span class="n">workchain_a2f</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">parent_folder_epw</span><span class="o">.</span><span class="n">creator</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">parent_folder_ph</span><span class="o">.</span><span class="n">creator</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">output_parameters</span><span class="o">.</span><span class="n">get_dict</span><span class="p">()</span>
+        <span class="n">number_of_qpoints</span> <span class="o">=</span> <span class="n">output_parameters</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;number_of_qpoints&#39;</span><span class="p">)</span>
+        <span class="n">dynamical_matricies</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+            <span class="n">output_parameters</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;dynamical_matricies_</span><span class="si">{</span><span class="n">iq</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;frequencies&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">iq</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">number_of_qpoints</span><span class="p">)</span>
+            <span class="p">])</span>
+
+        <span class="n">max_frequency</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">dynamical_matricies</span><span class="p">)</span>
+        <span class="n">degaussq</span> <span class="o">=</span> <span class="n">max_frequency</span> <span class="o">/</span> <span class="mi">100</span>
+
+        <span class="k">return</span> <span class="n">degaussq</span></div>
+
+
+<div class="viewcode-block" id="EpwA2fWorkChain.prepare_process">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.a2f.EpwA2fWorkChain.prepare_process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare_process</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare the process.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">prepare_process</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">settings</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">epw</span><span class="o">.</span><span class="n">settings</span><span class="o">.</span><span class="n">get_dict</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">settings</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;ADDITIONAL_RETRIEVE_LIST&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s1">&#39;aiida.a2f&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;aiida.a2f_proj&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;out/aiida.dos&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;aiida.phdos&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;aiida.phdos_proj&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;aiida.lambda_FS&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;aiida.lambda_k_pairs&#39;</span>
+            <span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">epw</span><span class="o">.</span><span class="n">settings</span> <span class="o">=</span> <span class="n">orm</span><span class="o">.</span><span class="n">Dict</span><span class="p">(</span><span class="n">settings</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EpwA2fWorkChain.inspect_process">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.a2f.EpwA2fWorkChain.inspect_process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">inspect_process</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Verify that the epw.x workflow finished successfully.&quot;&quot;&quot;</span>
+        <span class="n">intp_workchain</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">workchain_intp</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">intp_workchain</span><span class="o">.</span><span class="n">is_finished_ok</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">report</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;`epw.x` failed with exit status </span><span class="si">{</span><span class="n">intp_workchain</span><span class="o">.</span><span class="n">exit_status</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">exit_codes</span><span class="o">.</span><span class="n">ERROR_SUB_PROCESS_A2F</span></div>
+
+
+<div class="viewcode-block" id="EpwA2fWorkChain.results">
+<a class="viewcode-back" href="../../../api_reference/aiida_supercon.workflows.html#aiida_supercon.workflows.a2f.EpwA2fWorkChain.results">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">results</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;TODO&quot;&quot;&quot;</span>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">results</span><span class="p">()</span></div>
+</div>
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Marnik Bercx.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
