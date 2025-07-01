@@ -130,10 +130,9 @@ from .base import EpwBaseWorkChain
 
 
 class EpwB2WWorkChain(ProtocolMixin, WorkChain):
-    """Main work chain to start calculating properties using EPW.
+    """Main work chain that orchestrates the `Wannier90OptimizeWorkChain`, `PhBaseWorkChain` and `EpwBaseWorkChain`.
 
-    Has support for both the selected columns of the density matrix (SCDM) and
-    (projectability-disentangled Wannier function) PDWF projection types.
+    This work chain is designed to transform the electron-phonon matrix from the Bloch basis (coarse grid) to the Wannier basis.
     """
 
     _QFPOINTS = [1, 1, 1]
@@ -291,7 +290,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
     @classmethod
     def get_protocol_overrides(cls) -> dict:
-        """Get the ``overrides`` for various input arguments of the ``get_builder_from_protocol()`` method."""
+        """Get the ``overrides`` of the default protocol."""
         from importlib_resources import files
         import yaml
 
@@ -304,7 +303,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
     @property
     def namespace_list(self):
-        """Return the list of namespaces."""
+        """Return the list of namespaces within this work chain."""
         return self._NAMESPACE_LIST
 
     @staticmethod
@@ -312,7 +311,8 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         inputs,
         target_base_prefix,
         ):
-
+        """We stash the outputs of PhBaseWorkChain and EpwBaseWorkChain for possible restart purposes.
+        """
         if 'stash' not in inputs.metadata['options']:
             computer = inputs.code.computer
             if computer.transport_type == 'core.local':
@@ -336,9 +336,10 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         Parses a completed EpwB2WWorkChain node and extracts its
         successful sub-workchain nodes.
 
-        :param b2w_node: A finished and successful EpwB2WWorkChain node.
-        :return: A dictionary containing the 'wannier', 'phonon', and 'epw' sub-nodes.
-    """
+        :param b2w: A finished and successful EpwB2WWorkChain node.
+        :param link_label_filter: The link label of the sub-workchain to be extracted.
+        :return: The sub-workchain node.
+        """
 
         # Find the sub-workchains from the outputs (or links).
         # The exact way to get them depends on how you defined the call_link_labels in b2w's outline.
@@ -363,7 +364,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         from_b2w_workchain=None,
         **kwargs
         )-> ProcessBuilder:
-        """Return a builder prepopulated with inputs selected according to the chosen protocol.
+        """Return a builder prepopulated with inputs extracted from the previous EpwB2WWorkChain.
         """
 
         from .utils.overrides import get_parent_folder_chk_from_w90_workchain
@@ -447,7 +448,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         from_ph_workchain=None,
         **kwargs
         )-> ProcessBuilder:
-        """Return a builder prepopulated with inputs selected according to the chosen protocol.
+        """Return a builder prepopulated with inputs according to the previous PhBaseWorkChain and protocol for other namespaces.
         """
 
         if from_ph_workchain.process_label != 'PhBaseWorkChain':
@@ -527,7 +528,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         from_w90_workchain=None,
         **kwargs
         )-> ProcessBuilder:
-        """Return a builder prepopulated with inputs selected according to the chosen protocol.
+        """Return a builder prepopulated with inputs according to the previous Wannier90OptimizeWorkChain and protocol for other namespaces.
         """
 
         from .utils.overrides import get_parent_folder_chk_from_w90_workchain
@@ -588,7 +589,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         overrides=None,
         **kwargs
         )-> ProcessBuilder:
-        """Return a builder prepopulated with inputs selected according to the chosen protocol.
+        """Return a builder prepopulated with inputs according to the previous Wannier90OptimizeWorkChain and PhBaseWorkChain and protocol for other namespaces.
         """
 
         from .utils.overrides import get_parent_folder_chk_from_w90_workchain
@@ -634,8 +635,15 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         band_kpoints=None,
         **kwargs
         )-> ProcessBuilder:
-        """Return a builder prepopulated with inputs selected according to the chosen protocol.
-
+        """Return a builder prepopulated with inputs according to the previous Wannier90OptimizeWorkChain and PhBaseWorkChain and protocol for other namespaces.
+        :param codes: A dictionary of codes for the different calculations. Should be in the following format:
+            {
+                'pw': code pw.x,
+                'ph': code ph.x,
+                'epw': code epw.x,
+                'pw2wannier90': code pw2wannier90.x,
+                'wannier': code wannier90.x,
+            }
         :param structure: the ``StructureData`` instance to use.
         :param protocol: protocol to use, if not specified, the default will be used.
         :param overrides: optional dictionary of inputs to override the defaults of the protocol.
@@ -737,7 +745,9 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
 
     def should_run_wannier90(self):
-        """Check if the wannier90 workflow should be run."""
+        """Check if the wannier90 workflow should be run.
+        If 'w90_intp' is not in the inputs or the 'kpoints_nscf' is not in the context, it will return False.
+        """
 
         return (
             self._W90_NAMESPACE in self.inputs
@@ -776,7 +786,9 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         return ToContext(workchain_w90_intp=workchain_node)
 
     def inspect_wannier90(self):
-        """Verify that the wannier90 workflow finished successfully."""
+        """Verify that the wannier90 workflow finished successfully.
+        If the wannier90 workflow passed, it will generate the parent folders for the phonon and epw workflows and the outputs of the wannier90 workflow.
+        """
         from .utils.overrides import get_parent_folder_chk_from_w90_workchain
 
         workchain = self.ctx.workchain_w90_intp
@@ -798,7 +810,9 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         )
 
     def should_run_ph(self):
-        """Check if the phonon workflow should be run."""
+        """Check if the phonon workflow should be run.
+        If 'ph_base' is not in the inputs or the 'qpoints' is not in the context, it will return False.
+        """
         return (
             self._PH_NAMESPACE in self.inputs
             and
@@ -825,7 +839,9 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         return ToContext(workchain_ph=workchain_node)
 
     def inspect_ph(self):
-        """Verify that the `PhBaseWorkChain` finished successfully."""
+        """Verify that the `PhBaseWorkChain` finished successfully.
+        If the phonon workflow passed, it will generate the parent folder for the epw workflow and the outputs of the phonon workflow.
+        """
         workchain = self.ctx.workchain_ph
 
         self.ctx.inputs.parent_folder_ph = workchain.outputs.remote_folder
@@ -862,7 +878,9 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         return ToContext(workchain_epw=workchain_node)
 
     def inspect_epw(self):
-        """Verify that the `epw.x` calculation finished successfully."""
+        """Verify that the `epw.x` calculation finished successfully.
+        If the epw workflow passed, it will generate the outputs of the epw workflow.
+        """
         workchain = self.ctx.workchain_epw
 
         if not workchain.is_finished_ok:
@@ -881,7 +899,8 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
 
     def results(self):
-        """Add the most important results to the outputs of the work chain."""
+        """Add the most important results to the outputs of the work chain.
+        """
 
         pass
 

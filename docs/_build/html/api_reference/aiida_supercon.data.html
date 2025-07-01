@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>&lt;no title&gt; &#8212; aiida-epw 0.1.0 documentation</title>
+    <title>aiida_supercon.data package &#8212; aiida-epw 0.1.0 documentation</title>
   
   
   
@@ -40,11 +40,11 @@
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?digest=5a5c038af52cf7bc1a1ec88eea08e6366ee68824"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'api_reference/index';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api_reference/aiida_supercon.data';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="aiida_supercon" href="modules.html" />
-    <link rel="prev" title="Project Structure" href="../developer_guide/workflows.html" />
+    <link rel="next" title="aiida_supercon.parsers package" href="aiida_supercon.parsers.html" />
+    <link rel="prev" title="aiida_supercon package" href="aiida_supercon.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -138,15 +138,15 @@
         <div class="sidebar-primary-item"><nav class="bd-links" id="bd-docs-nav" aria-label="Main">
     <div class="bd-toc-item navbar-nav active">
         <p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="nav bd-sidenav">
+<ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Quick Start</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../developer_guide/index.html">Developer Guide</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="../developer_guide/workflows.html">Project Structure</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="modules.html">aiida_supercon</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2 has-children"><a class="reference internal" href="aiida_supercon.html">aiida_supercon package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="aiida_supercon.data.html">aiida_supercon.data package</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="modules.html">aiida_supercon</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active has-children"><a class="reference internal" href="aiida_supercon.html">aiida_supercon package</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l3 current active"><a class="current reference internal" href="#">aiida_supercon.data package</a></li>
 <li class="toctree-l3"><a class="reference internal" href="aiida_supercon.parsers.html">aiida_supercon.parsers package</a></li>
 <li class="toctree-l3"><a class="reference internal" href="aiida_supercon.tools.html">aiida_supercon.tools package</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="aiida_supercon.workflows.html">aiida_supercon.workflows package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -212,7 +212,7 @@
       
       
       
-      <li><a href="../_sources/api_reference/index.rst" target="_blank"
+      <li><a href="../_sources/api_reference/aiida_supercon.data.rst" target="_blank"
    class="btn btn-sm btn-download-source-button dropdown-item"
    title="Download source file"
    data-bs-placement="left" data-bs-toggle="tooltip"
@@ -296,11 +296,22 @@ document.write(`
               
 
 <div id="jb-print-docs-body" class="onlyprint">
-    <h1><no title></h1>
+    <h1>aiida_supercon.data package</h1>
     <!-- Table of contents -->
     <div id="print-main-content">
         <div id="jb-print-toc">
             
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#submodules">Submodules</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-data-chk-module">aiida_supercon.data.chk module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-data-dicttree-module">aiida_supercon.data.dicttree module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-contents">Module contents</a></li>
+</ul>
+            </nav>
         </div>
     </div>
 </div>
@@ -310,17 +321,21 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <p># In docs/api_reference/index.rst
-API Reference
-=============</p>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="modules.html">aiida_supercon</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="aiida_supercon.html">aiida_supercon package</a></li>
-</ul>
-</li>
-</ul>
-</div>
+  <section id="aiida-supercon-data-package">
+<h1>aiida_supercon.data package<a class="headerlink" href="#aiida-supercon-data-package" title="Link to this heading">#</a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">#</a></h2>
+</section>
+<section id="aiida-supercon-data-chk-module">
+<h2>aiida_supercon.data.chk module<a class="headerlink" href="#aiida-supercon-data-chk-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="aiida-supercon-data-dicttree-module">
+<h2>aiida_supercon.data.dicttree module<a class="headerlink" href="#aiida-supercon-data-dicttree-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="module-contents">
+<h2>Module contents<a class="headerlink" href="#module-contents" title="Link to this heading">#</a></h2>
+</section>
+</section>
 
 
                 </article>
@@ -334,20 +349,20 @@ API Reference
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../developer_guide/workflows.html"
+       href="aiida_supercon.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Project Structure</p>
+        <p class="prev-next-title">aiida_supercon package</p>
       </div>
     </a>
     <a class="right-next"
-       href="modules.html"
+       href="aiida_supercon.parsers.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">aiida_supercon</p>
+        <p class="prev-next-title">aiida_supercon.parsers package</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -357,6 +372,24 @@ API Reference
             </div>
             
             
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#submodules">Submodules</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-data-chk-module">aiida_supercon.data.chk module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aiida-supercon-data-dicttree-module">aiida_supercon.data.dicttree module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-contents">Module contents</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
               
             
           </div>

@@ -14,6 +14,7 @@ This plugin is built upon the powerful infrastructure of `aiida-quantumespresso`
    installation
    tutorial
    developer_guide/index
+   api_reference/index
 
 Indices and tables
 ==================

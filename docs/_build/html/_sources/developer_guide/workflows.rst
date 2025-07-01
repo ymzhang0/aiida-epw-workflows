@@ -39,7 +39,7 @@ Module Breakdown
 ``aiida_supercon/workflows/``
 *****************************
 
-This is the core of the plugin, containing all the AiiDA ``WorkChain`` definitions. The architecture is hierarchical to maximize code reuse.
+This is the core of the plugin, containing all the AiiDA ``WorkChain`` definitions.
 
 ``base.py``: `EpwBaseWorkChain`
 ================================

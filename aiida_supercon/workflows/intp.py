@@ -16,7 +16,11 @@ from .base import EpwBaseWorkChain
 from .b2w import EpwB2WWorkChain
 import warnings
 class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
-    """Work chain to compute the Allen-Dynes critical temperature."""
+    """Base work chain for two-step interpolation workflows.
+    It will run the `EpwB2WWorkChain` for electron-phonon coupling matrix on Wannier representation.
+    And then an `EpwBaseWorkChain` for interpolation from Wannier to Bloch representation (fine grid).
+    Based on the fine-grid electron-phonon coupling matrix, various quantities can be computed.
+    """
 
     # --- Child classes should override these placeholders ---
     _B2W_NAMESPACE = EpwB2WWorkChain._NAMESPACE
@@ -108,7 +112,11 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         intp: orm.WorkChainNode,
         link_label_filter: str
         ) -> orm.WorkChainNode:
-        """Get the descendant workchains of the intp workchain."""
+        """Get the descendant workchains of the intp workchain.
+        :param intp: The intp workchain.
+        :param link_label_filter: The link label filter.
+        :return: The descendant workchain.
+        """
         try:
             return intp.base.links.get_outgoing(
                 link_label_filter=link_label_filter
@@ -118,7 +126,9 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
 
     @classmethod
     def get_protocol_overrides(cls) -> dict:
-        """Get the ``overrides`` for various input arguments of the ``get_builder_from_protocol()`` method."""
+        """Get the ``overrides`` for default protocol.
+        :return: The overrides.
+        """
         from importlib_resources import files
         import yaml
 
@@ -133,7 +143,11 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         cls,
         from_intp_workchain=None,
         ):
-        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+        """Return a builder prepopulated with inputs extracted from the intp workchain.
+        This is a hook method for the `get_builder_restart` method of derived classes.
+        :param from_intp_workchain: The intp workchain.
+        :return: The builder.
+        """
         builder = from_intp_workchain.get_builder_restart()
         # parent_builder = from_intp_workchain.get_builder_restart()
 
@@ -179,7 +193,12 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         overrides=None,
         **kwargs
         ):
-        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+        """Return a builder prepopulated with inputs extracted from the b2w workchain.
+        :param from_b2w_workchain: The b2w workchain.
+        :param protocol: The protocol.
+        :param overrides: The overrides.
+        :return: The builder.
+        """
 
         inputs = cls.get_protocol_inputs(protocol, overrides)
 
@@ -232,7 +251,18 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             overrides=None,
             **kwargs
         ):
-        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+        """Return a builder prepopulated with inputs selected according to the chosen protocol.
+        :param codes: The codes should be a dictionary with the following keys:
+            - pw: The code for the pw.x calculation.
+            - ph: The code for the ph.x calculation.
+            - epw: The code for the epw.x calculation.
+            - pw2wannier90: The code for the pw2wannier90.x calculation.
+            - wannier: The code for the wannier90.x calculation.
+        :param structure: The structure.
+        :param protocol: The protocol.
+        :param overrides: The overrides.
+        :return: The builder.
+        """
         inputs = cls.get_protocol_inputs(protocol, overrides)
         builder = cls.get_builder()
         builder.structure = structure
@@ -273,7 +303,9 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         self.ctx.inputs = inputs
 
     def should_run_b2w(self):
-        """Check if the epw loop should continue or not."""
+        """Check if the epw loop should continue or not.
+        If 'intp' is not in the inputs, it will return False.
+        """
         return self._B2W_NAMESPACE in self.inputs
 
     def run_b2w(self):
@@ -290,7 +322,10 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         return ToContext(workchain_b2w=workchain_node)
 
     def inspect_b2w(self):
-        """Verify that the epw.x workflow finished successfully."""
+        """Verify that the epw.x workflow finished successfully.
+        If the epw workflow passed, it will generate the parent folder for the following EpwBaseWorkChain.
+        It will expose the outputs of the EpwB2WWorkChain as an intermediate results.
+        """
         b2w_workchain = self.ctx.workchain_b2w
 
         if not b2w_workchain.is_finished_ok:
@@ -311,7 +346,9 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         )
 
     def prepare_process(self):
-        """Prepare the process for the current interpolation distance."""
+        """Prepare for the `EpwBaseWorkChain` workchain.
+        It will update the parameters of the EpwBaseWorkChain with the parameters of the previous EpwB2WWorkChain.
+        """
 
         parameters = self.ctx.inputs.epw.parameters.get_dict()
 
@@ -325,7 +362,8 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
 
 
     def run_process(self):
-        """Prepare the process for the current interpolation distance."""
+        """Run the `EpwBaseWorkChain`
+        """
         inputs = self.ctx.inputs
 
         inputs.metadata.call_link_label = self._INTP_NAMESPACE
@@ -336,7 +374,8 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         return ToContext(workchain_intp=workchain_node)
 
     def results(self):
-        """TODO"""
+        """It will expose the basic outputs of the `EpwBaseWorkChain` as a final results.
+        """
 
         self.out_many(
             self.exposed_outputs(

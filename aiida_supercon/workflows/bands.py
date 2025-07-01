@@ -10,7 +10,8 @@ from ..common.restart import RestartState
 
 
 class EpwBandsWorkChain(EpwBaseIntpWorkChain):
-    """Work chain to compute the band structure."""
+    """Work chain to interpolate the band structure using epw.x.
+    """
 
     _INTP_NAMESPACE = 'bands'
     _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE]

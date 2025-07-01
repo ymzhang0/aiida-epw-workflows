@@ -43,7 +43,33 @@ I would suggest to start only from the existing prefix.ephmat folder.
 But this requires another input code. I would temporarily mute use_ir.
 """
 class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
-    """Work chain to compute the anisotropic critical temperature."""
+    """Work chain to compute the superconductivity based on anisotropic Migdal-Eliashberg theory.
+    This workchain aims to implement the IR representation which allows calculation on low temperatures.
+
+    However, this version of epw.x made several changes that are not compatible with the previous versions.
+
+    1.  It fix the typo in previous versions, that is, `eps_acustic` -> `eps_acoustic`.
+
+    2.  The format of crystal.fmt file is changed. Previously it is:
+            nat
+            nmode
+            nelec
+            ...
+        And now it is:
+            nat
+            nmode
+            nelec   nbndskp
+            ...
+
+    3.  The epw.x from EPW 5.9 can't prefix.ukk generated from wannier90.
+        Not sure why but I can't fix it.
+
+    4.  The `epw.x` from EPW 5.9 will try to read 'vmedata.fmt' even if
+        I set vme = 'dipole'.
+
+        I would suggest to start only from the existing prefix.ephmat folder.
+        But this requires another input code. I would temporarily mute use_ir.
+    """
 
     _INTP_NAMESPACE = 'aniso'
 

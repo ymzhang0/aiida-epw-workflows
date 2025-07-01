@@ -15,7 +15,9 @@ from .aniso import EpwAnisoWorkChain
 from .base import EpwBaseWorkChain
 
 class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
-    """Work chain to compute the electron-phonon coupling."""
+    """Work chain to compute superconductivity based on different levels of approximations.
+    It will run the  `EpwBandsWorkChain`, `EpwA2fWorkChain`, `EpwIsoWorkChain`, and `EpwAnisoWorkChain` consecutively.
+    """
 
 
     _NAMESPACE = 'supercon'
@@ -624,8 +626,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             **kwargs
         ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
-
-        :TODO:
         """
         inputs = cls.get_protocol_inputs(protocol, overrides)
         args = (codes, structure, protocol)

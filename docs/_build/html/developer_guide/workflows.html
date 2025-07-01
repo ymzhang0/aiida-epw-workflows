@@ -43,6 +43,7 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'developer_guide/workflows';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="&lt;no title&gt;" href="../api_reference/index.html" />
     <link rel="prev" title="Developer Guide" href="index.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -141,6 +142,20 @@
 <li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Quick Start</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Developer Guide</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Project Structure</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../api_reference/modules.html">aiida_supercon</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../api_reference/aiida_supercon.html">aiida_supercon package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/aiida_supercon.data.html">aiida_supercon.data package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/aiida_supercon.parsers.html">aiida_supercon.parsers package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/aiida_supercon.tools.html">aiida_supercon.tools package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../api_reference/aiida_supercon.workflows.html">aiida_supercon.workflows package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/aiida_supercon.workflows.controllers.html">aiida_supercon.workflows.controllers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/aiida_supercon.workflows.protocols.html">aiida_supercon.workflows.protocols package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
 </ul>
 </details></li>
 </ul>
@@ -349,7 +364,7 @@ document.write(`
 <h2>Module Breakdown<a class="headerlink" href="#module-breakdown" title="Link to this heading">#</a></h2>
 <section id="aiida-supercon-workflows">
 <h3><code class="docutils literal notranslate"><span class="pre">aiida_supercon/workflows/</span></code><a class="headerlink" href="#aiida-supercon-workflows" title="Link to this heading">#</a></h3>
-<p>This is the core of the plugin, containing all the AiiDA <code class="docutils literal notranslate"><span class="pre">WorkChain</span></code> definitions. The architecture is hierarchical to maximize code reuse.</p>
+<p>This is the core of the plugin, containing all the AiiDA <code class="docutils literal notranslate"><span class="pre">WorkChain</span></code> definitions.</p>
 <section id="base-py-epwbaseworkchain">
 <h4><code class="docutils literal notranslate"><span class="pre">base.py</span></code>: <cite>EpwBaseWorkChain</cite><a class="headerlink" href="#base-py-epwbaseworkchain" title="Link to this heading">#</a></h4>
 <p>This is the lowest-level workchain wrapper around a single <code class="docutils literal notranslate"><span class="pre">EpwCalculation</span></code>. It should include robust error handling and restart logic for a single <code class="docutils literal notranslate"><span class="pre">epw.x</span></code> run, but does not handle complex, multi-step physics workflows.</p>
@@ -413,6 +428,15 @@ document.write(`
         <p class="prev-next-subtitle">previous</p>
         <p class="prev-next-title">Developer Guide</p>
       </div>
+    </a>
+    <a class="right-next"
+       href="../api_reference/index.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">&lt;no title&gt;</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
     </a>
 </div>
                 </footer>

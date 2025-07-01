@@ -7,7 +7,9 @@ from aiida.engine import calcfunction, ToContext, if_
 from .intp import EpwBaseIntpWorkChain
 
 class EpwA2fWorkChain(EpwBaseIntpWorkChain):
-    """Work chain to compute the Allen-Dynes critical temperature."""
+    """Work chain to compute the Allen-Dynes critical temperature.
+    It will run the `EpwB2WWorkChain` and then the `EpwBaseWorkChain`.
+    """
 
     _INTP_NAMESPACE = 'a2f'
     _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE]
@@ -45,7 +47,9 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
             )
     @classmethod
     def get_protocol_filepath(cls):
-        """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
+        """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols.
+        :return: The path to the protocol file.
+        """
         from importlib_resources import files
         from . import protocols
         return files(protocols) / f'{cls._INTP_NAMESPACE}.yaml'
@@ -55,7 +59,10 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         cls,
         from_a2f_workchain
         ):
-
+        """Return a builder prepopulated with inputs extracted from the a2f workchain.
+        :param from_a2f_workchain: The a2f workchain.
+        :return: The builder.
+        """
         return super()._get_builder_restart(
             from_intp_workchain=from_a2f_workchain,
             )
@@ -70,7 +77,18 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
             overrides=None,
             **kwargs
         ):
-        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+        """Return a builder prepopulated with inputs selected according to the chosen protocol.
+        :param codes: The codes should be a dictionary with the following keys:
+            - pw: The code for the pw.x calculation.
+            - ph: The code for the ph.x calculation.
+            - epw: The code for the epw.x calculation.
+            - pw2wannier90: The code for the pw2wannier90.x calculation.
+            - wannier: The code for the wannier90.x calculation.
+        :param structure: The structure.
+        :param protocol: The protocol.
+        :param overrides: The overrides.
+        :return: The builder.
+        """
         builder = super().get_builder_from_protocol(
             codes,
             structure,
@@ -83,7 +101,10 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
 
     @staticmethod
     def calculate_degaussq(workchain_a2f):
-        """Get the settings for the a2f calculation."""
+        """Calculate the degaussq for the a2f calculation based on the `ph.x` results.
+        :param workchain_a2f: The a2f workchain.
+        :return: The degaussq.
+        """
         import numpy
 
         output_parameters = workchain_a2f.inputs.parent_folder_epw.creator.inputs.parent_folder_ph.creator.outputs.output_parameters.get_dict()
@@ -98,7 +119,8 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         return degaussq
 
     def prepare_process(self):
-        """Prepare the process for the current interpolation distance."""
+        """Prepare the process.
+        """
 
         super().prepare_process()
         try:

@@ -4,25 +4,16 @@ from aiida import orm, load_profile
 from aiida.common import AttributeDict
 from aiida.engine import WorkChain, ToContext, while_, if_, append_
 
-from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
-
-from aiida_quantumespresso.calculations.epw import EpwCalculation
-from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-
-from aiida.engine import calcfunction
-
-from scipy.interpolate import interp1d
-import numpy
-import warnings
 
 from .intp import EpwBaseIntpWorkChain
-from .b2w import EpwB2WWorkChain
 
 from .utils.calculators import calculate_iso_tc
 
 
 class EpwIsoWorkChain(EpwBaseIntpWorkChain):
-    """Work chain to compute the Allen-Dynes critical temperature."""
+    """Work chain to compute the superconductivity based on Migdal-Eliashberg theory.
+    This work chain will use isotropic approximation and solve the linearized Eliashberg equation.
+    """
 
     _INTP_NAMESPACE = 'iso'
 
@@ -30,7 +21,8 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
 
     @classmethod
     def define(cls, spec):
-        """Define the work chain specification."""
+        """Define the work chain specification.
+        """
         super().define(spec)
 
         spec.input('estimated_Tc_iso', valid_type=orm.Float, default=lambda: orm.Float(40.0),
@@ -56,9 +48,13 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
 
     @classmethod
     def get_builder_restart(
-        cls, from_iso_workchain
+        cls,
+        from_iso_workchain
         ):
-
+        """Return a builder prepopulated with inputs extracted from the iso workchain.
+        :param from_iso_workchain: The iso workchain.
+        :return: The builder.
+        """
         return super()._get_builder_restart(
             from_intp_workchain=from_iso_workchain,
             )
@@ -73,7 +69,14 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             overrides=None,
             **kwargs
         ):
-        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+        """Return a builder prepopulated with inputs selected according to the chosen protocol.
+        :param codes: The codes should be a dictionary with the following keys:
+            - pw: The code for the pw.x calculation.
+            - ph: The code for the ph.x calculation.
+            - epw: The code for the epw.x calculation.
+            - pw2wannier90: The code for the pw2wannier90.x calculation.
+            - wannier: The code for the wannier90.x calculation.
+        """
         builder = super().get_builder_from_protocol(
             codes,
             structure,
@@ -85,7 +88,9 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         return builder
 
     def prepare_process(self):
-        """Prepare the process for the current interpolation distance."""
+        """Prepare the process.
+        It will update the parameters of the epw calculation with the parameters of the previous EpwBaseWorkChain.
+        """
 
         super().prepare_process()
 
@@ -131,7 +136,8 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         self.ctx.Tc_iso = Tc_iso
 
     def results(self):
-        """TODO"""
+        """Add the most important results `max_eigenvalue` and `Tc_iso` to the outputs of the work chain.
+        """
 
         super().results()
 
