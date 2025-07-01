@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
 """Workchain to run a Quantum ESPRESSO pw.x calculation with automated error handling and restarts."""
 from aiida import orm
-from aiida.common import AttributeDict, exceptions
-from aiida.common import NotExistent, InputValidationError
+from aiida.common import AttributeDict
+from aiida.common import NotExistent
 
-from aiida.common.lang import type_check
-from aiida.engine import BaseRestartWorkChain, ExitCode, ProcessHandlerReport, process_handler, while_
-from aiida.plugins import CalculationFactory, GroupFactory
+from aiida.engine import BaseRestartWorkChain, ProcessHandlerReport, process_handler, while_
+from aiida.plugins import CalculationFactory
 
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-from aiida_quantumespresso.common.types import ElectronicType, RestartType, SpinType
-from aiida_quantumespresso.utils.defaults.calculation import pw as qe_defaults
 
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
@@ -27,21 +24,21 @@ def validate_inputs(inputs, ctx=None):
     It enforces that either `parent_folder_epw` is provided, OR the trio of
     `nscf`, `ph`, and `chk` folders are provided together.
     """
-    
+
     # Check if parent_folder_epw is provided
     has_parent_folder_epw = 'parent_folder_epw' in inputs
-    
+
     # Check which of the other three folders are provided
     has_parent_folder_nscf = 'parent_folder_nscf' in inputs
     has_parent_folder_ph = 'parent_folder_ph' in inputs
     has_parent_folder_chk = 'parent_folder_chk' in inputs
-    
+
     # --- Now, we apply your rules ---
-    
+
     # Rule 1: Cannot provide `parent_folder_epw` AND any of the other three.
     if has_parent_folder_epw and any([
-        has_parent_folder_nscf, 
-        has_parent_folder_ph, 
+        has_parent_folder_nscf,
+        has_parent_folder_ph,
         has_parent_folder_chk
         ]
     ):
@@ -50,15 +47,15 @@ def validate_inputs(inputs, ctx=None):
     # Rule 2: If any of the `nscf/ph/chk` trio are provided, ALL must be provided.
     # `any()` is True if at least one is True. `all()` is True only if all are True.
     # if any([
-    #     has_parent_folder_nscf, 
-    #     has_parent_folder_ph, 
+    #     has_parent_folder_nscf,
+    #     has_parent_folder_ph,
     #     has_parent_folder_chk
     #     ]) and not all([
-    #         has_parent_folder_nscf, 
-    #         has_parent_folder_ph, 
+    #         has_parent_folder_nscf,
+    #         has_parent_folder_ph,
     #         has_parent_folder_chk
     #     ]):
-            
+
     #     return "If providing `nscf/ph/chk` parent folders, you must provide all three together."
 
     # If the logic passes, the validator must return None
@@ -76,25 +73,25 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """Define the process specification."""
         # yapf: disable
         super().define(spec)
-        
+
         spec.expose_inputs(
-            EpwCalculation, namespace='epw', 
+            EpwCalculation, namespace='epw',
             exclude=(
-                'kpoints', 
-                'qpoints', 
-                'kfpoints', 
+                'kpoints',
+                'qpoints',
+                'kfpoints',
                 'qfpoints',
                 'parent_folder_nscf',
                 'parent_folder_ph',
                 'parent_folder_epw',
             )
         )
-        
+
         spec.input(
             'structure', valid_type=orm.StructureData,
             help='The structure to compute the epw for fine grid generation'
             )
-        
+
         spec.input(
             'qfpoints', valid_type=orm.KpointsData, required=False,
             help='fine qpoint mesh'
@@ -106,20 +103,20 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             )
 
         spec.input(
-            'kfpoints_factor', valid_type=orm.Int, 
+            'kfpoints_factor', valid_type=orm.Int,
             help='fine kpoint mesh factor'
-            )       
+            )
 
         spec.input(
             'parent_folder_nscf', valid_type=orm.RemoteData, required=False,
             help='parent folder of the nscf calculation'
             )
-        
+
         spec.input(
             'parent_folder_ph', valid_type=(orm.RemoteData, orm.RemoteStashFolderData), required=False,
             help='parent folder of the ph calculation'
             )
-        
+
         spec.input(
             'parent_folder_epw', valid_type=(orm.RemoteData, orm.RemoteStashFolderData), required=False,
             help='parent folder of the epw calculation'
@@ -129,14 +126,14 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             'parent_folder_chk', valid_type=orm.RemoteData, required=False,
             help='parent folder of the chk file'
             )
-        
+
         spec.input(
             'w90_chk_to_ukk_script', valid_type=orm.RemoteData, required=False,
             help='w90_chk_to_ukk_script'
             )
-        
+
         # spec.inputs.validator = validate_inputs
-        
+
         spec.outline(
             cls.setup,
             cls.validate_parent_folders,
@@ -230,7 +227,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         # Update the parameters based on the protocol inputs
         parameters = inputs['epw']['parameters']
-    
+
         # If overrides are provided, they are considered absolute
         if overrides:
             parameter_overrides = overrides.get('epw', {}).get('parameters', {})
@@ -247,7 +244,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         builder.epw['code'] = code
         builder.epw['parameters'] = orm.Dict(parameters)
         builder.epw['metadata'] = metadata
-        
+
         if parent_folder_nscf:
             builder.parent_folder_nscf = parent_folder_nscf
         if parent_folder_ph:
@@ -258,21 +255,21 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             builder.parent_folder_epw = parent_folder_epw
         if w90_chk_to_ukk_script:
             builder.w90_chk_to_ukk_script = w90_chk_to_ukk_script
-        
+
         if 'settings' in inputs['epw']:
             builder.epw['settings'] = orm.Dict(inputs['epw']['settings'])
         if 'parallelization' in inputs['epw']:
             builder.epw['parallelization'] = orm.Dict(inputs['epw']['parallelization'])
-        
+
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
-        
+
         if 'qfpoints' in inputs:
             builder.qfpoints = inputs['qfpoints']
         else:
             builder.qfpoints_distance = orm.Float(inputs['qfpoints_distance'])
-            
+
         builder.kfpoints_factor = orm.Int(inputs['kfpoints_factor'])
-        
+
         builder.max_iterations = orm.Int(inputs['max_iterations'])
         # pylint: enable=no-member
 
@@ -330,7 +327,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         else:
             self.report("K-point mesh search: Deduce from coordinates...")
             return self._deduce_mesh_from_explicit_kpoints(pw_calc.inputs.kpoints)
-    
+
         if 'mp_grid' in wannier_params:
             mp_grid = wannier_params['mp_grid']
             kpoints = orm.KpointsData()
@@ -373,7 +370,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         ph_calc = ph_folder.creator
         qpoints = ph_calc.inputs.qpoints
         return qpoints
-    
+
     def _get_coarse_grid_from_epw_folder(self, epw_folder):
         """
         Get the coarse grid from the epw folder.
@@ -381,28 +378,28 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         epw_calc = epw_folder.creator
         if not epw_calc.process_class is EpwBaseWorkChain._process_class:
             self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_EPW
-            
+
         kpoints = epw_calc.inputs.kpoints
         qpoints = epw_calc.inputs.qpoints
-        
+
         return kpoints, qpoints
-    
+
     def validate_parent_folders(self):
-        
+
         """Validate the parent folders."""
-        
+
         if 'parent_folder_epw' in self.inputs:
             kpoints, qpoints = self._get_coarse_grid_from_epw_folder(self.inputs.parent_folder_epw)
             self.ctx.inputs.kpoints = kpoints
             self.ctx.inputs.qpoints = qpoints
             self.ctx.inputs.parent_folder_epw = self.inputs.parent_folder_epw
             return
-        
+
         else:
             if self.inputs.parent_folder_nscf.is_cleaned:
                 self.report("Parent folder of nscf calculation is cleaned. Skipping k-point mesh search.")
                 return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_NSCF
-            
+
             try:
                 kpoints = self._get_kpoints_from_nscf_folder(self.inputs.parent_folder_nscf)
                 self.ctx.inputs.kpoints = kpoints
@@ -417,7 +414,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             if self.inputs.parent_folder_ph.is_cleaned:
                 self.report("Parent folder of ph calculation is cleaned. Skipping q-point mesh search.")
                 return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_PH
-            
+
             try:
                 qpoints = self._get_qpoints_from_ph_folder(self.inputs.parent_folder_ph)
                 self.ctx.inputs.qpoints = qpoints
@@ -427,15 +424,15 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
                 return self.exit_codes.ERROR_QPOINTS_MESH_NOT_FOUND
 
             self.ctx.inputs.parent_folder_ph = self.inputs.parent_folder_ph
-        
+
         # if hasattr(self.inputs, 'parent_folder_chk'):
             if self.inputs.parent_folder_chk.is_cleaned:
                 self.report("Parent folder of chk calculation is cleaned. Skipping k-point mesh search.")
                 return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_CHK
-            
+
             if not self.inputs.w90_chk_to_ukk_script:
                 self.report("w90_chk_to_ukk_script is not provided. Skipping wannierization.")
-                return self.exit_codes.ERROR_MISSING_W90_CHK_TO_UKK_SCRIPT 
+                return self.exit_codes.ERROR_MISSING_W90_CHK_TO_UKK_SCRIPT
 
     def validate_parallelization(self):
         try:
@@ -454,13 +451,13 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         parallelization = self.ctx.inputs.get('parallelization', {})
         settings = self.ctx.inputs.get('settings', {})
         cmdline = settings.get('cmdline', [])
-        
+
         if '-npool' in parallelization:
             try:
                 npool = int(parallelization['-npool'])
             except (ValueError, TypeError):
                 npool = None # Treat non-integer value as not set
-        
+
         elif '-npool' in cmdline:
             try:
                 # Find the index of '-npool' and get the next item in the list
@@ -489,10 +486,10 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         `create_kpoints_from_distance` calculation function.
         """
         from .utils.kpoints import is_compatible
-        
+
         if not is_compatible(self.ctx.inputs.kpoints, self.ctx.inputs.qpoints):
             return self.exit_codes.ERROR_INCOMPATIBLE_COARSE_GRIDS
-        
+
         if all(key not in self.inputs for key in ['qfpoints', 'qfpoints_distance']):
             return self.exit_codes.ERROR_INVALID_INPUT_KPOINTS
 
@@ -515,17 +512,17 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         self.ctx.inputs.qfpoints = qfpoints
         self.ctx.inputs.kfpoints = kfpoints
-        
+
     def prepare_process(self):
         """A placeholder for preparing inputs for the next calculation.
-        
+
         Currently, no modifications to `self.ctx.inputs` are needed before
         submission. We rely on the parent `run_process` to create the builder.
         """
         parameters = self.ctx.inputs.parameters.get_dict()
 
         wannierize = parameters['INPUTEPW'].get('wannierize', False)
-        
+
         if wannierize:
             if 'parent_folder_epw' in self.inputs:
                 self.report("Should not have a parent_folder_epw if wannierize is True")
@@ -534,18 +531,18 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             elif 'parent_folder_chk' in self.inputs:
                 self.report("Should not have a chk folder if wannierize is True")
                 return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_CHK
-            
+
         else:
             if 'parent_folder_chk' in self.inputs:
                 w90_calcjob = self.inputs.parent_folder_chk.creator
                 w90_params = w90_calcjob.inputs.parameters.get_dict()
                 exclude_bands = w90_params.get('exclude_bands', None) #TODO check this!
-            
+
                 if exclude_bands:
                     parameters['INPUTEPW']['bands_skipped'] = f'exclude_bands = {exclude_bands[0]}:{exclude_bands[-1]}'
 
                 parameters['INPUTEPW']['nbndsub'] = w90_params['num_wann']
-                
+
                 wannier_chk_path = Path(self.inputs.parent_folder_chk.get_remote_path(), 'aiida.chk')
                 nscf_xml_path = Path(self.inputs.parent_folder_nscf.get_remote_path(), 'out/aiida.xml')
 
@@ -553,9 +550,9 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
                 prepend_text += f'\n{self.inputs.w90_chk_to_ukk_script.get_remote_path()} {wannier_chk_path} {nscf_xml_path} aiida.ukk'
 
                 self.ctx.inputs.metadata.options.prepend_text = prepend_text
-            
+
         self.ctx.inputs.parameters = orm.Dict(parameters)
-        
+
     def report_error_handled(self, calculation, action):
         """Report an action taken for a calculation that has failed.
 

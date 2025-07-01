@@ -29,3 +29,7 @@ def calculate_lambda_omega(frequency: ArrayLike, spectrum: ArrayLike) -> tuple:
     omega_log = omega_log * meV_to_Kelvin
 
     return lambda_, omega_log
+
+# @calcfunction
+# def split_list(list_node: orm.List) -> dict:
+#     return {f'el_{no}': orm.Float(el) for no, el in enumerate(list_node.get_list())}

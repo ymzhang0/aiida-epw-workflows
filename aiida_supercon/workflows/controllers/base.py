@@ -9,6 +9,7 @@ from aiida_submission_controller import FromGroupSubmissionController
 
 from aiida_supercon.workflows.base import EpwBaseWorkChain
 from aiida_quantumespresso.workflows.protocols.utils import recursive_merge
+from aiida.plugins import WorkflowFactory
 
 class EpwBaseWorkChainController(FromGroupSubmissionController):
     """A SubmissionController for submitting `ElectronPhononWorkChain`s."""
@@ -20,16 +21,53 @@ class EpwBaseWorkChainController(FromGroupSubmissionController):
 
     _process_class = EpwBaseWorkChain
 
+    PhBaseWorkChain = WorkflowFactory('quantumespresso.ph.base')
+
     @staticmethod
     def get_extra_unique_keys():
         """Return a tuple of the keys of the unique extras that will be used to uniquely identify your workchains."""
         return ("formula_hill", "number_of_sites", "source_db", "source_id")
+
+    @staticmethod
+    def find_latest_successful_workchain(structure: orm.StructureData, process_class) -> orm.WorkChainNode:
+        """
+        Queries the database to find the latest successfully completed workchain of a given type
+        that has the given structure as an input.
+
+        :param structure: The structure to search for.
+        :param process_class: The WorkChain class to search for (e.g., EpwB2WWorkChain).
+        :return: The latest finished_ok node, or None if not found.
+        """
+        qb = orm.QueryBuilder()
+        qb.append(orm.StructureData, filters={'id': structure.pk}, tag='structure')
+        qb.append(
+            process_class,
+            with_incoming='structure', # Find workchains that have this structure as an input
+            filters={'attributes.exit_status': 0}, # Filter for successfully completed ones
+            tag='wc'
+        )
+        # Order by creation time to get the latest one first
+        qb.order_by([{'wc': {'ctime': 'desc'}}])
+        qb.project(['wc', '*']) # We want the full node object
+
+        result = qb.first()
+
+        if result:
+            return result[1] # The query returns a list [tag, object], we want the object
+
+        return None
+
+    # This method will automatically generate the builder based on
+    # the previous workchains that we have queried from the database
 
     def get_inputs_and_processclass_from_extras(
         self, extras_values, dry_run=False
         ):
         """Return inputs and process class for the submission of this specific process."""
         parent_node = self.get_parent_node_from_extras(extras_values)
+
+        logger = self.get_logger()
+        logger.report(f"Processing <{parent_node.pk}>...")
 
         # Depending on the type of node in the parent class, grab the right inputs
         if isinstance(parent_node, orm.StructureData):

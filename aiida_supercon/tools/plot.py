@@ -9,7 +9,15 @@ from io import StringIO
 from scipy.optimize import curve_fit
 
 
-def plot_a2f(frequency, a2f, axis = None, iso_eliash_tc = None, show_data = False):
+def plot_a2f(
+    a2f: orm.XyData,
+    output_parameters: orm.Dict = None,
+    axis = None,
+    show_data = False,
+    ):
+
+    w        = a2f.get_array('frequency')
+    spectral = a2f.get_array('a2f')
 
     if axis is None:
         from matplotlib import pyplot as plt
@@ -17,20 +25,28 @@ def plot_a2f(frequency, a2f, axis = None, iso_eliash_tc = None, show_data = Fals
     else:
         ax = axis
 
-    ax.plot(frequency, a2f, color='#526AB1')
+    ax.plot(spectral[:, 9], w,color='#526AB1', label=r"$\alpha^2F$")
+    ax.plot(spectral[:, 19], w, color='#526AB1', label=r"$\lambda$")
+    ax.set_xticks(
+        [0, round(numpy.max(spectral[:, [9, 19]]) * 1.05, 1)],
+        [0, round(numpy.max(spectral[:, [9, 19]]) * 1.05, 1)],
+        )
+    ax.set_yticks(
+        [0, round(numpy.max(w) * 1.05, 1)],
+        [0, round(numpy.max(w) * 1.05, 1)],
+        )
+    ax.set_xlim(0, round(numpy.max(spectral[:, [9, 19]]) * 1.05, 1))
+    ax.set_ylim(0, round(numpy.max(w) * 1.05, 1))
+    # ax.set_ylabel(r"$\alpha^2F$")
+    ax.set_ylabel(r"$\omega$ [meV]")
 
-    ax.set_ylabel(r"$\alpha^2F$")
-    ax.set_xlabel(r"$\omega$ [meV]")
+    if show_data and output_parameters:
+        lambda_ = output_parameters.get('lambda_coupling_strength')
+        wlog = output_parameters.get('w_log')
+        allen_dynes_tc = output_parameters.get('Allen_Dynes_Tc')
 
-    if show_data:
-        lambda_, omegalog = calculate_lambda_omega(frequency, a2f)
-        allen_dynes_tc = allen_dynes(lambda_, omegalog, 0.13)
-
-        title = f"$\lambda$ = {lambda_:.2f}\n$\omega_{{log}}$ = {omegalog:.2f} \n$T_c^{{AD}}$ = {allen_dynes_tc:.2f} K"
+        title = f"$\lambda$ = {lambda_:.2f}\n$\omega_{{log}}$ = {wlog:.2f} \n$T_c^{{AD}}$ = {allen_dynes_tc:.2f} K"
         props = dict(boxstyle='round', facecolor='#526AB1', alpha=0.3)
-
-        if iso_eliash_tc is not None:
-            title += f"\n$T_c^{{iso}}$ = {iso_eliash_tc:.2f} K"
 
         ax.text(
             0.05, 0.95, title, transform=ax.transAxes, fontsize=16, verticalalignment='top', bbox=props
@@ -158,7 +174,7 @@ def create_xticks(seekpath_params):
         return label
 
     path = seekpath_params['path']
-    xtick_labels = [transform_gamma(path[0][0]), ] 
+    xtick_labels = [transform_gamma(path[0][0]), ]
 
     for segment_number, segment_labels in enumerate(path):
         try:
@@ -180,7 +196,7 @@ def create_xticks(seekpath_params):
 
 def create_xticks_bands(bands: orm.BandsData) -> Tuple[list, list]:
     """Create xticks and xtick_labels for a band structure plot.
-    
+
     Takes a BandsData object and returns a tuple of xticks and xtick_labels. The script takes care
     of two things:
 

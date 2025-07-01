@@ -1,28 +1,27 @@
 default_inputs:
   clean_workdir: False
-  a2f:
+  bands:
     epw:
       metadata:
         options:
           withmpi: True
+
       parameters:
         INPUTEPW:
-          eliashberg: True
-          # elph: True
-          # ep_coupling: True
+          a2f: False
+          degaussq: 0.05
+          degaussw: 0.2
+          elph: True
+          epbread: False
+          epbwrite: False
           epwread: True
           epwwrite: False
-          ephwrite: True
+          fsthick: 100
+          phonselfen: False
+          temps: 300
+          vme: 'dipole'
           wannierize: False
-          muc: 0.13
-          mp_mesh_k: True
-          degaussw: 0.025
-          # eps_acustic: 0.1
-          # iverbosity: 1
-          fsthick: 0.8
-          nqstep: 500
-          # restart: True
-          temps: 1
+          band_plot: True
 
 default_protocol: moderate
 protocols:

@@ -13,17 +13,17 @@ class EpwParser(BaseParser):
     """``Parser`` implementation for the ``EpwCalculation`` calculation job."""
 
     success_string='EPW.bib'
-    
+
     _PREFIX = EpwCalculation._PREFIX
     _OUTPUT_SUBFOLDER = './out/'
-    _OUTPUT_DOS_FILE = _OUTPUT_SUBFOLDER + _PREFIX + '.dos'
+    _OUTPUT_DOS_FILE =  _PREFIX + '.dos'
     _OUTPUT_PHDOS_FILE = _PREFIX + '.phdos'
     _OUTPUT_PHDOS_PROJ_FILE = _PREFIX + '.phdos_proj'
     _OUTPUT_A2F_FILE = EpwCalculation._OUTPUT_A2F_FILE
     _OUTPUT_A2F_PROJ_FILE = _PREFIX + '.a2f_proj'
     _OUTPUT_LAMBDA_FS_FILE = _PREFIX + '.lambda_FS'
     _OUTPUT_LAMBDA_K_PAIRS_FILE = _PREFIX + '.lambda_k_pairs'
-    
+
     def parse(self, **kwargs):
         """Parse the retrieved files of a completed ``EpwCalculation`` into output nodes."""
         logs = get_logging_container()
@@ -66,11 +66,11 @@ class EpwParser(BaseParser):
         if self._OUTPUT_A2F_PROJ_FILE in self.retrieved.base.repository.list_object_names():
             a2f_proj_contents = self.retrieved.base.repository.get_object_content(self._OUTPUT_A2F_PROJ_FILE)
             self.out('a2f_proj', self.parse_a2f_proj(a2f_proj_contents))
-        
+
         if self._OUTPUT_LAMBDA_FS_FILE in self.retrieved.base.repository.list_object_names():
             lambda_FS_contents = self.retrieved.base.repository.get_object_content(self._OUTPUT_LAMBDA_FS_FILE)
             self.out('lambda_FS', self.parse_lambda_FS(lambda_FS_contents))
-        
+
         if self._OUTPUT_LAMBDA_K_PAIRS_FILE in self.retrieved.base.repository.list_object_names():
             lambda_k_pairs_contents = self.retrieved.base.repository.get_object_content(self._OUTPUT_LAMBDA_K_PAIRS_FILE)
             self.out('lambda_k_pairs', self.parse_lambda_k_pairs(lambda_k_pairs_contents))
@@ -88,9 +88,9 @@ class EpwParser(BaseParser):
             for T, imag_aniso_filecontent in imag_aniso_filecontents:
                 aniso_gap_function = self.parse_aniso_gap_function(imag_aniso_filecontent)
                 aniso_gap_functions_arraydata.set_array(T.replace('.', '_'), aniso_gap_function)
-            
+
             self.out('aniso_gap_functions', aniso_gap_functions_arraydata)
-        
+
         if 'max_eigenvalue' in parsed_data:
             self.out('max_eigenvalue', parsed_data.pop('max_eigenvalue'))
 
@@ -133,7 +133,7 @@ class EpwParser(BaseParser):
             ('DOS', lambda s: float(s.replace('D', 'E').replace('d', 'E')), re.compile(r'DOS\(states/spin/eV/Unit Cell\)\s*=\s*([\d\.D+-]+)')),
             ('electron_smearing', lambda s: float(s.replace('D', 'E').replace('d', 'E')), re.compile(r'Electron smearing \(eV\)\s*=\s*([\d\.D+-]+)')),
             ('fermi_window', lambda s: float(s.replace('D', 'E').replace('d', 'E')), re.compile(r'Fermi window \(eV\)\s*=\s*([\d\.D+-]+)')),
-            ('lambda_coupling_strength', float, re.compile(r'Electron-phonon coupling strength\s*=\s*([\d\.]+)')),
+            ('lambda', float, re.compile(r'Electron-phonon coupling strength\s*=\s*([\d\.]+)')),
             ('Allen_Dynes_Tc', float, re.compile(r'Estimated Allen-Dynes Tc\s*=\s*([\d\.]+) K for muc')),
             ('muc', float, re.compile(r'for muc\s*=\s*([\d\.]+)')),
             ('w_log', float, re.compile(r'Estimated w_log in Allen-Dynes Tc\s*=\s*([\d\.]+) meV')),
@@ -161,7 +161,7 @@ class EpwParser(BaseParser):
     @staticmethod
     def parse_a2f(content):
         """Parse the contents of the `.a2f` file."""
-        a2f_array = numpy.array([line.split() for line in content.splitlines()[1:501]], dtype=float)
+        a2f_array = numpy.array([line.split() for line in content.splitlines()[1:-1]], dtype=float)
 
         a2f_xydata = orm.XyData()
         a2f_xydata.set_array(
@@ -195,23 +195,23 @@ class EpwParser(BaseParser):
 
         a2f_proj_xydata.set_array('frequency', a2f_proj_array[:, 0])
         a2f_proj_xydata.set_array('a2f_proj', a2f_proj_array[:, 1:])
-        
+
         return a2f_proj_xydata
-    
+
     @staticmethod
     def parse_dos(content):
         """Parse the contents of the `.dos` file."""
         import io
         dos_xydata = orm.XyData()
         dos = numpy.loadtxt(
-            io.StringIO((content)), 
-            dtype=float, 
+            io.StringIO((content)),
+            dtype=float,
             comments='#'
             )
-        
+
         dos_xydata.set_array('Energy', dos[:, 0])
         dos_xydata.set_array('EDOS', dos[:, 1])
-        
+
         return dos_xydata
 
     @staticmethod
@@ -220,48 +220,48 @@ class EpwParser(BaseParser):
         import io
         phdos_xydata = orm.XyData()
         phdos = numpy.loadtxt(
-            io.StringIO((content)), 
-            dtype=float, 
+            io.StringIO((content)),
+            dtype=float,
             skiprows=1
             )
         phdos_xydata.set_array('Frequency', phdos[:, 0])
         phdos_xydata.set_array('PHDOS', phdos[:, 1])
-        
+
         return phdos_xydata
 
     @staticmethod
     def parse_lambda_FS(content):
         """Parse the contents of the `.lambda_FS` file."""
         import io
-        
+
         lambda_FS_arraydata = orm.ArrayData()
         lambda_FS = numpy.loadtxt(
-            io.StringIO((content)), 
-            dtype=float, 
+            io.StringIO((content)),
+            dtype=float,
             comments='#'
             )
-        
+
         lambda_FS_arraydata.set_array('kpoints', lambda_FS[:, :3])
         lambda_FS_arraydata.set_array('band', lambda_FS[:, 3])
         lambda_FS_arraydata.set_array('Enk', lambda_FS[:, 4])
         lambda_FS_arraydata.set_array('lambda', lambda_FS[:, 5])
-        
+
         return lambda_FS_arraydata
-    
+
     @staticmethod
     def parse_lambda_k_pairs(content):
         """Parse the contents of the `.lambda_k_pairs` file."""
         import io
-        
+
         lambda_k_pairs_xydata = orm.XyData()
         lambda_k_pairs = numpy.loadtxt(
-            io.StringIO((content)), 
-            dtype=float, 
+            io.StringIO((content)),
+            dtype=float,
             comments='#'
             )
         lambda_k_pairs_xydata.set_array('lambda_nk', lambda_k_pairs[:, 0])
         lambda_k_pairs_xydata.set_array('rho', lambda_k_pairs[:, 1])
-        
+
         return lambda_k_pairs_xydata
 
     def parse_bands(content):
@@ -303,8 +303,8 @@ class EpwParser(BaseParser):
         """Parse the contents of the `gap_function.dat` file."""
         import io
         gap_function = numpy.loadtxt(
-            io.StringIO((content)), 
-            dtype=float, 
+            io.StringIO((content)),
+            dtype=float,
             comments='#'
             )
 

@@ -1,23 +1,32 @@
 # -*- coding: utf-8 -*-
 """Work chain for computing the critical temperature based off an `EpwWorkChain`."""
 from aiida import orm
-from aiida.engine import calcfunction, ToContext, if_
+from aiida.engine import if_
 
 
 from .intp import EpwBaseIntpWorkChain
 
-class EpwA2fWorkChain(EpwBaseIntpWorkChain):
-    """Work chain to compute the Allen-Dynes critical temperature."""
+from ..common.restart import RestartState
 
-    _INTP_NAMESPACE = 'a2f'
+
+class EpwBandsWorkChain(EpwBaseIntpWorkChain):
+    """Work chain to compute the band structure."""
+
+    _INTP_NAMESPACE = 'bands'
     _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE]
+    _RESTART_STATE = RestartState(_ALL_NAMESPACES)
 
+    _blocked_keywords = [
+        ('INPUTEPW', 'use_ws'),
+        ('INPUTEPW', 'nbndsub'),
+        ('INPUTEPW', 'bands_skipped'),
+        ('INPUTEPW', 'vme'),
+    ]
 
     @classmethod
     def validate_inputs(cls, inputs, ctx=None):
         """Validate the inputs."""
         return None
-
 
     @classmethod
     def define(cls, spec):
@@ -39,8 +48,13 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         spec.inputs[cls._INTP_NAMESPACE].validator = cls.validate_inputs
         spec.inputs.validator = cls.validate_inputs
 
+        spec.output('el_band_structure', valid_type=orm.BandsData,
+                    help='The electronic band structure.')
+        spec.output('ph_band_structure', valid_type=orm.BandsData,
+                    help='The phonon band structure.')
+
         spec.exit_code(
-            402, 'ERROR_SUB_PROCESS_A2F',
+            402, 'ERROR_SUB_PROCESS_BANDS',
             message='The `epw.x` workflow failed.'
             )
     @classmethod
@@ -53,13 +67,12 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
     @classmethod
     def get_builder_restart(
         cls,
-        from_a2f_workchain
+        from_bands_workchain
         ):
 
         return super()._get_builder_restart(
-            from_intp_workchain=from_a2f_workchain,
+            from_intp_workchain=from_bands_workchain,
             )
-
 
     @classmethod
     def get_builder_from_protocol(
@@ -81,42 +94,32 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
 
         return builder
 
-    @staticmethod
-    def calculate_degaussq(workchain_a2f):
-        """Get the settings for the a2f calculation."""
-        import numpy
+    def setup(self):
+        """Setup the work chain."""
+        super().setup()
 
-        output_parameters = workchain_a2f.inputs.parent_folder_epw.creator.inputs.parent_folder_ph.creator.outputs.output_parameters.get_dict()
-        number_of_qpoints = output_parameters.get('number_of_qpoints')
-        dynamical_matricies = numpy.array([
-            output_parameters.get(f'dynamical_matricies_{iq+1}').get('frequencies') for iq in range(number_of_qpoints)
-            ])
+        from aiida_quantumespresso.calculations.functions.seekpath_structure_analysis import seekpath_structure_analysis
 
-        max_frequency = numpy.max(dynamical_matricies)
-        degaussq = max_frequency / 100
+        inputs = {
+            'reference_distance': self.inputs.get('bands_kpoints_distance', None),
+            'metadata': {
+                'call_link_label': 'seekpath'
+            }
+        }
+        result = seekpath_structure_analysis(self.inputs.structure, **inputs)
+        self.ctx.bands_kpoints = result['explicit_kpoints']
 
-        return degaussq
+        self.out('seekpath_parameters', result['parameters'])
 
     def prepare_process(self):
-        """Prepare the process for the current interpolation distance."""
-
+        """Prepare the process."""
         super().prepare_process()
-        try:
-            settings = self.ctx.inputs.epw.settings.get_dict()
-        except AttributeError:
-            settings = {}
 
-        settings['ADDITIONAL_RETRIEVE_LIST'] = [
-            'aiida.a2f',
-            'aiida.a2f_proj',
-            'out/aiida.dos',
-            'aiida.phdos',
-            'aiida.phdos_proj',
-            'aiida.lambda_FS',
-            'aiida.lambda_k_pairs'
-            ]
+        self.ctx.inputs.pop('qfpoints_distance')
+        self.ctx.inputs.pop('kfpoints_factor')
 
-        self.ctx.inputs.epw.settings = orm.Dict(settings)
+        self.ctx.inputs.qfpoints = self.ctx.bands_kpoints
+        self.ctx.inputs.kfpoints = self.ctx.bands_kpoints
 
     def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""
@@ -124,10 +127,12 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
 
         if not intp_workchain.is_finished_ok:
             self.report(f'`epw.x` failed with exit status {intp_workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_A2F
+            return self.exit_codes.ERROR_SUB_PROCESS_BANDS
 
     def results(self):
         """TODO"""
 
         super().results()
 
+        self.out('el_band_structure', self.ctx.workchain_intp.outputs.el_band_structure)
+        self.out('ph_band_structure', self.ctx.workchain_intp.outputs.ph_band_structure)

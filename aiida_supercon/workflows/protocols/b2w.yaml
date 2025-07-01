@@ -46,6 +46,7 @@ default_inputs:
           temps: 300
           vme: 'dipole'
           wannierize: False
+
 default_protocol: moderate
 protocols:
   moderate:
