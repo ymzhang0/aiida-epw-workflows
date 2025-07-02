@@ -12,5 +12,5 @@
 build/
 dist/
 pip-wheel-metadata/
-__pycache__
-_build
+__pycache__/
+docs/_build
