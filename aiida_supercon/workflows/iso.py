@@ -30,9 +30,6 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         spec.input('linearized_Eliashberg', valid_type=orm.Bool, default=lambda: orm.Bool(True),
             help='Whether to use the linearized Eliashberg function.')
 
-        spec.output('max_eigenvalue', valid_type=orm.XyData,
-            help='The temperature dependence of the max eigenvalue for the final EPW.')
-
         spec.output('Tc_iso', valid_type=orm.Float,
                     help='The isotropic Tc interpolated from the a2f file.')
 
@@ -136,11 +133,10 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         self.ctx.Tc_iso = Tc_iso
 
     def results(self):
-        """Add the most important results `max_eigenvalue` and `Tc_iso` to the outputs of the work chain.
+        """Add the most important results `Tc_iso` to the outputs of the work chain.
         """
 
         super().results()
 
-        self.out('max_eigenvalue', self.ctx.workchain_intp.outputs.max_eigenvalue)
         self.out('Tc_iso', self.ctx.Tc_iso)
 

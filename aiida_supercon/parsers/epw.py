@@ -107,12 +107,45 @@ class EpwParser(BaseParser):
 
         def parse_max_eigenvalue(stdout_block):
             re_pattern = re.compile(r'\s+([\d\.]+)\s+([\d\.-]+)\s+\d+\s+[\d\.]+\s+\d+\n')
-            parsing_block = stdout_block.split('Finish: Solving (isotropic) linearized Eliashberg')[0]
+            parsing_block = stdout_block.split('Superconducting transition temp. Tc is the one which has Max. eigenvalue close to 1')[1]
             max_eigenvalue_array = orm.XyData()
             max_eigenvalue_array.set_array(
                 'max_eigenvalue', numpy.array(re_pattern.findall(parsing_block), dtype=float)
             )
             return max_eigenvalue_array
+
+        def parse_gap_range(stdout_block):
+            """Finds superconducting gap range in the stdout and organizes them into a dictionary keyed by temperature."""
+
+            pattern = re.compile(
+                r"Chemical potential.*?=\s*([-\d\.E+]+)\s*eV"  # Group 1: Chemical Potential
+                r".*?"                                       # Match anything in between
+                r"Temp \(itemp.*?\)\s*=\s*([\d\.]+)\s*K"       # Group 2: Temperature
+                r"\s+Free energy\s*=\s*([-\d\.]+)\s*meV"     # Group 3: Free Energy
+                r".*?"                                       # Match anything in between
+                r"Min\. / Max\. values of superconducting gap\s*=\s*([\d\.]+)\s+([\d\.]+)", # Groups 4 & 5
+                re.DOTALL  # The DOTALL flag is crucial to make '.' match newlines
+            )
+
+            results = {}
+
+            for match in pattern.finditer(stdout_block):
+                chemical_potential = float(match.group(1))
+                temperature = float(match.group(2))
+                free_energy = float(match.group(3))
+                min_gap = float(match.group(4))
+                max_gap = float(match.group(5))
+
+                properties_dict = {
+                    'chemical_potential': chemical_potential,
+                    'free_energy': free_energy,
+                    'min_superconducting_gap': min_gap,
+                    'max_superconducting_gap': max_gap,
+                }
+
+                results[temperature] = properties_dict
+
+            return results
 
         data_type_regex = (
             ('nbndsub', int, re.compile(r'nbndsub\s*=\s*(\d+)')),
@@ -140,9 +173,7 @@ class EpwParser(BaseParser):
             ('BCS_gap', float, re.compile(r'Estimated BCS superconducting gap\s*=\s*([\d\.]+) meV')),
             ('ML_tc', float, re.compile(r'Estimated Tc from machine learning model\s*=\s*([\d\.]+) K')),
         )
-        data_block_marker_parser = (
-            ('max_eigenvalue', 'Superconducting transition temp. Tc', parse_max_eigenvalue),
-        )
+
         parsed_data = {}
         stdout_lines = stdout.split('\n')
 
@@ -152,16 +183,18 @@ class EpwParser(BaseParser):
                 if match:
                     parsed_data[data_key] = type(match.group(1))
 
-            for data_key, data_marker, block_parser in data_block_marker_parser:
-                if data_marker in line:
-                    parsed_data[data_key] = block_parser(stdout[line_number:])
+        if 'Solving (isotropic) linearized Eliashberg equation' in stdout:
+            parsed_data['max_eigenvalue'] = parse_max_eigenvalue(stdout)
+
+        if 'Solve anisotropic Eliashberg equations' in stdout:
+            parsed_data['anisotropic_gap_range'] = parse_gap_range(stdout)
 
         return parsed_data, logs
 
     @staticmethod
     def parse_a2f(content):
         """Parse the contents of the `.a2f` file."""
-        a2f_array = numpy.array([line.split() for line in content.splitlines()[1:-1]], dtype=float)
+        a2f_array = numpy.array([line.split() for line in content.splitlines()[1:-7]], dtype=float)
 
         a2f_xydata = orm.XyData()
         a2f_xydata.set_array(

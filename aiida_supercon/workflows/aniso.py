@@ -72,7 +72,9 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
     """
 
     _INTP_NAMESPACE = 'aniso'
+    _IR_NAMESPACE = 'aniso_ir'
 
+    _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE, _IR_NAMESPACE]
     _frozen_restart_parameters = {
         'INPUTEPW': {
             'elph': False,
@@ -123,21 +125,22 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         spec.input('use_ir', valid_type=orm.Bool, default=lambda: orm.Bool(False),
             help='Whether to use the intermediate representation.')
 
-        # spec.outline(
-        #     cls.setup,
-        #     if_(cls.should_run_b2w)(
-        #         cls.run_b2w,
-        #         cls.inspect_b2w,
-        #     ),
-        #     cls.prepare_process,
-        #     cls.run_process,
-        #     cls.inspect_process,
-        #     cls.results
-        # )
-        # spec.output('a2f', valid_type=orm.XyData,
-        #     help='The contents of the `.a2f` file.')
-        # spec.output('Tc_aniso', valid_type=orm.Float,
-        #   help='The anisotropic Tc interpolated from the a2f file.')
+
+        spec.outline(
+            cls.setup,
+            if_(cls.should_run_b2w)(
+                cls.run_b2w,
+                cls.inspect_b2w,
+            ),
+            cls.prepare_process,
+            cls.run_process,
+            cls.inspect_process,
+            cls.results
+        )
+
+        spec.output(
+            'Tc_aniso', valid_type=orm.Float,
+            help='The anisotropic Tc from fitting the gap function.')
 
         spec.exit_code(402, 'ERROR_SUB_PROCESS_ANISO',
             message='The `aniso` sub process failed')

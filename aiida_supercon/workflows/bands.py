@@ -53,10 +53,6 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
             required=False,
             help="The parameters used in the SeeKpath call to normalize the input or relaxed structure.",
         )
-        spec.output('el_band_structure', valid_type=orm.BandsData,
-                    help='The electronic band structure.')
-        spec.output('ph_band_structure', valid_type=orm.BandsData,
-                    help='The phonon band structure.')
 
         spec.exit_code(
             402, 'ERROR_SUB_PROCESS_BANDS',
@@ -147,10 +143,3 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
             self.report(f'`epw.x` failed with exit status {intp_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_BANDS
 
-    def results(self):
-        """TODO"""
-
-        super().results()
-
-        self.out('el_band_structure', self.ctx.workchain_intp.outputs.el_band_structure)
-        self.out('ph_band_structure', self.ctx.workchain_intp.outputs.ph_band_structure)

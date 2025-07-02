@@ -57,7 +57,8 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         spec.input('interpolation_distances', required=False, valid_type=orm.List)
         spec.input('convergence_threshold', required=False, valid_type=orm.Float)
         spec.input('always_run_final', required=False, valid_type=orm.Bool, default=lambda: orm.Bool(True))
-
+        spec.input('use_ir', required=False, valid_type=orm.Bool, default=lambda: orm.Bool(False))
+        
         spec.expose_inputs(
             EpwB2WWorkChain,
             namespace=cls._B2W_NAMESPACE,
@@ -167,14 +168,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             ),
             cls.results
         )
-        # spec.output('parameters', valid_type=orm.Dict,
-        #             help='The `output_parameters` output node of the final EPW calculation.')
-        # spec.output('Tc_allen_dynes', valid_type=orm.Float, required=False,
-        #             help='The Allen-Dynes Tc interpolated from the a2f file.')
-        # spec.output('Tc_iso', valid_type=orm.Float, required=False,
-        #             help='The isotropic linearised Eliashberg Tc interpolated from the max eigenvalue curve.')
-        # spec.output('Tc_aniso', valid_type=orm.Float, required=False,
-        #             help='The anisotropic Eliashberg Tc interpolated from the max eigenvalue curve.')
 
         spec.expose_outputs(
             EpwB2WWorkChain,
@@ -251,7 +244,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         supercon: orm.WorkChainNode,
         link_label_filter: str
         ) -> orm.WorkChainNode:
-        """Get the descendant workchains of the intp workchain."""
+        """Get the descendant workchain of the EpwSuperConWorkChain according to the link label."""
         try:
             return supercon.base.links.get_outgoing(
                 link_label_filter=link_label_filter
@@ -264,7 +257,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         supercon: orm.WorkChainNode,
         link_label_filter: str
         ) -> orm.WorkChainNode:
-        """Get the descendant workchains of the intp workchain."""
+        """Get the descendant workchains of the EpwSuperConWorkChain."""
         try:
             return supercon.base.links.get_outgoing(
                 link_label_filter=link_label_filter
@@ -279,7 +272,9 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         overrides=None,
         **kwargs
         ):
-        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+        """Return a builder prepopulated with inputs selected according to the chosen protocol.
+        It will restart from the b2w workchain and then run the a2f, iso, and aniso workchains.
+        """
         inputs = cls.get_protocol_inputs(protocol, overrides)
 
         builder = cls.get_builder()
@@ -311,9 +306,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
 
         for (epw_namespace, epw_workchain_class) in (
-            (EpwA2fWorkChain._INTP_NAMESPACE, EpwA2fWorkChain),
-            (EpwIsoWorkChain._INTP_NAMESPACE, EpwIsoWorkChain),
-            (EpwAnisoWorkChain._INTP_NAMESPACE, EpwAnisoWorkChain),
+            (cls._BANDS_NAMESPACE, EpwBandsWorkChain),
+            (cls._A2F_NAMESPACE, EpwA2fWorkChain),
+            (cls._ISO_NAMESPACE, EpwIsoWorkChain),
+            (cls._ANISO_NAMESPACE, EpwAnisoWorkChain),
         ):
             epw_builder = epw_workchain_class.get_builder_restart_from_b2w(
                 from_b2w_workchain=from_b2w_workchain,
@@ -328,7 +324,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             builder[epw_namespace]._data = epw_builder._data
 
         if parent_folder_epw:
-            builder[EpwA2fWorkChain._INTP_NAMESPACE].parent_folder_epw = parent_folder_epw
+            builder[cls._B2W_NAMESPACE].parent_folder_epw = parent_folder_epw
 
         builder.interpolation_distances = orm.List(inputs.get('interpolation_distances', None))
         builder.convergence_threshold = orm.Float(inputs['convergence_threshold'])
@@ -358,8 +354,8 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         parent_folder_epw = from_a2f_workchain.outputs.epw.remote_folder
 
         for (epw_namespace, epw_workchain_class) in (
-            (EpwIsoWorkChain._INTP_NAMESPACE, EpwIsoWorkChain),
-            (EpwAnisoWorkChain._INTP_NAMESPACE, EpwAnisoWorkChain),
+            (cls._ISO_NAMESPACE, EpwIsoWorkChain),
+            (cls._ANISO_NAMESPACE, EpwAnisoWorkChain),
         ):
             epw_builder = epw_workchain_class.get_builder()
 
@@ -370,9 +366,9 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 overrides=overrides.get(epw_namespace, None),
                 **kwargs)
 
-            epw_builder[epw_workchain_class._INTP_NAMESPACE]._data = intp_builder._data
+            epw_builder[epw_namespace]._data = intp_builder._data
 
-            epw_builder[epw_workchain_class._INTP_NAMESPACE].parent_folder_epw = parent_folder_epw
+            epw_builder[epw_namespace].parent_folder_epw = parent_folder_epw
 
             builder[epw_namespace]._data = epw_builder._data
 
@@ -397,6 +393,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         try:
             for sub_workchain in (
+                EpwBandsWorkChain,
                 EpwA2fWorkChain,
                 EpwIsoWorkChain,
                 EpwAnisoWorkChain,
@@ -656,9 +653,30 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
             builder[epw_namespace]._data = epw_builder._data
 
-            # builder.structure = structure
-            # builder.qfpoints_distance = orm.Float(inputs.get('qfpoints_distance', None))
-            # builder.kfpoints_factor = orm.Float(inputs.get('kfpoints_factor', None))
+        use_ir = inputs.get('use_ir', False)
+        
+        if use_ir:
+            epw_builder = EpwAnisoWorkChain.get_builder_from_protocol(
+                structure=structure,
+                codes=codes['epw_ir'],
+                protocol=protocol,
+                overrides=inputs.get(cls._ANISO_NAMESPACE, None),
+                **kwargs
+            )
+            epw_builder.use_ir = orm.Bool(use_ir)
+            epw_builder.pop(EpwAnisoWorkChain._B2W_NAMESPACE)
+
+            builder[cls._ANISO_NAMESPACE]._data = epw_builder._data
+        else:
+            epw_builder.use_ir = orm.Bool(use_ir)
+            epw_builder = EpwAnisoWorkChain.get_builder_from_protocol(
+                *args,
+                overrides=inputs.get(cls._ANISO_NAMESPACE, None),
+                **kwargs
+            )
+            epw_builder.pop(EpwAnisoWorkChain._B2W_NAMESPACE)
+
+            builder[cls._ANISO_NAMESPACE]._data = epw_builder._data
 
         builder.structure = structure
         builder.interpolation_distances = orm.List(inputs.get('interpolation_distances', None))
