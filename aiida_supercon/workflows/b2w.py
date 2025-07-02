@@ -107,24 +107,19 @@ from pathlib import Path
 from aiida import orm
 from aiida.common import AttributeDict
 
-import logging
 import warnings
 
-from aiida.engine import PortNamespace, ProcessBuilder, WorkChain, ToContext, if_, while_
+from aiida.engine import ProcessBuilder, WorkChain, ToContext, if_
 from aiida_quantumespresso.workflows.ph.base import PhBaseWorkChain
-from aiida_quantumespresso.workflows.pw.bands import PwBandsWorkChain
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
-from aiida.orm.nodes.data.base import to_aiida_type
 
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-from aiida_quantumespresso.utils.mapping import prepare_process_inputs
 
-from aiida_wannier90_workflows.workflows import Wannier90BaseWorkChain, Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
-from aiida_wannier90_workflows.workflows.optimize import validate_inputs as validate_inputs_w90
+from aiida_wannier90_workflows.workflows import Wannier90OptimizeWorkChain
 from aiida_wannier90_workflows.utils.workflows.builder.setter import set_kpoints
 from aiida_wannier90_workflows.common.types import WannierProjectionType
 
-from .utils.kpoints import is_compatible
+from ..tools.kpoints import is_compatible
 
 from .base import EpwBaseWorkChain
 
@@ -517,7 +512,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         if 'qpoints_distance' in from_ph_workchain.inputs:
             builder.qpoints_distance = orm.Float(from_ph_workchain.inputs.qpoints_distance)
 
-        # builder.kpoints_factor_nscf = orm.Int(inputs.get('kpoints_factor_nscf'))
 
         return builder
 
@@ -700,7 +694,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         builder[cls._EPW_NAMESPACE]._data = epw._data
 
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
-        # builder._inputs(prune=True)
 
         return builder
 

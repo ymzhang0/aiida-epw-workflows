@@ -4,32 +4,33 @@ import re
 import tempfile
 from aiida.common.exceptions import NotExistentAttributeError
 from .constants import THZ_TO_MEV
+
 def get_qpoints_and_frequencies(
     wc: orm.WorkChainNode,
     success_code = [0],
     ):
     pattern_q = re.compile(
         r'''q\s*=\s*
-        \(\s*         
-        ([+-]?\d+\.\d+) 
-        \s+([+-]?\d+\.\d+)  
+        \(\s*
+        ([+-]?\d+\.\d+)
+        \s+([+-]?\d+\.\d+)
         \s+([+-]?\d+\.\d+)
         \s*\)
-        ''', 
+        ''',
         re.VERBOSE
     )
 
     pattern_freq = re.compile(
-        r'''freq\s*\( \s*\d+ \s*\)  
+        r'''freq\s*\( \s*\d+ \s*\)
         \s*=\s*
-        ([+-]?\d+\.\d+)        
+        ([+-]?\d+\.\d+)
         \s*\[THz\]\s*=\s*
-        ([+-]?\d+\.\d+)  
+        ([+-]?\d+\.\d+)
         \s*\[cm-1\]
-        ''', 
+        ''',
         re.VERBOSE
         )
-    
+
     if wc.process_label == 'EpwWorkChain':
         wc_ph = wc.base.links.get_outgoing(link_label_filter='ph_base').first().node
     elif wc.process_label == 'PhBaseWorkChain':
@@ -42,16 +43,16 @@ def get_qpoints_and_frequencies(
                 )
         else:
             raise ValueError('Invalid input workchain')
-    
+
     if not (wc_ph.exit_status in success_code):
         raise ValueError('The PhBaseWorkChain failed')
-    
+
     remote_folder = wc_ph.outputs.remote_folder
     try:
         retrieved = wc_ph.outputs.retrieved
         if 'DYN_MAT' not in retrieved.list_object_names():
             raise ValueError('DYN_MAT/ not found in the retrieved list.')
-        
+
         dyn0 = retrieved.get_object_content('DYN_MAT/dynamical-matrix-0')
 
     except NotExistentAttributeError:
@@ -101,7 +102,7 @@ def get_negative_frequencies(
     ):
     is_stable = True
     negative_freqs = []
-    
+
     qs, freqs = get_qpoints_and_frequencies(wc, success_code)
     q0 = qs[0]
     neg_freq0 = [f * THZ_TO_MEV for f in freqs[0] if f < tolerance]
@@ -113,14 +114,14 @@ def get_negative_frequencies(
         if len(neg_freq) > 0:
             is_stable = False
             negative_freqs.append((q, neg_freq))
-    
+
     return is_stable, negative_freqs
 
 
 def get_phonon_wc_from_epw_wc(
     epw_wc: orm.WorkChainNode
     ) -> orm.WorkChainNode:
-    
+
     if epw_wc.process_label == 'EpwWorkChain':
         try:
             ph_base_wc = epw_wc.base.links.get_outgoing(link_label_filter='ph_base').first().node

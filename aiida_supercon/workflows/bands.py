@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
 """Work chain for computing the critical temperature based off an `EpwWorkChain`."""
 from aiida import orm
-from aiida.engine import if_
 
 
 from .intp import EpwBaseIntpWorkChain
-
-from ..common.restart import RestartState
-
 
 class EpwBandsWorkChain(EpwBaseIntpWorkChain):
     """Work chain to interpolate the band structure using epw.x.
@@ -15,7 +11,6 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
 
     _INTP_NAMESPACE = 'bands'
     _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE]
-    _RESTART_STATE = RestartState(_ALL_NAMESPACES)
 
     _blocked_keywords = [
         ('INPUTEPW', 'use_ws'),

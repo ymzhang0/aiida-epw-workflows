@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
 """Work chain for computing the critical temperature based off an `EpwWorkChain`."""
-from aiida import orm, load_profile
-from aiida.common import AttributeDict
-from aiida.engine import WorkChain, ToContext, while_, if_, append_
-
 
 from .intp import EpwBaseIntpWorkChain
 
-from .utils.calculators import calculate_iso_tc
+from ..tools.calculators import calculate_iso_tc
 
 
 class EpwIsoWorkChain(EpwBaseIntpWorkChain):

@@ -77,7 +77,7 @@ def recursive_merge(namespace, dict_to_merge):
 def get_parent_folder_chk_from_w90_workchain(
     workchain: orm.WorkChainNode,
     ) -> orm.RemoteData:
-    
+
     if workchain.process_class is Wannier90OptimizeWorkChain:
         if hasattr(workchain.inputs, 'optimize_disproj') and workchain.inputs.optimize_disproj:
             parent_folder_chk = workchain.outputs.wannier90_optimal.remote_folder
@@ -87,67 +87,5 @@ def get_parent_folder_chk_from_w90_workchain(
         parent_folder_chk = workchain.outputs.wannier90.remote_folder
     else:
         raise ValueError(f"Workchain {workchain.process_label} not supported")
-    
+
     return parent_folder_chk
-
-def restart_from_w90_intp(
-    w90_intp: orm.WorkChainNode,
-    ) -> orm.Dict:
-    
-    assert w90_intp.is_finished_ok, "Wannier90Optimize workchain did not finish successfully"
-    assert w90_intp.process_class in (
-        Wannier90OptimizeWorkChain,
-    ), "Wannier90OptimizeWorkChain expected"
-    
-    scf = w90_intp.outputs.scf
-    nscf = w90_intp.outputs.nscf
-
-    assert not nscf.remote_folder.is_cleaned, "Nscf remote folder is cleaned"
-    
-    parent_folder_chk = find_parent_folder_chk_from_workchain(w90_intp)
-    restart = {
-        'restart_mode': orm.EnumData(RestartType.RESTART_PHONON),
-        'overrides': {
-            'w90_intp': {
-                'parent_folder_scf': scf.remote_folder,
-                'parent_folder_nscf': nscf.remote_folder,
-                'parent_folder_chk': parent_folder_chk,
-            }
-        }
-    }
-    
-    return restart
-
-
-def restart_from_ph_base(
-    ph_base: orm.WorkChainNode,
-    ) -> orm.Dict:
-    
-    assert ph_base.is_finished_ok, "PhBase workchain did not finish successfully"
-    
-    assert ph_base.process_class is PhBaseWorkChain, "PhBaseWorkChain expected"
-    
-    assert 'remote_stash' in ph_base.outputs, "ph remote stash is cleaned"
-
-    assert not ph_base.outputs.remote_folder.is_cleaned, "ph remote folder is cleaned"
-    
-    if 'qpoints' in ph_base.inputs:
-        qpoints = ph_base.inputs.qpoints
-    else:
-        create_qpoints_from_distance = ph_base.base.links.get_outgoing(
-            link_label_filter='create_qpoints_from_distance'
-            ).first().node
-        
-        qpoints = create_qpoints_from_distance.outputs.qpoints
-        
-    restart = {
-        'overrides': {
-            'ph_base': {
-                'parent_folder_ph': ph_base.outputs.remote_folder,
-                'qpoints': qpoints
-            }
-        }
-    }
-    
-    return restart
-

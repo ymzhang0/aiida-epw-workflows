@@ -1,18 +1,11 @@
 # -*- coding: utf-8 -*-
 """Work chain for computing the critical temperature based off an `EpwWorkChain`."""
 from aiida import orm
-from aiida.common import AttributeDict
-from aiida.engine import WorkChain, ToContext, if_, process_handler, calcfunction
-
-from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
-
-from aiida_quantumespresso.calculations.epw import EpwCalculation
-from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
+from aiida.engine import process_handler
 
 from .intp import EpwBaseIntpWorkChain
 
 
-from importlib.resources import files
 """
 NOTE:
 

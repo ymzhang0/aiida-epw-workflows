@@ -129,7 +129,7 @@ def get_widget_data(bands_wc, pdos_wc, verbose=False):
 
     return bands_data, pdos_data, pdos_orbitals
 
-def get_number_of_electrons_from_pseudos(structure, pseudo_family): 
+def get_number_of_electrons_from_pseudos(structure, pseudo_family):
     """Return the number of electrons that will be present in the structure for each element using pseudos from the given pseudo family.
     :param structure: a ``StructureData`` node
     :param pseudos_family: AiiDA group of ``UpfData`` of a given pseudo family
@@ -157,12 +157,12 @@ def get_pdos(pdos_orbitals, element, orbital):
     return pdos
 
 def get_states(pdos_data, energy_range):
-    
+
     energy = np.array(pdos_data['tdos']['energy | eV']['data'])
     int_dos = np.array(pdos_data['tdos']['values']['integrated_dos | states']['data'])
 
     energy_range.append(pdos_data['fermi_energy'])
-    
+
     states = np.interp(energy_range, energy, int_dos)
 
     return states[1] - states[0], states[2]

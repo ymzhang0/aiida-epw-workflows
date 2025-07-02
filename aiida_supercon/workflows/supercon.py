@@ -5,7 +5,7 @@ from aiida.common import AttributeDict
 from aiida.engine import WorkChain, ToContext, if_, while_, append_
 
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
-
+from aiida.engine import calcfunction
 
 from .b2w import EpwB2WWorkChain
 from .bands import EpwBandsWorkChain
@@ -14,11 +14,15 @@ from .iso import EpwIsoWorkChain
 from .aniso import EpwAnisoWorkChain
 from .base import EpwBaseWorkChain
 
+
+@calcfunction
+def split_list(list_node: orm.List) -> dict:
+    return {f'el_{no}': orm.Float(el) for no, el in enumerate(list_node.get_list())}
+
 class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     """Work chain to compute superconductivity based on different levels of approximations.
     It will run the  `EpwBandsWorkChain`, `EpwA2fWorkChain`, `EpwIsoWorkChain`, and `EpwAnisoWorkChain` consecutively.
     """
-
 
     _NAMESPACE = 'supercon'
 
@@ -58,7 +62,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         spec.input('convergence_threshold', required=False, valid_type=orm.Float)
         spec.input('always_run_final', required=False, valid_type=orm.Bool, default=lambda: orm.Bool(True))
         spec.input('use_ir', required=False, valid_type=orm.Bool, default=lambda: orm.Bool(False))
-        
+
         spec.expose_inputs(
             EpwB2WWorkChain,
             namespace=cls._B2W_NAMESPACE,
@@ -654,7 +658,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             builder[epw_namespace]._data = epw_builder._data
 
         use_ir = inputs.get('use_ir', False)
-        
+
         if use_ir:
             epw_builder = EpwAnisoWorkChain.get_builder_from_protocol(
                 structure=structure,
