@@ -3,7 +3,7 @@ from aiida import orm
 import re
 import tempfile
 from aiida.common.exceptions import NotExistentAttributeError
-from .constants import THZ_TO_MEV
+from ..data.constants import THZ_TO_MEV
 
 def get_qpoints_and_frequencies(
     wc: orm.WorkChainNode,

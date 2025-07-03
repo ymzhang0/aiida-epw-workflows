@@ -68,7 +68,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             namespace=cls._B2W_NAMESPACE,
             exclude=(
                 'clean_workdir',
-                'structure',
             ),
             namespace_options={
                 'required': False,
@@ -82,8 +81,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             namespace=cls._BANDS_NAMESPACE,
             exclude=(
                 'clean_workdir',
-                'structure',
-                'parent_folder_epw',
                 f'{cls._BANDS_NAMESPACE}.parent_folder_nscf',
                 f'{cls._BANDS_NAMESPACE}.parent_folder_chk',
                 f'{cls._BANDS_NAMESPACE}.parent_folder_ph',
@@ -100,7 +97,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             namespace=cls._A2F_NAMESPACE,
             exclude=(
                 'clean_workdir',
-                'structure',
                 f'{cls._A2F_NAMESPACE}.parent_folder_nscf',
                 f'{cls._A2F_NAMESPACE}.parent_folder_chk',
                 f'{cls._A2F_NAMESPACE}.parent_folder_ph',
@@ -131,7 +127,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             namespace=cls._ANISO_NAMESPACE,
             exclude=(
                 'clean_workdir',
-                'structure',
                 f"{cls._ANISO_NAMESPACE}.parent_folder_nscf",
                 f"{cls._ANISO_NAMESPACE}.parent_folder_chk",
                 f"{cls._ANISO_NAMESPACE}.parent_folder_ph",
@@ -269,6 +264,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         except AttributeError:
             return None
 
+    @classmethod
     def get_builder_restart_from_b2w(
         cls,
         from_b2w_workchain: orm.WorkChainNode,
@@ -286,13 +282,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if not from_b2w_workchain or not from_b2w_workchain.process_class == EpwB2WWorkChain:
             raise ValueError('Currently we only accept `EpwB2WWorkChain`')
 
-        # b2w_parameters = from_b2w_workchain.inputs.epw.parameters.get_dict()
-
-        # parameters = builder.epw.parameters.get_dict()
-
-        # for namespace, keyword in cls._blocked_keywords:
-        #     if keyword in b2w_parameters[namespace]:
-        #         parameters[namespace][keyword] = b2w_parameters[namespace][keyword]
         if from_b2w_workchain.is_finished_ok:
             builder.pop(EpwA2fWorkChain._B2W_NAMESPACE)
             parent_folder_epw = from_b2w_workchain.outputs.epw.remote_folder
@@ -325,11 +314,13 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             if epw_workchain_class._B2W_NAMESPACE in epw_builder:
                 epw_builder.pop(epw_workchain_class._B2W_NAMESPACE)
 
+            # if parent_folder_epw:
+            #     epw_builder[epw_namespace].parent_folder_epw = parent_folder_epw
+
             builder[epw_namespace]._data = epw_builder._data
 
-        if parent_folder_epw:
-            builder[cls._B2W_NAMESPACE].parent_folder_epw = parent_folder_epw
 
+        builder.structure = from_b2w_workchain.inputs.structure
         builder.interpolation_distances = orm.List(inputs.get('interpolation_distances', None))
         builder.convergence_threshold = orm.Float(inputs['convergence_threshold'])
         builder.always_run_final = orm.Bool(inputs.get('always_run_final', True))
@@ -736,7 +727,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 namespace=self._B2W_NAMESPACE
             )
         )
-        inputs.structure = self.inputs.structure
         inputs.metadata.call_link_label = self._B2W_NAMESPACE
         workchain_node = self.submit(EpwB2WWorkChain, **inputs)
 
@@ -773,7 +763,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             )
         )
 
-        inputs.structure = self.inputs.structure
         inputs.metadata.call_link_label = self._BANDS_NAMESPACE
         workchain_node = self.submit(EpwBandsWorkChain, **inputs)
 

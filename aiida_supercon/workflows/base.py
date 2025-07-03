@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Workchain to run a Quantum ESPRESSO pw.x calculation with automated error handling and restarts."""
+"""Workchain to run a epw.x calculation."""
 from aiida import orm
 from aiida.common import AttributeDict, NotExistent
 
@@ -8,6 +8,7 @@ from aiida.plugins import CalculationFactory
 
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
+from aiida_quantumespresso.calculations.ph import PhCalculation
 
 from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
 
@@ -16,48 +17,7 @@ from pathlib import Path
 
 EpwCalculation = CalculationFactory('quantumespresso.epw')
 
-def validate_inputs(inputs, ctx=None):
-    """
-    Validator for the logic of providing parent folder inputs.
-    It enforces that either `parent_folder_epw` is provided, OR the trio of
-    `nscf`, `ph`, and `chk` folders are provided together.
-    """
 
-    # Check if parent_folder_epw is provided
-    has_parent_folder_epw = 'parent_folder_epw' in inputs
-
-    # Check which of the other three folders are provided
-    has_parent_folder_nscf = 'parent_folder_nscf' in inputs
-    has_parent_folder_ph = 'parent_folder_ph' in inputs
-    has_parent_folder_chk = 'parent_folder_chk' in inputs
-
-    # --- Now, we apply your rules ---
-
-    # Rule 1: Cannot provide `parent_folder_epw` AND any of the other three.
-    if has_parent_folder_epw and any([
-        has_parent_folder_nscf,
-        has_parent_folder_ph,
-        has_parent_folder_chk
-        ]
-    ):
-        return "You cannot provide `parent_folder_epw` at the same time as the `nscf/ph/chk` folders."
-
-    # Rule 2: If any of the `nscf/ph/chk` trio are provided, ALL must be provided.
-    # `any()` is True if at least one is True. `all()` is True only if all are True.
-    # if any([
-    #     has_parent_folder_nscf,
-    #     has_parent_folder_ph,
-    #     has_parent_folder_chk
-    #     ]) and not all([
-    #         has_parent_folder_nscf,
-    #         has_parent_folder_ph,
-    #         has_parent_folder_chk
-    #     ]):
-
-    #     return "If providing `nscf/ph/chk` parent folders, you must provide all three together."
-
-    # If the logic passes, the validator must return None
-    return None
 class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
     """Workchain to run a Quantum ESPRESSO pw.x calculation with automated error handling and restarts."""
 
@@ -72,6 +32,8 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         # yapf: disable
         super().define(spec)
 
+        # EpwBaseWorkChain will take over the determination of coarse grid according to the parent folders.
+        # It will automatically generate fine grid k/q points according to qpoints distance and kfpoints factor.
         spec.expose_inputs(
             EpwCalculation, namespace='epw',
             exclude=(
@@ -135,8 +97,6 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             help='w90_chk_to_ukk_script'
             )
 
-        # spec.inputs.validator = validate_inputs
-
         spec.outline(
             cls.setup,
             cls.validate_parent_folders,
@@ -154,34 +114,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             EpwCalculation,
             )
 
-        spec.exit_code(201, 'ERROR_INVALID_INPUT_PSEUDO_POTENTIALS',
-            message='The explicit `pseudos` or `pseudo_family` could not be used to get the necessary pseudos.')
-        spec.exit_code(202, 'ERROR_INVALID_INPUT_KPOINTS',
-            message='Neither the `kpoints` nor the `kpoints_distance` input was specified.')
-        spec.exit_code(203, 'ERROR_INVALID_INPUT_RESOURCES',
-            message='Neither the `options` nor `automatic_parallelization` input was specified. '
-                    'This exit status has been deprecated as the check it corresponded to was incorrect.')
-        spec.exit_code(204, 'ERROR_INVALID_INPUT_RESOURCES_UNDERSPECIFIED',
-            message='The `metadata.options` did not specify both `resources.num_machines` and `max_wallclock_seconds`. '
-                    'This exit status has been deprecated as the check it corresponded to was incorrect.')
-        spec.exit_code(210, 'ERROR_INVALID_INPUT_AUTOMATIC_PARALLELIZATION_MISSING_KEY',
-            message='Required key for `automatic_parallelization` was not specified.'
-                    'This exit status has been deprecated as the automatic parallellization feature was removed.')
-        spec.exit_code(211, 'ERROR_INVALID_INPUT_AUTOMATIC_PARALLELIZATION_UNRECOGNIZED_KEY',
-            message='Unrecognized keys were specified for `automatic_parallelization`.'
-                    'This exit status has been deprecated as the automatic parallellization feature was removed.')
-        spec.exit_code(212, 'ERROR_MISSING_W90_CHK_TO_UKK_SCRIPT',
-            message='w90_chk_to_ukk_script is not provided.')
-        spec.exit_code(213, 'ERROR_INVALID_INPUT_PARENT_FOLDER_CHK',
-            message='parent_folder_chk is not provided.')
-        spec.exit_code(214, 'ERROR_INVALID_INPUT_PARENT_FOLDER_NSCF',
-            message='parent_folder_nscf is not provided.')
-        spec.exit_code(215, 'ERROR_INVALID_INPUT_PARENT_FOLDER_PH',
-            message='parent_folder_ph is not provided.')
-        spec.exit_code(216, 'ERROR_INVALID_INPUT_PARENT_FOLDER_EPW',
-            message='parent_folder_epw is not provided.')
-        spec.exit_code(217, 'ERROR_INCOMPATIBLE_COARSE_GRIDS',
-            message='The coarse kpoints and qpoints are not compatible.')
+
         spec.exit_code(300, 'ERROR_UNRECOVERABLE_FAILURE',
             message='The calculation failed with an unidentified unrecoverable error.')
         spec.exit_code(310, 'ERROR_KNOWN_UNRECOVERABLE_FAILURE',
@@ -210,7 +143,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         parent_folder_epw=None,
         w90_chk_to_ukk_script=None,
         **_
-    ):
+        ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
 
         :param code: the ``Code`` instance configured for the ``quantumespresso.epw`` plugin.
@@ -289,9 +222,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
     def _get_kpoints_from_nscf_folder(self, nscf_folder):
         """
-        A robust method to find the k-point mesh from a parent nscf folder.
-
-        This method tries different strategies in order of reliability.
+        This method tries different strategies to find the k-point mesh from a parent nscf folder.
 
         :param nscf_folder: A RemoteData node from a PwCalculation (nscf).
         :return: A KpointsData node that has mesh information.
@@ -301,19 +232,15 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         # Check if the nscf CalcJob's input k-points already has a mesh.
         # This covers the case of a standalone PwBaseWorkChain run.
-        try:
+        if 'kpoints' in pw_calc.inputs:
             kpoints = pw_calc.inputs.kpoints
             mesh, _ = kpoints.get_kpoints_mesh()
             return kpoints
-        except (AttributeError, NotExistent):
-            self.report("The input k-points do not contain a mesh.")
-            pass # Move on to the next strategy
 
         w90_workchain = pw_calc.caller.caller
         if not w90_workchain:
             # If there's no caller, we can't use Strategies 2 & 3.
             # We must fall back to the last resort.
-            self.report("K-point mesh search: Deduce from coordinates...")
             return self._deduce_mesh_from_explicit_kpoints(pw_calc.inputs.kpoints)
 
         # Check if the caller is a Wannier90 workchain and look for `mp_grid`.
@@ -325,7 +252,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         elif w90_workchain.process_class is Wannier90BandsWorkChain:
             wannier_params = w90_workchain.inputs.wannier.parameters.get_dict()
         else:
-            self.report("K-point mesh search: Deduce from coordinates...")
+            # If the caller is not a Wannier90 workchain, we use the fallback strategy.
             return self._deduce_mesh_from_explicit_kpoints(pw_calc.inputs.kpoints)
 
         if 'mp_grid' in wannier_params:
@@ -355,28 +282,29 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
     def _get_qpoints_from_ph_folder(self, ph_folder):
         """
-        A robust method to find the q-point mesh from a parent ph folder.
-
-        This method tries different strategies in order of reliability.
-        1. Check the inputs of the `PhBaseWorkChain`.
-        2. Check the inputs of the `PhCalculation` CalcJob itself.
-        3. As a last resort, deduce the mesh from the list of coordinates.
+        This method tries to find the q-point mesh from a parent ph folder.
+        It assumes that the q-points is a required input for `PhCalculation`.
 
         :param ph_folder: A RemoteData node from a PhCalculation.
         :return: A KpointsData node that has mesh information.
         :raises ValueError: If the mesh cannot be found through any strategy.
         """
+
         ph_calc = ph_folder.creator
+        if not ph_calc.process_class is PhCalculation._process_class:
+            raise ValueError('Parent folder of ph calculation is not a valid ph calculation.')
+
         qpoints = ph_calc.inputs.qpoints
         return qpoints
 
     def _get_coarse_grid_from_epw_folder(self, epw_folder):
         """
         Get the coarse grid from the epw folder. Usually used for restart purposes.
+        It assumes that the k-points and q-points are required inputs for `EpwCalculation`.
         """
         epw_calc = epw_folder.creator
         if not epw_calc.process_class is EpwBaseWorkChain._process_class:
-            self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_EPW
+            raise ValueError('Parent folder of epw calculation is not a valid epw calculation.')
 
         kpoints = epw_calc.inputs.kpoints
         qpoints = epw_calc.inputs.qpoints
@@ -384,11 +312,29 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         return kpoints, qpoints
 
     def validate_parent_folders(self):
-
         """Validate the parent folders.
         If the parent_folder_epw is provided, use it to get the coarse grid. And no other parent folders should be provided.
         If the parent_folder_epw is not provided, load the other parent folders, check if they are cleaned and get the coarse grid from them.
         """
+
+        # Check if parent_folder_epw is provided
+        has_parent_folder_epw = 'parent_folder_epw' in inputs
+
+        # Check which of the other three folders are provided
+        has_parent_folder_nscf = 'parent_folder_nscf' in inputs
+        has_parent_folder_ph = 'parent_folder_ph' in inputs
+        has_parent_folder_chk = 'parent_folder_chk' in inputs
+
+        # --- Now, we apply your rules ---
+
+        # Rule: Cannot provide `parent_folder_epw` AND any of the other three.
+        if has_parent_folder_epw and any([
+            has_parent_folder_nscf,
+            has_parent_folder_ph,
+            has_parent_folder_chk
+            ]
+        ):
+            raise ValueError("You cannot provide `parent_folder_epw` at the same time as the `nscf/ph/chk` folders.")
 
         if 'parent_folder_epw' in self.inputs:
             kpoints, qpoints = self._get_coarse_grid_from_epw_folder(self.inputs.parent_folder_epw)
@@ -399,38 +345,33 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         else:
             if self.inputs.parent_folder_nscf.is_cleaned:
-                self.report("Parent folder of nscf calculation is cleaned. Skipping k-point mesh search.")
-                return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_NSCF
+                raise ValueError('Parent folder of nscf calculation is cleaned. Skipping k-point mesh search.')
+
 
             try:
                 kpoints = self._get_kpoints_from_nscf_folder(self.inputs.parent_folder_nscf)
                 self.ctx.inputs.kpoints = kpoints
                 self.report(f"Successfully determined k-point mesh: {kpoints.get_kpoints_mesh()[0]}")
             except (ValueError, NotExistent) as e:
-                self.report(f"Fatal error: Could not determine the k-points mesh. Reason: {e}")
-                return self.exit_codes.ERROR_KPOINTS_MESH_NOT_FOUND
+                raise ValueError(f"Could not determine the k-points mesh: {e}")
 
             self.ctx.inputs.parent_folder_nscf = self.inputs.parent_folder_nscf
 
-        # if 'parent_folder_ph' in self.inputs:
             if self.inputs.parent_folder_ph.is_cleaned:
-                self.report("Parent folder of ph calculation is cleaned. Skipping q-point mesh search.")
-                return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_PH
+                raise ValueError("Parent folder of ph calculation is cleaned.")
 
             try:
                 qpoints = self._get_qpoints_from_ph_folder(self.inputs.parent_folder_ph)
                 self.ctx.inputs.qpoints = qpoints
                 self.report(f"Successfully determined q-point mesh: {qpoints.get_kpoints_mesh()[0]}")
             except (ValueError, NotExistent) as e:
-                self.report(f"Fatal error: Could not determine the q-points mesh. Reason: {e}")
-                return self.exit_codes.ERROR_QPOINTS_MESH_NOT_FOUND
+                raise ValueError(f"Could not determine the q-points mesh: {e}")
 
             self.ctx.inputs.parent_folder_ph = self.inputs.parent_folder_ph
 
         # if hasattr(self.inputs, 'parent_folder_chk'):
             if self.inputs.parent_folder_chk.is_cleaned:
-                self.report("Parent folder of chk calculation is cleaned. Skipping k-point mesh search.")
-                return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_CHK
+                raise ValueError('Parent folder of chk calculation is cleaned')
 
             if not self.inputs.w90_chk_to_ukk_script:
                 self.report("w90_chk_to_ukk_script is not provided. Skipping wannierization.")
@@ -491,10 +432,10 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         In the case of the latter, the `KpointsData` will be constructed for the input `StructureData` using the `create_kpoints_from_distance` calculation function.
         Then we construct kpoints by multiplying the qpoints mesh by the `kpoints_factor`.
         """
-        from .utils.kpoints import is_compatible
+        from ..tools.kpoints import is_compatible
 
         if not is_compatible(self.ctx.inputs.kpoints, self.ctx.inputs.qpoints):
-            return self.exit_codes.ERROR_INCOMPATIBLE_COARSE_GRIDS
+            raise ValueError('The coarse kpoints and qpoints are not compatible.')
 
         if all(key not in self.inputs for key in ['qfpoints', 'qfpoints_distance']):
             raise ValueError('qfpoints or qfpoints_distance are required')
@@ -538,12 +479,10 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         if wannierize:
             if 'parent_folder_epw' in self.inputs:
-                self.report("Should not have a parent_folder_epw if wannierize is True")
-                return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_EPW
+                raise ValueError("Should not have a parent_folder_epw if wannierize is True")
 
             elif 'parent_folder_chk' in self.inputs:
-                self.report("Should not have a chk folder if wannierize is True")
-                return self.exit_codes.ERROR_INVALID_INPUT_PARENT_FOLDER_CHK
+                raise ValueError("Should not have a chk folder if wannierize is True")
 
         else:
             if 'parent_folder_chk' in self.inputs:

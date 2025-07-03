@@ -1,26 +1,9 @@
-from pathlib import Path
-
 from aiida import orm
-from aiida.common import AttributeDict
-from ...common.restart import RestartType
 
 
-from aiida.engine import PortNamespace, ProcessBuilder, WorkChain, ToContext, if_, while_
-from aiida_quantumespresso.workflows.ph.base import PhBaseWorkChain
-from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
-from aiida.orm.nodes.data.base import to_aiida_type
-
-from aiida_quantumespresso.calculations.epw import EpwCalculation
-from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
-from aiida_quantumespresso.utils.mapping import prepare_process_inputs
-
-from aiida_wannier90_workflows.workflows import Wannier90BaseWorkChain, Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
-from aiida_wannier90_workflows.workflows.optimize import validate_inputs as validate_inputs_w90_intp
-from aiida_wannier90_workflows.utils.workflows.builder.setter import set_kpoints
-from aiida_wannier90_workflows.common.types import WannierProjectionType
+from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
 
 import collections.abc
-from aiida.engine.processes.builder import ProcessBuilderNamespace
 
 
 def recursive_copy(left: dict, right: dict) -> dict:

@@ -359,7 +359,6 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
 
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 
-
     def run_process(self):
         """Run the `EpwBaseWorkChain`
         """

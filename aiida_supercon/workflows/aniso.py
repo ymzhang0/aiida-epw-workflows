@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Work chain for computing the critical temperature based off an `EpwWorkChain`."""
 from aiida import orm
-from aiida.engine import process_handler
+from aiida.engine import process_handler, ProcessHandlerReport
 
 from .intp import EpwBaseIntpWorkChain
 
@@ -27,7 +27,7 @@ However, this version of epw.x made several changes that are not compatible with
         ...
 
 3.  The epw.x from EPW 5.9 can't prefix.ukk generated from wannier90.
-    Not sure why but I can't fix it.
+    Not sure why.
 
 4.  The `epw.x` from EPW 5.9 will try to read 'vmedata.fmt' even if
     I set vme = 'dipole'.
@@ -65,9 +65,8 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
     """
 
     _INTP_NAMESPACE = 'aniso'
-    _IR_NAMESPACE = 'aniso_ir'
 
-    _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE, _IR_NAMESPACE]
+    _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE]
     _frozen_restart_parameters = {
         'INPUTEPW': {
             'elph': False,
@@ -117,19 +116,6 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             help='Whether to use the full bandwidth.')
         spec.input('use_ir', valid_type=orm.Bool, default=lambda: orm.Bool(False),
             help='Whether to use the intermediate representation.')
-
-
-        spec.outline(
-            cls.setup,
-            if_(cls.should_run_b2w)(
-                cls.run_b2w,
-                cls.inspect_b2w,
-            ),
-            cls.prepare_process,
-            cls.run_process,
-            cls.inspect_process,
-            cls.results
-        )
 
         spec.output(
             'Tc_aniso', valid_type=orm.Float,
@@ -228,7 +214,6 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
                 for keyword, value in _parameters.items():
                     parameters[namespace][keyword] = value
 
-        from importlib.resources import files
         if self.inputs.use_ir.value:
             for namespace, _parameters in self._frozen_ir_parameters.items():
                 for keyword, value in _parameters.items():
