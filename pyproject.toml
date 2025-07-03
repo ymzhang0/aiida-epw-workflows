@@ -25,10 +25,10 @@ requires-python = ">=3.7"
 dependencies = [
     "aiida-core~=2.5",
     "aiida-wannier90-workflows~=2.2",
-    "aiida-quantumespresso~=4.7",
+    "aiida-quantumespresso @ git+https://github.com/mbercx/aiida-quantumespresso.git@support/epw",
     "pathlib",
     "importlib_resources",
-    "yaml",
+    "PyYAML",
 ]
 
 [project.urls]
