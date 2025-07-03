@@ -28,7 +28,6 @@ dependencies = [
     "aiida-quantumespresso~=4.7",
     "pathlib",
     "importlib_resources",
-    "warnings",
     "yaml",
 ]
 
