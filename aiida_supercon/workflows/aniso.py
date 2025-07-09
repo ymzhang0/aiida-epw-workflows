@@ -1,40 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Work chain for computing the critical temperature based off an `EpwWorkChain`."""
 from aiida import orm
 from aiida.engine import process_handler, ProcessHandlerReport
 
 from .intp import EpwBaseIntpWorkChain
 
 
-"""
-NOTE:
-
-In this workchain, I use epw.x from EPW 5.9 where the IR representation is implemented.
-
-However, this version of epw.x made several changes that are not compatible with the previous versions.
-
-1.  It fix the typo in previous versions, that is, `eps_acustic` -> `eps_acoustic`.
-
-2.  The format of crystal.fmt file is changed. Previously it is:
-        nat
-        nmode
-        nelec
-        ...
-    And now it is:
-        nat
-        nmode
-        nelec   nbndskp
-        ...
-
-3.  The epw.x from EPW 5.9 can't prefix.ukk generated from wannier90.
-    Not sure why.
-
-4.  The `epw.x` from EPW 5.9 will try to read 'vmedata.fmt' even if
-    I set vme = 'dipole'.
-
-I would suggest to start only from the existing prefix.ephmat folder.
-But this requires another input code. I would temporarily mute use_ir.
-"""
 class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the superconductivity based on anisotropic Migdal-Eliashberg theory.
     This workchain aims to implement the IR representation which allows calculation on low temperatures.
@@ -67,6 +37,7 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
     _INTP_NAMESPACE = 'aniso'
 
     _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE]
+
     _frozen_restart_parameters = {
         'INPUTEPW': {
             'elph': False,
@@ -117,9 +88,9 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         spec.input('use_ir', valid_type=orm.Bool, default=lambda: orm.Bool(False),
             help='Whether to use the intermediate representation.')
 
-        spec.output(
-            'Tc_aniso', valid_type=orm.Float,
-            help='The anisotropic Tc from fitting the gap function.')
+        # spec.output(
+        #     'Tc_aniso', valid_type=orm.Float,
+        #     help='The anisotropic Tc from fitting the gap function.')
 
         spec.exit_code(402, 'ERROR_SUB_PROCESS_ANISO',
             message='The `aniso` sub process failed')
@@ -147,7 +118,13 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         cls,
         from_aniso_workchain
         ):
+        """Get a builder for a restart from an anisotropic calculation.
 
+        :param from_aniso_workchain: The anisotropic workchain from which to restart.
+        :type from_aniso_workchain: :class:`aiida.orm.Node`
+        :return: A builder instance with the inputs prepopulated.
+        :rtype: :class:`aiida.engine.ProcessBuilder`
+        """
         return super()._get_builder_restart(
             from_intp_workchain=from_aniso_workchain,
             )
@@ -162,9 +139,16 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             **kwargs
         ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
+
+        :param codes: The codes to use for the calculations.
+        :type codes: dict
+        :param structure: The structure to use for the calculations.
+        :type structure: :class:`aiida.orm.StructureData`
+        :param protocol: The protocol to use for the calculations.
         """
         inputs = cls.get_protocol_inputs(protocol, overrides)
 
+        use_ir = inputs.get('use_ir', False)
         builder = super().get_builder_from_protocol(
             codes,
             structure,
@@ -173,15 +157,29 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             **kwargs
         )
 
+        if use_ir:
+            builder[cls._INTP_NAMESPACE]['epw']['code'] = codes['epw_ir']
+
         builder.plot_gap_function = orm.Bool(inputs.get('plot_gap_function', True))
         builder.fbw = orm.Bool(inputs.get('fbw', False))
-        builder.use_ir = orm.Bool(inputs.get('use_ir', False))
+        builder.use_ir = orm.Bool(use_ir)
 
         return builder
 
     def prepare_process(self):
-        """Prepare the process for the current interpolation distance."""
+        """Prepare the process for the current interpolation distance.
 
+        It will set the necessary inputs parameters for an anisotropic calculation.
+        It will set the necessary retrieve items from an anisotropic calculation:
+        - a2f
+        - a2f_proj
+        - dos
+        - phdos
+        - lambda_k_pairs
+        - lambda_FS
+        - imag_aniso_gap0_*
+        - pade_aniso_gap0_*
+        """
         super().prepare_process()
 
         parameters = self.ctx.inputs.epw.parameters.get_dict()
@@ -233,7 +231,9 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 
     def inspect_process(self):
-        """Verify that the epw.x workflow finished successfully."""
+        """Verify that the `EpwBaseWorkChain` finished successfully.
+        It will calculate the anisotropic Tc from the `EpwBaseWorkChain` outputs.
+        """
         intp_workchain = self.ctx.workchain_intp
 
         if not intp_workchain.is_finished_ok:
@@ -243,10 +243,6 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         if False:
             return self.handle_temperature_out_of_range(aniso)
 
-    def results(self):
-        """TODO"""
-
-        super().results()
 
     def report_error_handled(self, calculation, action):
         """Report an action taken for a calculation that has failed.

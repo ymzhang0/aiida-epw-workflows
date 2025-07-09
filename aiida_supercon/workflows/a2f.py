@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Work chain for computing the critical temperature based off an `EpwWorkChain`."""
+"""Work chain for computing the spectral function."""
 from aiida import orm
 from aiida.engine import calcfunction, ToContext, if_
 
@@ -7,8 +7,10 @@ from aiida.engine import calcfunction, ToContext, if_
 from .intp import EpwBaseIntpWorkChain
 
 class EpwA2fWorkChain(EpwBaseIntpWorkChain):
-    """Work chain to compute the Allen-Dynes critical temperature.
-    It will run the `EpwB2WWorkChain` and then the `EpwBaseWorkChain`.
+    """Work chain to compute the spectral function.
+    It will run the `EpwB2WWorkChain` for the electron-phonon coupling matrix on Wannier basis.
+    and then the `EpwBaseWorkChain` for interpolation to a fine k/q-grid. the spectral function is computed
+    from the interpolated grids.
     """
 
     _INTP_NAMESPACE = 'a2f'
@@ -20,23 +22,11 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         """Validate the inputs."""
         return None
 
-
     @classmethod
     def define(cls, spec):
         """Define the work chain specification."""
         super().define(spec)
 
-        # spec.outline(
-        #     cls.setup,
-        #     if_(cls.should_run_b2w)(
-        #         cls.run_b2w,
-        #         cls.inspect_b2w,
-        #     ),
-        #     cls.prepare_process,
-        #     cls.run_process,
-        #     cls.inspect_process,
-        #     cls.results
-        # )
 
         spec.inputs[cls._INTP_NAMESPACE].validator = cls.validate_inputs
         spec.inputs.validator = cls.validate_inputs
@@ -45,6 +35,7 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
             402, 'ERROR_SUB_PROCESS_A2F',
             message='The `epw.x` workflow failed.'
             )
+
     @classmethod
     def get_protocol_filepath(cls):
         """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols.
@@ -119,7 +110,15 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         return degaussq
 
     def prepare_process(self):
-        """Prepare the process.
+        """Prepare for the `EpwBaseWorkChain`.
+        Now it is only used to append some additional retrieve items:
+        - aiida.a2f
+        - aiida.a2f_proj
+        - aiida.dos
+        - aiida.phdos
+        - aiida.phdos_proj
+        - aiida.lambda_FS
+        - aiida.lambda_k_pairs
         """
 
         super().prepare_process()
@@ -141,7 +140,7 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         self.ctx.inputs.epw.settings = orm.Dict(settings)
 
     def inspect_process(self):
-        """Verify that the epw.x workflow finished successfully."""
+        """Verify that the `EpwBaseWorkChain` finished successfully."""
         intp_workchain = self.ctx.workchain_intp
 
         if not intp_workchain.is_finished_ok:
@@ -149,7 +148,10 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
             return self.exit_codes.ERROR_SUB_PROCESS_A2F
 
     def results(self):
-        """TODO"""
+        """Only the basic results are retrieved:
+        - output_parameters
+        - remote_folder
+        """
 
         super().results()
 

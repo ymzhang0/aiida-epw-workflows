@@ -7,6 +7,17 @@ default_inputs:
     # - 0.06
     # - 0.05
   convergence_threshold: 0.1
+  always_run_final: True
+  b2w:
+    b2w:
+      metadata:
+        options:
+          withmpi: True
+  bands:
+    bands:
+      metadata:
+        options:
+          withmpi: True
   a2f:
     a2f:
       metadata:

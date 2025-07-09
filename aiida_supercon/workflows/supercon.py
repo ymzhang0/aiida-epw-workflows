@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Work chain for computing the critical temperature based off an `EpwWorkChain`."""
 from aiida import orm
-from aiida.common import AttributeDict
+from aiida.common import AttributeDict, LinkType
 from aiida.engine import WorkChain, ToContext, if_, while_, append_
 
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
@@ -264,6 +263,23 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         except AttributeError:
             return None
 
+    @staticmethod
+    def get_descendants_workchains(
+        supercon: orm.WorkChainNode,
+        link_type: LinkType
+        ) -> orm.WorkChainNode:
+        """Get the descendant workchains of the EpwSuperConWorkChain."""
+
+        descendants = {}
+        try:
+            for node, link_type, link_label in supercon.base.links.get_outgoing(link_type=link_type).all():
+                if link_label not in descendants:
+                    descendants[link_label] = []
+                descendants[link_label].append(node)
+            return descendants
+        except AttributeError:
+            return None
+
     @classmethod
     def get_builder_restart_from_b2w(
         cls,
@@ -335,7 +351,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         protocol=None,
         overrides=None,
         **kwargs
-    ):
+        ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol."""
 
         builder = cls.get_builder()
@@ -378,6 +394,12 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         cls,
         from_supercon_workchain: orm.WorkChainNode,
     ):
+        """Return a builder prepopulated with inputs selected according to the chosen protocol."""
+
+        ## Here the restart builder contains info:
+        ## all of the metadatas of the calculations.
+        ## the parent_folders should be reset according to the progress of the previous workchain.
+
         builder = from_supercon_workchain.get_builder_restart()
 
         if not from_supercon_workchain or not from_supercon_workchain.process_class == EpwSuperConWorkChain:
@@ -386,123 +408,143 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if from_supercon_workchain.is_finished_ok:
             raise Warning('The `EpwSuperConWorkChain` is already finished.')
 
-        try:
-            for sub_workchain in (
-                EpwBandsWorkChain,
-                EpwA2fWorkChain,
-                EpwIsoWorkChain,
-                EpwAnisoWorkChain,
-                ):
-                builder[sub_workchain._INTP_NAMESPACE].pop(sub_workchain._B2W_NAMESPACE)
-        except KeyError:
-            pass
+        descendants = EpwSuperConWorkChain.get_descendants_workchains(
+            from_supercon_workchain,
+            LinkType.CALL_WORK
+            )
+
+        # try:
+        #     for sub_workchain in (
+        #         EpwBandsWorkChain,
+        #         EpwA2fWorkChain,
+        #         EpwIsoWorkChain,
+        #         EpwAnisoWorkChain,
+        #         ):
+        #         builder[sub_workchain._INTP_NAMESPACE].pop(sub_workchain._B2W_NAMESPACE)
+        # except KeyError:
+        #     pass
 
         # Firstly we should check whether we should restart from b2w workchain.
-        if EpwA2fWorkChain._B2W_NAMESPACE in from_supercon_workchain.inputs:
-            b2w_workchain = EpwSuperConWorkChain.get_descendant(
-                from_supercon_workchain,
-                EpwA2fWorkChain._B2W_NAMESPACE
-                )
+        # If B2W_NAMESPACE is in the inputs, it means that the previous workchain did a b2w calculation.
+        # So we need to check the status of the b2w workchain.
+        if cls._B2W_NAMESPACE in from_supercon_workchain.inputs:
+            b2w_workchain = descendants[cls._B2W_NAMESPACE][0]
                 # If the b2w workchain is finished, simply pop it.
             if b2w_workchain.is_finished_ok:
-                builder.pop(EpwA2fWorkChain._B2W_NAMESPACE)
-                builder[EpwA2fWorkChain._INTP_NAMESPACE][EpwA2fWorkChain._INTP_NAMESPACE].parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
+                builder.pop(cls._B2W_NAMESPACE)
+                builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw.remote_folder
+                builder[cls._A2F_NAMESPACE][cls._A2F_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw.remote_folder
+
             # If the b2w workchain is not finished, we only need to restart from b2w workchain leaving the following inputs unchanged.
             else:
                 b2w_builder = EpwB2WWorkChain.get_builder_restart(
                     from_b2w_workchain=b2w_workchain,
                     )
 
-                builder[EpwA2fWorkChain._B2W_NAMESPACE]._data = b2w_builder._data
+                builder[cls._B2W_NAMESPACE]._data = b2w_builder._data
 
                 return builder
-        else:
-            builder.pop(EpwA2fWorkChain._B2W_NAMESPACE)
 
+        # If B2W_NAMESPACE is not in the inputs, it means that the previous workchain did not do a b2w calculation.
+        # So the previous workchain itself is a restart one and b2w is finished. We can pop the b2w namespace.
+        else:
+            print('b2w namespace is not in the inputs')
+            # builder.pop(cls._B2W_NAMESPACE)
+
+        if cls._BANDS_NAMESPACE in from_supercon_workchain.inputs:
+            bands_workchain = descendants[cls._BANDS_NAMESPACE][0]
+            if bands_workchain.is_finished_ok:
+                builder.pop(cls._BANDS_NAMESPACE)
+            else:
+                builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = bands_workchain.outputs.epw.remote_folder
+                return builder
+        else:
+            # builder.pop(cls._BANDS_NAMESPACE)
+            print('bands namespace is not in the inputs')
         # If interpolation list is not an input port, it must be that the previous
         # workchain has finished convergence test. Or it start from a given grid without convergence test.
 
         if 'interpolation_distances' in from_supercon_workchain.inputs:
             initial_interpolation_distances = from_supercon_workchain.inputs.interpolation_distances.get_list()
             # Then we need to know whether convergence is finished.
-            a2f_conv_workchains = EpwSuperConWorkChain.get_descendants(
-                from_supercon_workchain,
-                cls._CONV_NAMESPACE
-                )
+            a2f_conv_workchains = descendants[cls._CONV_NAMESPACE]
+
+            is_converged, _ = cls.check_convergence(
+                a2f_conv_workchains,
+                from_supercon_workchain.inputs.convergence_threshold
+            )
 
             for a2f_conv_workchain in a2f_conv_workchains:
-                if a2f_conv_workchain.node.is_finished_ok:
-                    initial_interpolation_distances.remove(a2f_conv_workchain.node.inputs.a2f.qfpoints_distance.value)
+                if a2f_conv_workchain.is_finished_ok:
+                    initial_interpolation_distances.remove(a2f_conv_workchain.inputs.a2f.qfpoints_distance.value)
 
             if len(initial_interpolation_distances) > 0:
-                builder[EpwA2fWorkChain._INTP_NAMESPACE][EpwA2fWorkChain._INTP_NAMESPACE].parent_folder_epw = a2f_conv_workchains[0].node.inputs[EpwA2fWorkChain._INTP_NAMESPACE].parent_folder_epw
-                builder.interpolation_distances = orm.List(initial_interpolation_distances)
+                builder[cls._A2F_NAMESPACE][cls._A2F_NAMESPACE]['parent_folder_epw'] = a2f_conv_workchains[0].inputs[cls._A2F_NAMESPACE].parent_folder_epw
+                builder['interpolation_distances'] = orm.List(initial_interpolation_distances)
+                builder['convergence_threshold'] = orm.Float(from_supercon_workchain.inputs.convergence_threshold)
+                builder['always_run_final'] = orm.Bool(from_supercon_workchain.inputs.always_run_final)
                 return builder
 
             else:
-                builder[EpwIsoWorkChain._INTP_NAMESPACE][EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw = a2f_conv_workchains[-1].node.outputs.remote_folder
+                always_run_final = from_supercon_workchain.inputs.always_run_final
 
-                builder.pop(EpwA2fWorkChain._INTP_NAMESPACE)
-                builder.pop('interpolation_distances')
-                builder.pop('convergence_threshold')
-                builder.pop('always_run_final')
+                if always_run_final:
+                    builder[cls._ISO_NAMESPACE][cls._ISO_NAMESPACE]['parent_folder_epw'] = a2f_conv_workchains[-1].outputs.remote_folder
 
+                    builder.pop(cls._A2F_NAMESPACE)
+                    builder.pop('interpolation_distances')
+                    builder.pop('convergence_threshold')
+                    builder.pop('always_run_final')
+                else:
+                    raise ValueError('Convergence can not reach, either add more interpolation distances or set `always_run_final` to True.')
         # If there is no interpolation distance, either it's finished or we don't do it at all.
 
         else:
-            if EpwA2fWorkChain._INTP_NAMESPACE in from_supercon_workchain.inputs:
-                a2f_workchain = EpwSuperConWorkChain.get_descendant(
-                    from_supercon_workchain,
-                    EpwA2fWorkChain._INTP_NAMESPACE
-                    )
+            if cls._A2F_NAMESPACE in from_supercon_workchain.inputs:
+                a2f_workchain = descendants[cls._A2F_NAMESPACE][0]
                 if a2f_workchain and a2f_workchain.is_finished_ok:
-                    builder.pop(EpwA2fWorkChain._INTP_NAMESPACE)
-                    builder[EpwIsoWorkChain._INTP_NAMESPACE][EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw = a2f_workchain.outputs.parent_folder_epw
+                    builder.pop(cls._A2F_NAMESPACE)
+                    builder[cls._ISO_NAMESPACE][cls._ISO_NAMESPACE]['parent_folder_epw'] = a2f_workchain.outputs.parent_folder_epw
                 else:
                     a2f_builder = EpwA2fWorkChain.get_builder_restart(
                         from_a2f_workchain=a2f_workchain,
                         )
-                    a2f_builder.parent_folder_epw = a2f_workchain.inputs[EpwA2fWorkChain._INTP_NAMESPACE].parent_folder_epw
-                    builder[EpwA2fWorkChain._INTP_NAMESPACE]._data = a2f_builder._data
+                    a2f_builder['parent_folder_epw'] = a2f_workchain.inputs[cls._A2F_NAMESPACE].parent_folder_epw
+                    builder[cls._A2F_NAMESPACE]._data = a2f_builder._data
                     return builder
             else:
-                builder.pop(EpwA2fWorkChain._INTP_NAMESPACE)
+                builder.pop(cls._A2F_NAMESPACE)
 
-        if EpwIsoWorkChain._INTP_NAMESPACE in from_supercon_workchain.inputs:
-            iso_workchain = EpwSuperConWorkChain.get_descendant(
-                from_supercon_workchain,
-                EpwIsoWorkChain._INTP_NAMESPACE
-                )
+        if cls._ISO_NAMESPACE in from_supercon_workchain.inputs:
+            iso_workchain = descendants[cls._ISO_NAMESPACE][0]
             if iso_workchain and iso_workchain.is_finished_ok:
-                builder.pop(EpwIsoWorkChain._INTP_NAMESPACE)
+                builder.pop(cls._ISO_NAMESPACE)
             elif iso_workchain:
                 iso_builder = EpwIsoWorkChain.get_builder_restart(
                     from_iso_workchain=iso_workchain,
                 )
-                # builder[EpwIsoWorkChain._INTP_NAMESPACE][EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw = iso_workchain.inputs[EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw
-                builder[EpwIsoWorkChain._INTP_NAMESPACE]._data = iso_builder._data
+                iso_builder['parent_folder_epw'] = iso_workchain.inputs[cls._ISO_NAMESPACE].parent_folder_epw
+                builder[cls._ISO_NAMESPACE]._data = iso_builder._data
                 return builder
             else:
-                builder[EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw = iso_workchain.inputs[EpwIsoWorkChain._INTP_NAMESPACE].parent_folder_epw
+                builder[cls._ISO_NAMESPACE]['parent_folder_epw'] = iso_workchain.inputs[cls._ISO_NAMESPACE].parent_folder_epw
                 return builder
         else:
-            builder.pop(EpwIsoWorkChain._INTP_NAMESPACE)
+            builder.pop(cls._ISO_NAMESPACE)
 
-        if EpwAnisoWorkChain._INTP_NAMESPACE in from_supercon_workchain.inputs:
-            aniso_workchain = EpwSuperConWorkChain.get_descendant(
-                from_supercon_workchain,
-                EpwAnisoWorkChain._INTP_NAMESPACE
-                )
+        if cls._ANISO_NAMESPACE in from_supercon_workchain.inputs:
+            aniso_workchain = descendants[cls._ANISO_NAMESPACE][0]
             if aniso_workchain and aniso_workchain.is_finished_ok:
                 raise Warning('The `EpwSuperConWorkChain` has already finished.')
             elif aniso_workchain:
                 aniso_builder = EpwAnisoWorkChain.get_builder_restart(
                     from_aniso_workchain=aniso_workchain,
                     )
-                builder[EpwAnisoWorkChain._INTP_NAMESPACE]._data = aniso_builder._data
+                aniso_builder['parent_folder_epw'] = aniso_workchain.inputs[cls._ANISO_NAMESPACE].parent_folder_epw
+                builder[cls._ANISO_NAMESPACE]._data = aniso_builder._data
                 return builder
             else:
-                builder[EpwAnisoWorkChain._INTP_NAMESPACE][EpwAnisoWorkChain._INTP_NAMESPACE].parent_folder_epw = iso_workchain.outputs.remote_folder
+                builder[cls._ANISO_NAMESPACE].parent_folder_epw = aniso_workchain.outputs.remote_folder
                 return builder
         else:
             raise Warning('The `EpwSuperConWorkChain` has already finished.')
@@ -651,19 +693,21 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         use_ir = inputs.get('use_ir', False)
 
         if use_ir:
+            if 'epw_ir' not in codes:
+                raise ValueError(
+                    'Usually the ir version of epw is different from the regular version. '
+                    'Please provide the `epw_ir` code.'
+                )
+
             epw_builder = EpwAnisoWorkChain.get_builder_from_protocol(
-                structure=structure,
-                codes=codes['epw_ir'],
-                protocol=protocol,
+                *args,
                 overrides=inputs.get(cls._ANISO_NAMESPACE, None),
                 **kwargs
             )
-            epw_builder.use_ir = orm.Bool(use_ir)
             epw_builder.pop(EpwAnisoWorkChain._B2W_NAMESPACE)
 
             builder[cls._ANISO_NAMESPACE]._data = epw_builder._data
         else:
-            epw_builder.use_ir = orm.Bool(use_ir)
             epw_builder = EpwAnisoWorkChain.get_builder_from_protocol(
                 *args,
                 overrides=inputs.get(cls._ANISO_NAMESPACE, None),
@@ -686,7 +730,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if 'interpolation_distances' in self.inputs:
             if isinstance(self.inputs.interpolation_distances, orm.List) and len(self.inputs.interpolation_distances) > 1:
                 if not self.inputs.convergence_threshold:
-                    return self.exit_codes.ERROR_CONVERGENCE_THRESHOLD_NOT_SPECIFIED
+                    raise ValueError('The `convergence_threshold` must be provided if the `interpolation_distances` is provided.')
             else:
                 raise ValueError('The `interpolation_distances` must be a list with at least one element.')
 
@@ -809,23 +853,37 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             self.ctx.inputs_a2f[self._A2F_NAMESPACE].parent_folder_epw = parent_folder_epw
             self.ctx.inputs_a2f[self._A2F_NAMESPACE].epw.parameters = orm.Dict(parameters)
 
+    @staticmethod
+    def check_convergence(
+        a2f_conv_workchains: list[orm.WorkChainNode],
+        convergence_threshold: float
+    ):
+        try:
+            prev_allen_dynes = a2f_conv_workchains[-2].outputs.output_parameters['Allen_Dynes_Tc']
+            new_allen_dynes = a2f_conv_workchains[-1].outputs.output_parameters['Allen_Dynes_Tc']
+            is_converged = (
+                abs(prev_allen_dynes - new_allen_dynes) / new_allen_dynes
+                < convergence_threshold
+            )
+            return (
+                is_converged,
+                f'Checking convergence: old {prev_allen_dynes}; new {new_allen_dynes} -> Converged = {is_converged}')
+        except (AttributeError, IndexError, KeyError):
+            return (False, 'Not enough data to check convergence.')
+
     def should_run_conv(self):
         """Check if the conv loop should continue or not."""
 
         if 'interpolation_distances' not in self.inputs:
             return False
 
-        try:
-            prev_allen_dynes = self.ctx.a2f_conv[-2].outputs.output_parameters['Allen_Dynes_Tc']
-            new_allen_dynes = self.ctx.a2f_conv[-1].outputs.output_parameters['Allen_Dynes_Tc']
-            self.ctx.is_converged = (
-                abs(prev_allen_dynes - new_allen_dynes) / new_allen_dynes
-                < self.inputs.convergence_threshold.value
-            )
-            self.report(f'Checking convergence: old {prev_allen_dynes}; new {new_allen_dynes} -> Converged = {self.ctx.is_converged.value}')
+        is_converged, msg = self.check_convergence(
+            self.ctx.a2f_conv,
+            self.inputs.convergence_threshold
+        )
 
-        except (AttributeError, IndexError, KeyError):
-            self.report('Not enough data to check convergence.')
+        self.ctx.is_converged = is_converged
+        self.report(msg)
 
         ## TODO: If Allen-Dynes Tc is converged, clean the remote folder:
         ## rm out/aiida.ephmat/*, out/aiida.epwmatwp,
@@ -947,6 +1005,8 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         inputs[self._ISO_NAMESPACE].epw.parameters = orm.Dict(parameters)
 
+        # TODO: This will only work if qfpoints and kfpoints are defined by qfpoint_distance and kfpoints_factor.
+        #       We should find a better way to handle this.
         inputs[self._ISO_NAMESPACE].qfpoints_distance = parent_folder_epw.creator.caller.inputs.qfpoints_distance
         inputs[self._ISO_NAMESPACE].kfpoints_factor = parent_folder_epw.creator.caller.inputs.kfpoints_factor
 

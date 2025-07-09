@@ -1,50 +1,66 @@
 # In tests/workflows/test_base.py
 
-from aiida import orm
-from aiida.engine import run_get_node
-from aiida.plugins import WorkflowFactory
+from aiida.engine import ProcessHandlerReport
+from aiida_quantumespresso.calculations.epw import EpwCalculation
+from aiida_supercon.workflows import EpwBaseWorkChain
+from aiida.common import AttributeDict
+from aiida.orm import StructureData
+from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
 
-EpwBaseWorkChain = WorkflowFactory('epw.base')
+def test_generate_structure(generate_structure):
+    """Test `PwBaseWorkChain.generate_structure`."""
+    Si = generate_structure('Si')
 
-def test_run_from_scratch_success(generate_builder_epw_base, generate_remote_data):
-    """Test running the EpwBaseWorkChain from scratch successfully."""
-    # 1. Prepare: Create mock parent folders
-    parent_folders = {
-        'nscf': generate_remote_data(), # CORRECTED: No arguments needed
-        'ph': generate_remote_data(),   # CORRECTED: No arguments needed
-        'chk': generate_remote_data(),  # CORRECTED: No arguments needed
-        'w90_chk_to_ukk_script': generate_remote_data() # CORRECTED: No arguments needed
-    }
+    assert isinstance(Si, StructureData)
+    assert Si.get_formula() == 'Si2'
 
-    builder = generate_builder_epw_base(parent_folders=parent_folders)
+def test_generate_workchain_pw(generate_workchain_pw, submit_and_await):
+    """Test `PwBaseWorkChain.generate_workchain_pw`."""
+    process = generate_workchain_pw()
 
-    # 2. Run & 3. Assert
-    results, node = run_get_node(builder)
-    assert node.is_finished_ok, f"WorkChain failed with exit status {node.exit_status}"
+    assert process.setup() is None
 
-def test_restart_from_epw_parent_folder(generate_builder_epw_base, generate_remote_data):
-    """Test restarting from a `parent_folder_epw`."""
-    parent_folders = {
-        'epw': generate_remote_data() # CORRECTED: No arguments needed
-    }
+    process.validate_kpoints()
+    process.prepare_process()
 
-    builder = generate_builder_epw_base(parent_folders=parent_folders)
+    pw_workchain = process.run_process()['children']
+    print(pw_workchain.keys())
 
-    results, node = run_get_node(builder)
-    assert node.is_finished_ok
+    print(pw_workchain.base.links.get_outgoing().all())
+    print(pw_workchain.base.links.get_incoming().all())
+    assert isinstance(process, PwBaseWorkChain)
 
-def test_error_handler_unrecoverable(generate_builder_epw_base, generate_failed_epw_calculation):
-    """Test if the `handle_unrecoverable_failure` process handler works correctly."""
-    # 1. Prepare: Create a mock failed calculation
-    exit_code = EpwBaseWorkChain.exit_codes.ERROR_UNRECOVERABLE_FAILURE # Example error
-    failed_calc = generate_failed_epw_calculation(exit_code=exit_code)
+def test_generate_inputs_epw(generate_inputs_epw):
+    """Test `EpwBaseWorkChain.generate_inputs_epw`."""
+    inputs = generate_inputs_epw()
+    assert isinstance(inputs, dict)
+    assert 'epw' in inputs
+    assert 'qpoints' in inputs
+    assert 'kpoints' in inputs
+    assert 'qfpoints' in inputs
+    assert 'kfpoints' in inputs
+    assert 'parent_folder_nscf' in inputs
+    assert 'parent_folder_ph' in inputs
+    assert 'parameters' in inputs
+    assert 'metadata' in inputs
 
-    # Create a workchain instance
-    workchain = EpwBaseWorkChain(inputs=generate_builder_epw_base()._inputs(prune=True))
+def test_setup(generate_workchain_epw_base):
+    """Test `PwBaseWorkChain.setup`."""
+    process = generate_workchain_epw_base()
+    process.setup()
 
-    # 2. Run: Manually call the handler
-    result = workchain.handle_unrecoverable_failure(failed_calc)
+    assert isinstance(process.ctx.inputs, AttributeDict)
 
-    # 3. Assert: Check if the handler returned the correct exit code
-    assert result is not None
-    assert result.status == EpwBaseWorkChain.exit_codes.ERROR_UNRECOVERABLE_FAILURE.status
+def test_handle_unrecoverable_failure(generate_workchain_epw_base):
+    """Test `PwBaseWorkChain.handle_unrecoverable_failure`."""
+    process = generate_workchain_epw_base(exit_code=EpwCalculation.exit_codes.ERROR_NO_RETRIEVED_FOLDER)
+    process.setup()
+
+    result = process.handle_unrecoverable_failure(process.ctx.children[-1])
+    assert isinstance(result, ProcessHandlerReport)
+    assert result.do_break
+    assert result.exit_code == EpwBaseWorkChain.exit_codes.ERROR_UNRECOVERABLE_FAILURE
+
+    result = process.inspect_process()
+    assert result == EpwBaseWorkChain.exit_codes.ERROR_UNRECOVERABLE_FAILURE
+

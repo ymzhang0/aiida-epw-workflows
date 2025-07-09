@@ -6,6 +6,7 @@ from numpy.typing import ArrayLike
 import scipy
 from aiida.engine import calcfunction
 from aiida.orm import ArrayData, XyData, Float
+from scipy.interpolate import interp1d
 
 meV_to_Kelvin = 11.604518121550082
 

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-"""Workchain to run a epw.x calculation."""
 from aiida import orm
 from aiida.common import AttributeDict, NotExistent
 
@@ -19,7 +18,7 @@ EpwCalculation = CalculationFactory('quantumespresso.epw')
 
 
 class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
-    """Workchain to run a Quantum ESPRESSO pw.x calculation with automated error handling and restarts."""
+    """BaseWorkchain to run a epw.x calculation."""
 
     # pylint: disable=too-many-public-methods, too-many-statements
 
@@ -318,12 +317,12 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """
 
         # Check if parent_folder_epw is provided
-        has_parent_folder_epw = 'parent_folder_epw' in inputs
+        has_parent_folder_epw = 'parent_folder_epw' in self.inputs
 
         # Check which of the other three folders are provided
-        has_parent_folder_nscf = 'parent_folder_nscf' in inputs
-        has_parent_folder_ph = 'parent_folder_ph' in inputs
-        has_parent_folder_chk = 'parent_folder_chk' in inputs
+        has_parent_folder_nscf = 'parent_folder_nscf' in self.inputs
+        has_parent_folder_ph = 'parent_folder_ph' in self.inputs
+        has_parent_folder_chk = 'parent_folder_chk' in self.inputs
 
         # --- Now, we apply your rules ---
 

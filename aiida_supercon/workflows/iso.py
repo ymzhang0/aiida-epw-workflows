@@ -46,8 +46,10 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         from_iso_workchain
         ):
         """Return a builder prepopulated with inputs extracted from the iso workchain.
-        :param from_iso_workchain: The iso workchain.
-        :return: The builder.
+        :param from_iso_workchain: The iso workchain from which to restart.
+        :type from_iso_workchain: :class:`aiida.orm.Node`
+        :return: A builder instance with the inputs prepopulated.
+        :rtype: :class:`aiida.engine.ProcessBuilder`
         """
         return super()._get_builder_restart(
             from_intp_workchain=from_iso_workchain,
@@ -70,6 +72,12 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             - epw: The code for the epw.x calculation.
             - pw2wannier90: The code for the pw2wannier90.x calculation.
             - wannier: The code for the wannier90.x calculation.
+        :type codes: dict
+        :param structure: The structure to use for the calculations.
+        :type structure: :class:`aiida.orm.StructureData`
+        :param protocol: The protocol to use for the calculations.
+        :type protocol: str
+        :param overrides: The overrides to use for the calculations.
         """
         builder = super().get_builder_from_protocol(
             codes,
@@ -82,8 +90,16 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         return builder
 
     def prepare_process(self):
-        """Prepare the process.
-        It will update the parameters of the epw calculation with the parameters of the previous EpwBaseWorkChain.
+        """Prepare the `EpwBaseWorkChain`.
+        It will set the necessary inputs parameters for an isotropic calculation.
+        It will set the necessary retrieve items from an isotropic calculation:
+        - a2f
+        - a2f_proj
+        - dos
+        - phdos
+        - phdos_proj
+        - lambda_FS
+        - lambda_k_pairs
         """
 
         super().prepare_process()
@@ -112,7 +128,9 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         self.ctx.inputs.epw.settings = orm.Dict(settings)
 
     def inspect_process(self):
-        """Verify that the epw.x workflow finished successfully."""
+        """Verify that the `EpwBaseWorkChain` finished successfully.
+        It will calculate the isotropic Tc from the `EpwBaseWorkChain` outputs.
+        """
         intp_workchain = self.ctx.workchain_intp
 
         if not intp_workchain.is_finished_ok:

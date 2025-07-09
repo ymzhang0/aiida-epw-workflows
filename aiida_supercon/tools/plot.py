@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 import numpy
 from io import StringIO
 from scipy.optimize import curve_fit
-
+import re
 
 def plot_a2f(
     a2f: orm.XyData,
@@ -54,7 +54,6 @@ def plot_a2f(
 
     if axis is None:
         return plt
-
 
 def plot_aniso(epw_calc, axis=None, ignore_temps=0, add_fit=False):
 
@@ -127,7 +126,6 @@ def plot_aniso(epw_calc, axis=None, ignore_temps=0, add_fit=False):
     plt.title(title)
 
     return plt
-
 
 def plot_bands(bands: orm.BandsData, axis=None, reference_energy=0, seekpath_params=None, **kwargs):
     """Plot a band structure from a ``BandsData`` node."""
@@ -274,6 +272,136 @@ def plot_bands_comparison(bands_qe, bands_w90, fermi_qe, fermi_w90, axis=None):
     if axis is None:
         return plt
 
+def create_xticklabels(plain_path):
+    GREEK_LETTERS_TO_LATEX = {
+        'GAMMA': r'\Gamma',
+        'SIGMA': r'\Sigma',
+        'DELTA': r'\Delta',
+        'LAMBDA': r'\Lambda',
+        'PI': r'\Pi',
+        'THETA': r'\Theta',
+        'PHI': r'\Phi',
+        'OMEGA': r'\Omega',
+        'ALPHA': r'\Alpha',
+        'BETA': r'\Beta',
+        'XI': r'\Xi',
+        'MU': r'\Mu',
+        'ZETA': r'\Zeta',
+        'NU': r'\Nu',
+        'KAPPA': r'\Kappa',
+    }
+
+    def greek_letter_to_latex(letter):
+        match = re.fullmatch(r'([A-Z]+)(?:_(\d+))?', letter)
+
+        base, sub = match.groups()
+
+        if base in GREEK_LETTERS_TO_LATEX:
+            latex_base = GREEK_LETTERS_TO_LATEX[base]
+        else:
+            latex_base = rf'\mathrm{{{base}}}'
+        if sub:
+            return rf'${latex_base}_{{{sub}}}$'
+        else:
+            return rf'${latex_base}$'
+
+    xticklabels = []
+
+    for points in plain_path:
+        if isinstance(points, tuple):
+            p0 = greek_letter_to_latex(points[0])
+            p1 = greek_letter_to_latex(points[1])
+            xticklabels.append(f'{p0}|{p1}')
+        else:
+            xticklabels.append(greek_letter_to_latex(points))
+
+    return xticklabels
+
+def plot_epw_interpolated_bands(
+    epw_workchain,
+    axes=None,
+    **kwargs,
+    ):
+    """Plot the interpolated bands from an ``EpwWorkChain`` node."""
+
+    if axes is None:
+        import matplotlib.pyplot as plt
+        fig, axes = plt.subplots(1, 2, figsize=(8, 6), sharex=True)
+    elif axes.shape != (2,):
+        raise ValueError("axes must be a 2D array")
+
+    fermi_energy_coarse = epw_workchain.outputs.output_parameters.get('fermi_energy_coarse')
+    parameters = epw_workchain.outputs.seekpath_parameters.get_dict()
+
+    path = parameters['path']
+    explicit_segments = parameters['explicit_segments']
+    explicit_kpoints_linearcoord = parameters['explicit_kpoints_linearcoord']
+
+    plain_path = [path[0][0]]
+
+    for [path_start, path_end], [dec_seg_start, dec_seg_end] in zip(path[:-1], path[1:]):
+        if path_end == dec_seg_start:
+            plain_path.append(dec_seg_start)
+        else:
+            plain_path.append((path_end, dec_seg_start))
+
+    plain_path.append(path[-1][1])
+
+    kpoints_indicies = [0]
+
+    for [seg_start, seg_end] in explicit_segments[1:]:
+        kpoints_indicies.append(seg_start)
+
+    kpoints_indicies.append(explicit_segments[-1][1]-1)
+
+    xticks = [explicit_kpoints_linearcoord[k] for k in kpoints_indicies]
+    xticklabels = create_xticklabels(plain_path)
+
+    el_bands = epw_workchain.outputs.bands.el_band_structure.get_bands()
+    ph_bands = epw_workchain.outputs.bands.ph_band_structure.get_bands()
+
+    max_freq = numpy.max(ph_bands)
+    min_freq = numpy.min(ph_bands)
+
+    axes[0].set_ylim([-2, 2])
+    axes[0].set_yticks([-2, 0, 2])
+    axes[0].set_yticklabels([-2, '$E_F$', 2])
+    axes[0].set_ylabel('Energy (eV)')
+    axes[0].set_xlim([explicit_kpoints_linearcoord[0], explicit_kpoints_linearcoord[-1]])
+
+    axes[1].set_ylim([min_freq, max_freq*1.05])
+    axes[1].set_yticks([numpy.floor(min_freq), numpy.ceil(max_freq*1.05)])
+    axes[1].set_yticklabels([numpy.floor(min_freq), numpy.ceil(max_freq*1.05)])
+    axes[1].set_ylabel('Frequency (meV)')
+    axes[1].set_xlim([explicit_kpoints_linearcoord[0], explicit_kpoints_linearcoord[-1]])
+
+    for tick in xticks:
+        axes[0].axvline(tick, color='k', linewidth=1, linestyle='--')
+        axes[1].axvline(tick, color='k', linewidth=1, linestyle='--')
+
+    axes[0].axhline(0, color='k', linewidth=1, linestyle='--')
+    axes[1].axhline(0, color='k', linewidth=1, linestyle='--')
+
+    axes[1].set_xticks(xticks)
+    axes[1].set_xticklabels(xticklabels)
+
+    axes[1].plot([], [])
+
+
+    for el_band, ph_band in zip(el_bands.T, ph_bands.T):
+        axes[0].plot(
+            explicit_kpoints_linearcoord,
+            el_band-fermi_energy_coarse,
+            linestyle=kwargs.get('linestyle', '--'),
+            color=kwargs.get('color', 'r'),
+            )
+        axes[1].plot(
+            explicit_kpoints_linearcoord,
+            ph_band,
+            linestyle=kwargs.get('linestyle', '-'),
+            color=kwargs.get('color', 'k'),
+            )
+    return axes
 
 def check_wannier_optimize(w90_optimize_workchain, filename=None):
 

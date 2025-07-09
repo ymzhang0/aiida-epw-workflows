@@ -25,8 +25,7 @@ requires-python = ">=3.7"
 dependencies = [
     "aiida-core~=2.5",
     "aiida-wannier90-workflows~=2.2",
-    "aiida-quantumespresso @ git+https://github.com/mbercx/aiida-quantumespresso.git@support/epw",
-    "pathlib",
+    "aiida-quantumespresso~=4.7",
     "importlib_resources",
     "PyYAML",
 ]
@@ -44,12 +43,25 @@ docs = [
     "sphinx-book-theme",
 ]
 
-dev = [
+# Group for testing-specific dependencies
+tests = [
     "pytest",
-    "pre-commit",
-    "pylint",
+    "pytest-regressions",
+]
+
+# The 'dev' group is now a convenient bundle of other groups for local setup
+dev = [
+    # Docs dependencies
     "myst-parser",
-    "sphinx-book-theme"
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-book-theme",
+    # Tests dependencies
+    "pytest",
+    "pytest-regressions",
+    # Other dev tools
+    "pylint",
+    "pre-commit",
 ]
 
 [project.entry-points."aiida.data"]
