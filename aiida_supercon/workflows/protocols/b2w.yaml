@@ -44,6 +44,7 @@ default_inputs:
           fsthick: 100
           phonselfen: False
           temps: 300
+          use_ws: True
           vme: 'dipole'
           wannierize: False
 

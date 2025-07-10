@@ -8,6 +8,7 @@ from aiida.plugins import CalculationFactory
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 from aiida_quantumespresso.calculations.ph import PhCalculation
+from aiida_quantumespresso.calculations.pw import PwCalculation
 
 from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, Wannier90OptimizeWorkChain
 
@@ -118,8 +119,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             message='The calculation failed with an unidentified unrecoverable error.')
         spec.exit_code(310, 'ERROR_KNOWN_UNRECOVERABLE_FAILURE',
             message='The calculation failed with a known unrecoverable error.')
-        spec.exit_code(320, 'ERROR_INITIALIZATION_CALCULATION_FAILED',
-            message='The initialization calculation failed.')
+
 
     @classmethod
     def get_protocol_filepath(cls):
@@ -229,18 +229,20 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """
         pw_calc = nscf_folder.creator
 
-        # Check if the nscf CalcJob's input k-points already has a mesh.
-        # This covers the case of a standalone PwBaseWorkChain run.
-        if 'kpoints' in pw_calc.inputs:
-            kpoints = pw_calc.inputs.kpoints
-            mesh, _ = kpoints.get_kpoints_mesh()
-            return kpoints
+        if not pw_calc.process_class is PwCalculation:
+            raise ValueError('Parent folder of nscf calculation is not a valid nscf calculation.')
 
         w90_workchain = pw_calc.caller.caller
         if not w90_workchain:
-            # If there's no caller, we can't use Strategies 2 & 3.
-            # We must fall back to the last resort.
-            return self._deduce_mesh_from_explicit_kpoints(pw_calc.inputs.kpoints)
+            # If there's no caller, it must be a standalone PwBaseWorkChain run.
+            # We can either get the kpoints mesh from the inputs.
+            # Or deduce the mesh from the coordinates if the input KpointsData is not a mesh but a list of explicit k-points.
+            try:
+                kpoints = pw_calc.inputs.kpoints
+                mesh, _ = kpoints.get_kpoints_mesh()
+                return kpoints
+            except (AttributeError, ValueError) as e:
+                raise ValueError(f"Could not deduce mesh from coordinates. Reason: {e}") from e
 
         # Check if the caller is a Wannier90 workchain and look for `mp_grid`.
         if w90_workchain.process_class is Wannier90OptimizeWorkChain:
@@ -290,7 +292,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """
 
         ph_calc = ph_folder.creator
-        if not ph_calc.process_class is PhCalculation._process_class:
+        if not ph_calc.process_class is PhCalculation:
             raise ValueError('Parent folder of ph calculation is not a valid ph calculation.')
 
         qpoints = ph_calc.inputs.qpoints
@@ -323,8 +325,6 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         has_parent_folder_nscf = 'parent_folder_nscf' in self.inputs
         has_parent_folder_ph = 'parent_folder_ph' in self.inputs
         has_parent_folder_chk = 'parent_folder_chk' in self.inputs
-
-        # --- Now, we apply your rules ---
 
         # Rule: Cannot provide `parent_folder_epw` AND any of the other three.
         if has_parent_folder_epw and any([
@@ -416,11 +416,10 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             parallelization['-npool'] = total_procs
             self.ctx.inputs.parallelization = orm.Dict(parallelization)
         if npool != total_procs:
-            self.report(
+            raise ValueError(
                 f'Validation failed: `npool` value ({npool}) is not equal to the '
                 f'total number of MPI processes ({total_procs}).'
             )
-            return self.exit_codes.ERROR_INCONSISTENT_NPOOL_SETTING
 
     def validate_kpoints(self):
         """
@@ -524,22 +523,22 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             self.report_error_handled(calculation, 'unrecoverable error, aborting...')
             return ProcessHandlerReport(True, self.exit_codes.ERROR_UNRECOVERABLE_FAILURE)
 
-    @process_handler(priority=590, exit_codes=[])
-    def handle_known_unrecoverable_failure(self, calculation):
-        """Handle calculations with an exit status that correspond to a known failure mode that are unrecoverable.
+    # @process_handler(priority=590, exit_codes=[])
+    # def handle_known_unrecoverable_failure(self, calculation):
+    #     """Handle calculations with an exit status that correspond to a known failure mode that are unrecoverable.
 
-        These failures may always be unrecoverable or at some point a handler may be devised.
-        """
-        self.report_error_handled(calculation, 'known unrecoverable failure detected, aborting...')
-        return ProcessHandlerReport(True, self.exit_codes.ERROR_KNOWN_UNRECOVERABLE_FAILURE)
+    #     These failures may always be unrecoverable or at some point a handler may be devised.
+    #     """
+    #     self.report_error_handled(calculation, 'known unrecoverable failure detected, aborting...')
+    #     return ProcessHandlerReport(True, self.exit_codes.ERROR_KNOWN_UNRECOVERABLE_FAILURE)
 
-    @process_handler(priority=413, exit_codes=[
-        EpwCalculation.exit_codes.ERROR_CONVERGENCE_TC_LINEAR_NOT_REACHED,
-    ])
-    def handle_convergence_tc_linear_not_reached(self, calculation):
-        """Handle `ERROR_CONVERGENCE_TC_LINEAR_NOT_REACHED`: consider finished."""
-        self.ctx.is_finished = True
-        action = 'Convergence (tc_linear) was not reached. But it is acceptable if Tc can be estimated.'
-        self.report_error_handled(calculation, action)
-        self.results()  # Call the results method to attach the output nodes
-        return ProcessHandlerReport(True, self.exit_codes.ERROR_CONVERGENCE_TC_LINEAR_NOT_REACHED)
+    # @process_handler(priority=413, exit_codes=[
+    #     EpwCalculation.exit_codes.ERROR_CONVERGENCE_TC_LINEAR_NOT_REACHED,
+    # ])
+    # def handle_convergence_tc_linear_not_reached(self, calculation):
+    #     """Handle `ERROR_CONVERGENCE_TC_LINEAR_NOT_REACHED`: consider finished."""
+    #     self.ctx.is_finished = True
+    #     action = 'Convergence (tc_linear) was not reached. But it is acceptable if Tc can be estimated.'
+    #     self.report_error_handled(calculation, action)
+    #     self.results()  # Call the results method to attach the output nodes
+    #     return ProcessHandlerReport(True, self.exit_codes.ERROR_CONVERGENCE_TC_LINEAR_NOT_REACHED)

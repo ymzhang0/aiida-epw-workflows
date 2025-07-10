@@ -1,107 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Work chain to compute the electron-phonon coupling.
 
-This work chain is refined to accept the parent folders of the Wannier90 and Phonon work chains.
-
-Firstly it will validate the parent folders.
-
-- If the phonon parent folders are valid, it will use the qpoints from the phonon parent folders.
-
-Then it will check if the wannier90 parent folders are valid.
-
-- If so, it will check if the kpoints of the wannier90 work chain are compatible with the qpoints of the phonon work chain.
-
-- If they are not compatible, it will re-generate the kpoints of the wannier90 work chain based on the qpoints of the phonon work chain. Then it will re-run the wannier90 work chain.
-
-- If the wannier90 parent folders are not valid, it will run the wannier90 work chain from scratch.
-
-If none of the parent folders are provided or are not valid, it will run the Wannier90 and Phonon work chains from scratch.
-
-The first step is to compute the electron-phonon (dvscf) on a coarse grid. I think 0.3A^-1 q-point grid should be good but you can use the same k-point grid (as opposed to twice) so it should be cheaper. This step should be done only once
-
-For this step you need to run
-
-pw.x < scf.in
-ph.x < ph.in
-
-Once the calculation is done, you need to rename and gather the results in a "save" folder
-This is done with QE/EPW/bin/pp.py script
-You just run it as python3 QE/EPW/bin/pp.py
-you need to provide the prefix name to the script
-What is very important is that the "save" folder is saved in the AiiDA framework
-This will be the biggest thing to save and is typically ~ 500 mb to 1 Gb
-
-We can discuss this if we want to keep it or not but if possible, I would say yes
-Ok then the EPW step starts
-
-2. Find initial wannier projection
-
-pw.x < scf.in
-pw.x < nscf.in
-projwfc.x
-+ wannier steps from Junfeng workflow?
--> What we need here is the block of inputs provided to epw.in linked to the wannierization
-(wdata(1) = "<wannier inputs>" input variable; is basically a vector of input variables that are directly passed to wannier.x)
-
-e.g.
-
- wdata(1) = 'bands_plot = .true.'
- wdata(2) = 'begin kpoint_path'
- wdata(3) = 'G 0.00 0.00 0.00 M 0.50 0.00 0.00'
- wdata(4) = 'M 0.50 0.00 0.00 K 0.333333333333 0.333333333333 0.00'
- wdata(5) = 'K 0.333333333333 0.333333333333 0.00 G 0.0 0.0 0.00'
- wdata(6) = 'end kpoint_path'
- wdata(7) = 'bands_plot_format = gnuplot'
- wdata(8) = 'dis_num_iter      = 5000'
- wdata(9) = 'num_print_cycles  = 10'
- wdata(10) = 'dis_mix_ratio     = 1.0'
- wdata(11) = 'conv_tol = 1E-12'
- wdata(12) = 'conv_window = 4'
-
-
-3. EPW step (in a different folder). You just need to do a soft link to the "save" folder from the above step
-
-You need to do
-pw.x <scf.in   (Could potentially be the same as in step 2)
-pw.x <nscf.in -> JQ: we can simply use these from the wannier workflow
-
-epw.x < epw1.in
-
-At the end of this step, you have the electron-phonon matrix element in real space
-This needs to be stored for sure
-The most important and only big file is "PREFIX..epmatwp"
-For TiO, this is 872 Mb ...
-From this file you can interpolate to any fine grid density
-
-I mean use for next calculation but you may want to keep it in order to do more convergence later
-for example if you find that a 40x40x40 grid is not enough
-you dont want to redo step 1 and 2 to get 60x60x60
-
-Files to save:
-
-ln -s ../epw8-conv1/crystal.fmt
-ln -s ../epw8-conv1/epwdata.fmt
-ln -s ../epw8-conv1/<prefix>.bvec
-ln -s ../epw8-conv1/<prefix>.chk
-ln -s ../epw8-conv1/<prefix>.kgmap
-ln -s ../epw8-conv1/<prefix>.kmap
-ln -s ../epw8-conv1/<prefix>.mmn
-ln -s ../epw8-conv1/<prefix>.nnkp
-ln -s ../epw8-conv1/<prefix>.ukk
-ln -s ../epw8-conv1/<prefix>.epmatwp (Note: quite big file!)
-ln -s ../epw8-conv1/vmedata.fmt
-ln -s ../epw8-conv1/dmedata.fmt
-ln -s ../epw8-conv1/save (Is basically the save folder from step 1)
-
-4. EPW interpolation to get Eliashberg Tc
-
-epw.x < epw2.in
-epw2.in
-
-and basically here you can change the fine grid in epw2.in to converge things
-This run can be done in a different folder but you need to soft link a number of files from the previous calculation 2.
-
-"""
 from pathlib import Path
 
 from aiida import orm
@@ -322,36 +220,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
                 'source_list': EpwB2WWorkChain.SOURCE_LIST[target_base_prefix]
                 }
 
-    @staticmethod
-    def get_descendant_workchain(
-        b2w: orm.WorkChainNode,
-        link_label_filter: str
-        ) -> orm.WorkChainNode:
-        """
-        Parses a completed EpwB2WWorkChain node and extracts its
-        successful sub-workchain nodes.
-
-        :param b2w: A finished and successful EpwB2WWorkChain node.
-        :param link_label_filter: The link label of the sub-workchain to be extracted.
-        :return: The sub-workchain node.
-        """
-
-        # Find the sub-workchains from the outputs (or links).
-        # The exact way to get them depends on how you defined the call_link_labels in b2w's outline.
-        # Let's assume the call links are 'w90_intp', 'ph_base', and 'epw'.
-        try:
-            # get_outgoing() returns a list of links, we get the first one's node
-            descendant = b2w.base.links.get_outgoing(
-                link_label_filter=link_label_filter
-                ).first().node
-            return descendant
-        except AttributeError:
-            # ValueError is raised by .one() if it doesn't find exactly one link
-            warnings.warn(
-                f"Could not find a unique sub-workflow with link label '{link_label_filter}' in <{b2w.pk}>",
-                stacklevel=2
-                )
-
 
     @classmethod
     def get_builder_restart(
@@ -380,10 +248,10 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         # Then check if the previous EpwB2WWorkChain is finished_ok
 
         # Get the wannier90 workchain
-        from_w90_workchain = cls.get_descendant_workchain(
-                from_b2w_workchain,
-                EpwB2WWorkChain._W90_NAMESPACE
-                )
+        from ..tools.links import get_descendants
+        from aiida.common.links import LinkType
+
+        descendants = get_descendants(from_b2w_workchain, LinkType.CALL_WORK)
 
         # The logic here is: if there is not w90 namespace in the previous workchain, the workchain must have been restarted that the wannier90 workchain is popped,
         # or there is one but it is finished_ok, we don't need to restart either.
@@ -391,45 +259,36 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         if cls._W90_NAMESPACE not in from_b2w_workchain.inputs:
             builder.pop(cls._W90_NAMESPACE)
 
-            builder[cls._PH_NAMESPACE].ph.parent_folder = from_w90_workchain.inputs.ph.parent_folder
-            builder[cls._EPW_NAMESPACE].parent_folder_nscf = from_w90_workchain.inputs.epw.parent_folder_nscf
-            builder[cls._EPW_NAMESPACE].parent_folder_chk = from_w90_workchain.inputs.epw.parent_folder_chk
+            builder[cls._PH_NAMESPACE].ph.parent_folder = descendants[cls._W90_NAMESPACE][0].inputs.ph.parent_folder
+            builder[cls._EPW_NAMESPACE].parent_folder_nscf = descendants[cls._W90_NAMESPACE][0].inputs.epw.parent_folder_nscf
+            builder[cls._EPW_NAMESPACE].parent_folder_chk = descendants[cls._W90_NAMESPACE][0].inputs.epw.parent_folder_chk
 
-        elif from_w90_workchain.is_finished_ok:
+        elif descendants[cls._W90_NAMESPACE][0].is_finished_ok:
             builder.pop(cls._W90_NAMESPACE)
 
-            builder[cls._PH_NAMESPACE].ph.parent_folder = from_w90_workchain.outputs.scf.remote_folder
-            builder[cls._EPW_NAMESPACE].parent_folder_nscf = from_w90_workchain.outputs.nscf.remote_folder
-            builder[cls._EPW_NAMESPACE].parent_folder_chk = get_parent_folder_chk_from_w90_workchain(from_w90_workchain)
+            builder[cls._PH_NAMESPACE].ph.parent_folder = descendants[cls._W90_NAMESPACE][0].outputs.scf.remote_folder
+            builder[cls._EPW_NAMESPACE].parent_folder_nscf = descendants[cls._W90_NAMESPACE][0].outputs.nscf.remote_folder
+            builder[cls._EPW_NAMESPACE].parent_folder_chk = get_parent_folder_chk_from_w90_workchain(descendants[cls._W90_NAMESPACE][0])
         else:
-            builder[cls._W90_NAMESPACE]._data = from_w90_workchain._data
+            builder[cls._W90_NAMESPACE]._data = descendants[cls._W90_NAMESPACE][0]._data
             # The logic here is: if there is not ph namespace in the previous workchain, it must have been restarted that the phonon workchain is popped,
             # or there is one but it is finished_ok, we don't need to restart either.
-
-        from_ph_workchain = cls.get_descendant_workchain(
-                from_b2w_workchain,
-                EpwB2WWorkChain._PH_NAMESPACE
-                )
 
         if cls._PH_NAMESPACE not in from_b2w_workchain.inputs:
             builder.pop(cls._PH_NAMESPACE)
 
-            builder[cls._EPW_NAMESPACE].parent_folder_ph = from_ph_workchain.outputs.remote_folder
+            builder[cls._EPW_NAMESPACE].parent_folder_ph = descendants[cls._PH_NAMESPACE][0].outputs.remote_folder
 
-        elif from_ph_workchain.is_finished_ok:
+        elif descendants[cls._PH_NAMESPACE][0].is_finished_ok:
             builder.pop(cls._PH_NAMESPACE)
 
-            builder[cls._EPW_NAMESPACE].parent_folder_ph = from_ph_workchain.outputs.remote_folder
+            builder[cls._EPW_NAMESPACE].parent_folder_ph = descendants[cls._PH_NAMESPACE][0].outputs.remote_folder
 
         else:
-            builder[cls._PH_NAMESPACE]._data = from_ph_workchain._data
+            builder[cls._PH_NAMESPACE]._data = descendants[cls._PH_NAMESPACE][0]._data
 
         # Get the epw workchain
-        from_epw_workchain = cls.get_descendant_workchain(
-            from_b2w_workchain,
-            EpwB2WWorkChain._EPW_NAMESPACE
-            )
-        if from_epw_workchain.is_finished_ok:
+        if descendants[cls._EPW_NAMESPACE][0].is_finished_ok:
             raise Warning(
                 f"The `EpwB2WWorkChain` <{from_b2w_workchain.pk}> is already finished.",
                 )

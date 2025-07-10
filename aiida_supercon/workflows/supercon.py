@@ -80,6 +80,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             namespace=cls._BANDS_NAMESPACE,
             exclude=(
                 'clean_workdir',
+                'structure',
                 f'{cls._BANDS_NAMESPACE}.parent_folder_nscf',
                 f'{cls._BANDS_NAMESPACE}.parent_folder_chk',
                 f'{cls._BANDS_NAMESPACE}.parent_folder_ph',
@@ -96,6 +97,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             namespace=cls._A2F_NAMESPACE,
             exclude=(
                 'clean_workdir',
+                'structure',
                 f'{cls._A2F_NAMESPACE}.parent_folder_nscf',
                 f'{cls._A2F_NAMESPACE}.parent_folder_chk',
                 f'{cls._A2F_NAMESPACE}.parent_folder_ph',
@@ -111,6 +113,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             namespace=cls._ISO_NAMESPACE,
             exclude=(
                 'clean_workdir',
+                'structure',
                 f"{cls._ISO_NAMESPACE}.parent_folder_nscf",
                 f"{cls._ISO_NAMESPACE}.parent_folder_chk",
                 f"{cls._ISO_NAMESPACE}.parent_folder_ph",
@@ -126,6 +129,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             namespace=cls._ANISO_NAMESPACE,
             exclude=(
                 'clean_workdir',
+                'structure',
                 f"{cls._ANISO_NAMESPACE}.parent_folder_nscf",
                 f"{cls._ANISO_NAMESPACE}.parent_folder_chk",
                 f"{cls._ANISO_NAMESPACE}.parent_folder_ph",
@@ -236,49 +240,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         from importlib_resources import files
         from . import protocols
         return files(protocols) / f'{cls._NAMESPACE}.yaml'
-
-    @staticmethod
-    def get_descendant(
-        supercon: orm.WorkChainNode,
-        link_label_filter: str
-        ) -> orm.WorkChainNode:
-        """Get the descendant workchain of the EpwSuperConWorkChain according to the link label."""
-        try:
-            return supercon.base.links.get_outgoing(
-                link_label_filter=link_label_filter
-                ).first().node
-        except AttributeError:
-            return None
-
-    @staticmethod
-    def get_descendants(
-        supercon: orm.WorkChainNode,
-        link_label_filter: str
-        ) -> orm.WorkChainNode:
-        """Get the descendant workchains of the EpwSuperConWorkChain."""
-        try:
-            return supercon.base.links.get_outgoing(
-                link_label_filter=link_label_filter
-                ).all()
-        except AttributeError:
-            return None
-
-    @staticmethod
-    def get_descendants_workchains(
-        supercon: orm.WorkChainNode,
-        link_type: LinkType
-        ) -> orm.WorkChainNode:
-        """Get the descendant workchains of the EpwSuperConWorkChain."""
-
-        descendants = {}
-        try:
-            for node, link_type, link_label in supercon.base.links.get_outgoing(link_type=link_type).all():
-                if link_label not in descendants:
-                    descendants[link_label] = []
-                descendants[link_label].append(node)
-            return descendants
-        except AttributeError:
-            return None
 
     @classmethod
     def get_builder_restart_from_b2w(
@@ -393,7 +354,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     def get_builder_restart(
         cls,
         from_supercon_workchain: orm.WorkChainNode,
-    ):
+        ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol."""
 
         ## Here the restart builder contains info:
@@ -408,21 +369,24 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if from_supercon_workchain.is_finished_ok:
             raise Warning('The `EpwSuperConWorkChain` is already finished.')
 
-        descendants = EpwSuperConWorkChain.get_descendants_workchains(
+        from ..tools.links import get_descendants
+        from aiida.common.links import LinkType
+
+        descendants = get_descendants(
             from_supercon_workchain,
             LinkType.CALL_WORK
             )
 
-        # try:
-        #     for sub_workchain in (
-        #         EpwBandsWorkChain,
-        #         EpwA2fWorkChain,
-        #         EpwIsoWorkChain,
-        #         EpwAnisoWorkChain,
-        #         ):
-        #         builder[sub_workchain._INTP_NAMESPACE].pop(sub_workchain._B2W_NAMESPACE)
-        # except KeyError:
-        #     pass
+        try:
+            for sub_workchain in (
+                EpwBandsWorkChain,
+                EpwA2fWorkChain,
+                EpwIsoWorkChain,
+                EpwAnisoWorkChain,
+                ):
+                builder[sub_workchain._INTP_NAMESPACE].pop(sub_workchain._B2W_NAMESPACE)
+        except KeyError:
+            pass
 
         # Firstly we should check whether we should restart from b2w workchain.
         # If B2W_NAMESPACE is in the inputs, it means that the previous workchain did a b2w calculation.
@@ -704,6 +668,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 overrides=inputs.get(cls._ANISO_NAMESPACE, None),
                 **kwargs
             )
+            epw_builder.use_ir = orm.Bool(True)
             epw_builder.pop(EpwAnisoWorkChain._B2W_NAMESPACE)
 
             builder[cls._ANISO_NAMESPACE]._data = epw_builder._data
@@ -713,6 +678,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 overrides=inputs.get(cls._ANISO_NAMESPACE, None),
                 **kwargs
             )
+            epw_builder.use_ir = orm.Bool(False)
             epw_builder.pop(EpwAnisoWorkChain._B2W_NAMESPACE)
 
             builder[cls._ANISO_NAMESPACE]._data = epw_builder._data
@@ -742,7 +708,11 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
     def setup(self):
         """Setup steps, i.e. initialise context variables."""
+        # Here we expose the inputs in advance so that we can modify the
+        # parent_folder_epw in the should_run_b2w, should_run_a2f, should_run_iso, should_run_aniso methods.
 
+        if self._BANDS_NAMESPACE in self.inputs:
+            self.ctx.inputs_bands = AttributeDict(self.exposed_inputs(EpwBandsWorkChain, namespace=self._BANDS_NAMESPACE))
         if self._A2F_NAMESPACE in self.inputs:
             self.ctx.inputs_a2f = AttributeDict(self.exposed_inputs(EpwA2fWorkChain, namespace=self._A2F_NAMESPACE))
         if self._ISO_NAMESPACE in self.inputs:
@@ -774,7 +744,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = self._B2W_NAMESPACE
         workchain_node = self.submit(EpwB2WWorkChain, **inputs)
 
-        self.report(f'launching `b2w` with PK {workchain_node.pk}')
+        self.report(f'launching EpwB2WWorkChain<{workchain_node.pk}>')
 
         return ToContext(workchain_b2w=workchain_node)
 
@@ -796,21 +766,27 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
     def should_run_bands(self):
         """Check if the bands workflow should continue or not."""
-        return self._BANDS_NAMESPACE in self.inputs
+        if self._BANDS_NAMESPACE in self.inputs:
+            if self.should_run_b2w():
+                b2w_workchain = self.ctx.workchain_b2w
+
+                parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
+
+                self.ctx.inputs_bands[self._BANDS_NAMESPACE].parent_folder_epw = parent_folder_epw
+
+            return True
+        else:
+            return False
 
     def run_bands(self):
         """Run the bands workflow."""
-        inputs = AttributeDict(
-            self.exposed_inputs(
-                EpwBandsWorkChain,
-                namespace=self._BANDS_NAMESPACE
-            )
-        )
-
+        inputs = self.ctx.inputs_bands
+        inputs.structure = self.inputs.structure
         inputs.metadata.call_link_label = self._BANDS_NAMESPACE
+
         workchain_node = self.submit(EpwBandsWorkChain, **inputs)
 
-        self.report(f'launching `bands` with PK {workchain_node.pk}')
+        self.report(f'launching EpwBandsWorkChain<{workchain_node.pk}>')
 
         return ToContext(workchain_bands=workchain_node)
 
@@ -842,22 +818,17 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if self.should_run_b2w():
             b2w_workchain = self.ctx.workchain_b2w
 
-            b2w_parameters = b2w_workchain.inputs[self._B2W_NAMESPACE].epw.parameters.get_dict()
-
             parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
 
-            for namespace, keyword in self._blocked_keywords:
-                if keyword in b2w_parameters[namespace]:
-                    parameters[namespace][keyword] = b2w_parameters[namespace][keyword]
-
             self.ctx.inputs_a2f[self._A2F_NAMESPACE].parent_folder_epw = parent_folder_epw
-            self.ctx.inputs_a2f[self._A2F_NAMESPACE].epw.parameters = orm.Dict(parameters)
 
     @staticmethod
     def check_convergence(
         a2f_conv_workchains: list[orm.WorkChainNode],
         convergence_threshold: float
-    ):
+        ) -> tuple[bool, str]:
+        """Check if the convergence is reached."""
+
         try:
             prev_allen_dynes = a2f_conv_workchains[-2].outputs.output_parameters['Allen_Dynes_Tc']
             new_allen_dynes = a2f_conv_workchains[-1].outputs.output_parameters['Allen_Dynes_Tc']
@@ -914,7 +885,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = self._CONV_NAMESPACE
         workchain_node = self.submit(EpwA2fWorkChain, **inputs)
 
-        self.report(f'launching interpolation `epw` with PK {workchain_node.pk} [qfpoints_distance = {inputs.a2f.qfpoints_distance}]')
+        self.report(f'launching convergence test: EpwA2fWorkChain<{workchain_node.pk}> [qfpoints_distance = {inputs.a2f.qfpoints_distance}]')
 
         return ToContext(a2f_conv=append_(workchain_node))
 
@@ -937,11 +908,18 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
     def should_run_a2f(self):
         """Check if the a2f workflow should continue or not."""
-        return (
+        if (
             self._A2F_NAMESPACE in self.inputs
             and
             'interpolation_distances' not in self.inputs
-        )
+        ):
+            if self.should_run_b2w():
+                b2w_workchain = self.ctx.workchain_b2w
+                parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
+                self.ctx.inputs_a2f[self._A2F_NAMESPACE].parent_folder_epw = parent_folder_epw
+            return True
+        else:
+            return False
 
     def run_a2f(self):
         """Run the a2f workflow."""
@@ -950,6 +928,9 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         inputs.metadata.call_link_label = self._A2F_NAMESPACE
         workchain_node = self.submit(EpwA2fWorkChain, **inputs)
+
+        self.report(f'launching EpwA2fWorkChain<{workchain_node.pk}>')
+
         return ToContext(workchain_a2f=workchain_node)
 
     def inspect_a2f(self):
@@ -1012,6 +993,8 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         inputs.metadata.call_link_label = self._ISO_NAMESPACE
         workchain_node = self.submit(EpwIsoWorkChain, **inputs)
+        self.report(f'launching EpwIsoWorkChain<{workchain_node.pk}>')
+
         return ToContext(workchain_iso=workchain_node)
 
     def inspect_iso(self):
@@ -1068,6 +1051,8 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         inputs.metadata.call_link_label = self._ANISO_NAMESPACE
         workchain_node = self.submit(EpwAnisoWorkChain, **inputs)
+        self.report(f'launching EpwAnisoWorkChain<{workchain_node.pk}>')
+
         return ToContext(workchain_aniso=workchain_node)
 
     def inspect_aniso(self):

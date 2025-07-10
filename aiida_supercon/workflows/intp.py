@@ -310,7 +310,7 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = self._B2W_NAMESPACE
         workchain_node = self.submit(EpwB2WWorkChain, **inputs)
 
-        self.report(f'launching `{self._B2W_NAMESPACE}` with PK {workchain_node.pk}')
+        self.report(f'launching `EpwB2WWorkChain`<{workchain_node.pk}>')
 
         return ToContext(workchain_b2w=workchain_node)
 
@@ -361,7 +361,7 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = self._INTP_NAMESPACE
         workchain_node = self.submit(EpwBaseWorkChain, **inputs)
 
-        self.report(f'launching `{self._INTP_NAMESPACE}` with PK {workchain_node.pk}')
+        self.report(f'launching EpwBaseWorkChain<{workchain_node.pk}> in {self._INTP_NAMESPACE} mode')
 
         return ToContext(workchain_intp=workchain_node)
 
