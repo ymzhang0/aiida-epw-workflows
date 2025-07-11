@@ -13,6 +13,7 @@ from .iso import EpwIsoWorkChain
 from .aniso import EpwAnisoWorkChain
 from .base import EpwBaseWorkChain
 
+from ..common.types import RestartType
 
 @calcfunction
 def split_list(list_node: orm.List) -> dict:
@@ -23,24 +24,17 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     It will run the  `EpwBandsWorkChain`, `EpwA2fWorkChain`, `EpwIsoWorkChain`, and `EpwAnisoWorkChain` consecutively.
     """
 
-    _NAMESPACE = 'supercon'
+    _NAMESPACE       = 'supercon'
 
-    _CONV_NAMESPACE = 'a2f_conv'
+    _CONV_NAMESPACE  = 'a2f_conv'
 
-    _B2W_NAMESPACE = EpwB2WWorkChain._NAMESPACE
+    _B2W_NAMESPACE   = EpwB2WWorkChain._NAMESPACE
     _BANDS_NAMESPACE = EpwBandsWorkChain._INTP_NAMESPACE
-    _A2F_NAMESPACE = EpwA2fWorkChain._INTP_NAMESPACE
-    _ISO_NAMESPACE = EpwIsoWorkChain._INTP_NAMESPACE
+    _A2F_NAMESPACE   = EpwA2fWorkChain._INTP_NAMESPACE
+    _ISO_NAMESPACE   = EpwIsoWorkChain._INTP_NAMESPACE
     _ANISO_NAMESPACE = EpwAnisoWorkChain._INTP_NAMESPACE
 
-    _restart_from_ephmat = {
-        'INPUTEPW': (
-            ('elph',        False),
-            ('ep_coupling', False),
-            ('ephwrite',    False),
-            ('restart',     True),
-        )
-    }
+    _MIN_FREQ = -1.0 # meV ~ 8.1 cm-1
 
     @classmethod
     def define(cls, spec):
@@ -215,15 +209,17 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             message='The convergence is not reached in current interpolation list.')
         spec.exit_code(403, 'ERROR_SUB_PROCESS_BANDS',
             message='The `bands` sub process failed')
-        spec.exit_code(404, 'ERROR_SUB_PROCESS_A2F',
+        spec.exit_code(404, 'ERROR_IMAGINARY_PHONON_FREQ',
+            message='The phonon frequency is too low.')
+        spec.exit_code(405, 'ERROR_SUB_PROCESS_A2F',
             message='The `a2f` sub process failed')
-        spec.exit_code(405, 'ERROR_Allen_Dynes_Tc_TOO_LOW',
+        spec.exit_code(406, 'ERROR_ALLEN_DYNES_TC_TOO_LOW',
             message='The Allen-Dynes Tc is too low.')
-        spec.exit_code(406, 'ERROR_SUB_PROCESS_ISO',
+        spec.exit_code(407, 'ERROR_SUB_PROCESS_ISO',
             message='The `iso` sub process failed')
-        spec.exit_code(407, 'ERROR_ISOTROPIC_TC_TOO_LOW',
+        spec.exit_code(408, 'ERROR_ISOTROPIC_TC_TOO_LOW',
             message='The isotropic Tc is too low.')
-        spec.exit_code(408, 'ERROR_SUB_PROCESS_ANISO',
+        spec.exit_code(409, 'ERROR_SUB_PROCESS_ANISO',
             message='The `aniso` sub process failed')
 
     @classmethod
@@ -371,8 +367,8 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if not from_supercon_workchain or not from_supercon_workchain.process_class == EpwSuperConWorkChain:
             raise ValueError('Currently we only accept `EpwSuperConWorkChain`')
 
-        if from_supercon_workchain.is_finished_ok:
-            raise Warning('The `EpwSuperConWorkChain` is already finished.')
+        # if from_supercon_workchain.is_finished_ok:
+        #     raise Warning('The `EpwSuperConWorkChain` is already finished.')
 
         from ..tools.links import get_descendants
         from aiida.common.links import LinkType
@@ -418,7 +414,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         # So the previous workchain itself is a restart one and b2w is finished. We can pop the b2w namespace.
         else:
             print('b2w namespace is not in the inputs')
-            # builder.pop(cls._B2W_NAMESPACE)
+            builder.pop(cls._B2W_NAMESPACE)
 
         if cls._BANDS_NAMESPACE in from_supercon_workchain.inputs:
             bands_workchain = descendants[cls._BANDS_NAMESPACE][0]
@@ -428,7 +424,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = bands_workchain.outputs.epw.remote_folder
                 return builder
         else:
-            # builder.pop(cls._BANDS_NAMESPACE)
+            builder.pop(cls._BANDS_NAMESPACE)
             print('bands namespace is not in the inputs')
         # If interpolation list is not an input port, it must be that the previous
         # workchain has finished convergence test. Or it start from a given grid without convergence test.
@@ -483,33 +479,42 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 builder.pop(cls._A2F_NAMESPACE)
 
         if cls._ISO_NAMESPACE in from_supercon_workchain.inputs:
+            if not cls._ISO_NAMESPACE in descendants:
+                raise Warning(
+                    '`iso` in input namespace but no workchain found.'
+                    'Something in the workchain should be fixed.'
+                    )
+
             iso_workchain = descendants[cls._ISO_NAMESPACE][0]
-            if iso_workchain and iso_workchain.is_finished_ok:
+            if iso_workchain.is_finished_ok:
                 builder.pop(cls._ISO_NAMESPACE)
-            elif iso_workchain:
+            else:
                 iso_builder = EpwIsoWorkChain.get_builder_restart(
                     from_iso_workchain=iso_workchain,
                 )
                 builder[cls._ISO_NAMESPACE]._data = iso_builder._data
                 return builder
-            else:
-                builder[cls._ISO_NAMESPACE]['parent_folder_epw'] = iso_workchain.inputs[cls._ISO_NAMESPACE].parent_folder_epw
-                return builder
+
         else:
             builder.pop(cls._ISO_NAMESPACE)
 
         if cls._ANISO_NAMESPACE in from_supercon_workchain.inputs:
+            if not cls._ANISO_NAMESPACE in descendants:
+                raise Warning(
+                    '`aniso` in input namespace but no workchain found.'
+                    'Something in the workchain should be fixed.'
+                    )
+
             aniso_workchain = descendants[cls._ANISO_NAMESPACE][0]
-            if aniso_workchain and aniso_workchain.is_finished_ok:
-                raise Warning('The `EpwSuperConWorkChain` has already finished.')
-            elif aniso_workchain:
+            if aniso_workchain.is_finished_ok:
+                print('The `EpwSuperConWorkChain` has already finished.')
+                builder[cls._ANISO_NAMESPACE][cls._ANISO_NAMESPACE].parent_folder_epw = aniso_workchain.inputs[cls._ANISO_NAMESPACE].parent_folder_epw
+                return builder
+            else:
                 aniso_builder = EpwAnisoWorkChain.get_builder_restart(
                     from_aniso_workchain=aniso_workchain,
                     )
                 builder[cls._ANISO_NAMESPACE]._data = aniso_builder._data
-                return builder
-            else:
-                builder[cls._ANISO_NAMESPACE].parent_folder_epw = aniso_workchain.outputs.remote_folder
                 return builder
         else:
             raise Warning('The `EpwSuperConWorkChain` has already finished.')
@@ -807,6 +812,16 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             )
         )
 
+        import numpy
+        ph_bands = bands_workchain.outputs.bands.bands.ph_band_structure.get_bands()
+        min_freq = numpy.min(ph_bands)
+        max_freq = numpy.max(ph_bands)
+
+        if min_freq < EpwBandsWorkChain._MIN_FREQ:
+            return self.exit_codes.ERROR_IMAGINARY_PHONON_FREQ
+
+        self.ctx.inputs_a2f[self._A2F_NAMESPACE].epw.parameters['INPUTEPW']['degaussq'] = max_freq / 100
+
     def prepare_intp(self):
         """Prepare the inputs for the interpolation workflow."""
 
@@ -954,38 +969,29 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     def should_run_iso(self):
         """Check if the iso workflow should continue or not."""
 
-        if self._ISO_NAMESPACE not in self.inputs:
+        if self._ISO_NAMESPACE in self.inputs:
+            if self.should_run_a2f():
+                a2f_workchain = self.ctx.workchain_a2f
+                parent_folder_epw = a2f_workchain.outputs.remote_folder
+                self.ctx.inputs_iso[self._ISO_NAMESPACE].parent_folder_epw = parent_folder_epw
+
+                Allen_Dynes_Tc = self.ctx.inputs_iso[self._ISO_NAMESPACE].parent_folder_epw.creator.outputs.output_parameters['Allen_Dynes_Tc']
+
+                if Allen_Dynes_Tc < EpwIsoWorkChain._MIN_TEMP:
+                    return self.exit_codes.ERROR_ALLEN_DYNES_TC_TOO_LOW
+
+                self.ctx.inputs_iso.estimated_Tc_iso = orm.Float(Allen_Dynes_Tc * 1.5)
+
+            return True
+        else:
             return False
-
-        Allen_Dynes_Tc = self.ctx.inputs_iso[self._ISO_NAMESPACE].parent_folder_epw.creator.outputs.output_parameters['Allen_Dynes_Tc']
-
-        if Allen_Dynes_Tc < EpwIsoWorkChain._MIN_TEMP:
-            return self.exit_codes.ERROR_ISOTROPIC_TC_TOO_LOW
-
-        self.ctx.Allen_Dynes_Tc = Allen_Dynes_Tc
-
-        return self._ISO_NAMESPACE in self.inputs
 
     def run_iso(self):
         """Run the iso workflow."""
         inputs = self.ctx.inputs_iso
         inputs.structure = self.inputs.structure
+        inputs.restart_type = orm.EnumData(RestartType.FROM_EPHMAT)
         parent_folder_epw = inputs[self._ISO_NAMESPACE].parent_folder_epw
-        a2f_parameters = parent_folder_epw.creator.inputs.parameters.get_dict()
-
-        inputs.estimated_Tc_iso = orm.Float(self.ctx.Allen_Dynes_Tc * 1.5)
-
-        parameters = inputs[self._ISO_NAMESPACE].epw.parameters.get_dict()
-
-        for namespace, keyword in self._blocked_keywords:
-            if keyword in a2f_parameters[namespace]:
-                parameters[namespace][keyword] = a2f_parameters[namespace][keyword]
-
-        for namespace, _params in self._restart_from_ephmat.items():
-            for key, value in _params:
-                parameters[namespace][key] = value
-
-        inputs[self._ISO_NAMESPACE].epw.parameters = orm.Dict(parameters)
 
         # TODO: This will only work if qfpoints and kfpoints are defined by qfpoint_distance and kfpoints_factor.
         #       We should find a better way to handle this.
@@ -1018,34 +1024,27 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     def should_run_aniso(self):
         """Check if the aniso workflow should continue or not."""
 
-        Tc_iso = self.ctx.inputs_aniso[self._ANISO_NAMESPACE].parent_folder_epw.creator.caller.caller.outputs.Tc_iso.value
+        if self._ANISO_NAMESPACE in self.inputs:
+            if self.should_run_iso():
+                iso_workchain = self.ctx.workchain_iso
+                Tc_iso = iso_workchain.outputs.Tc_iso.value
 
-        if Tc_iso < EpwAnisoWorkChain._MIN_TEMP:
-            return self.exit_codes.ERROR_ANISOTROPIC_TC_TOO_LOW
+                if Tc_iso < EpwAnisoWorkChain._MIN_TEMP:
+                    return self.exit_codes.ERROR_ISOTROPIC_TC_TOO_LOW
 
-        self.ctx.Tc_iso = Tc_iso
+                self.ctx.inputs_aniso.estimated_Tc_aniso = orm.Float(Tc_iso * 2.0)
 
-        return self._ANISO_NAMESPACE in self.inputs
+            return True
+        else:
+            return False
 
     def run_aniso(self):
         """Run the aniso workflow."""
         inputs = self.ctx.inputs_aniso
         inputs.structure = self.inputs.structure
-        inputs.estimated_Tc_aniso = orm.Float(self.ctx.Tc_iso * 2.0)
+        inputs.restart_type = orm.EnumData(RestartType.FROM_EPHMAT)
 
         parent_folder_epw = inputs[self._ANISO_NAMESPACE].parent_folder_epw
-        iso_parameters = parent_folder_epw.creator.inputs.parameters.get_dict()
-        parameters = inputs.aniso.epw.parameters.get_dict()
-
-        for namespace, keyword in self._blocked_keywords:
-            if keyword in iso_parameters[namespace]:
-                parameters[namespace][keyword] = iso_parameters[namespace][keyword]
-
-        for namespace, _params in self._restart_from_ephmat.items():
-            for key, value in _params:
-                parameters[namespace][key] = value
-
-        inputs[self._ANISO_NAMESPACE].epw.parameters = orm.Dict(parameters)
 
         inputs[self._ANISO_NAMESPACE].qfpoints_distance = parent_folder_epw.creator.caller.inputs.qfpoints_distance
         inputs[self._ANISO_NAMESPACE].kfpoints_factor = parent_folder_epw.creator.caller.inputs.kfpoints_factor

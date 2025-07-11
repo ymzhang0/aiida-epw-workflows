@@ -19,7 +19,7 @@ default_inputs:
       INPUTEPW:
         degaussw: 0.025
         eps_acustic: 0.1
-        iverbosity: 1
+        # iverbosity: 1
         muc: 0.13
         temps: 300
         vme: 'dipole'

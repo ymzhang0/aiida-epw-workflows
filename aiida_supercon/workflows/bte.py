@@ -156,7 +156,7 @@ class EpwBteWorkChain(EpwBaseIntpWorkChain):
 
         if not intp_workchain.is_finished_ok:
             self.report(f'`epw.x` failed with exit status {intp_workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_A2F
+            return self.exit_codes.ERROR_SUB_PROCESS_BTE
 
     def results(self):
         """Only the basic results are retrieved:

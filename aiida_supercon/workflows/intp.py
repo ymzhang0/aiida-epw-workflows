@@ -8,6 +8,8 @@ from .base import EpwBaseWorkChain
 from .b2w import EpwB2WWorkChain
 import warnings
 
+from ..common.types import RestartType
+
 class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
     """Base work chain for two-step interpolation workflows.
     It will run the `EpwB2WWorkChain` for electron-phonon coupling matrix on Wannier representation.
@@ -34,15 +36,26 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
 
     _forced_parameters = {
         'INPUTEPW': {
-          'epbread': False,
-          'epbwrite': False,
-          'epwread': False,
-          'epwwrite': True,
-          'mp_mesh_k': True,
-          'wannierize': False,
+            'elph'        : True,
+            'ep_coupling' : True,
+            'epbread'     : False,
+            'epbwrite'    : False,
+            'epwread'     : True,
+            'epwwrite'    : False,
+            'mp_mesh_k'   : True,
+            'wannierize'  : False,
         }
     }
     # ---------------------------------------------------------
+
+    _restart_from_ephmat = {
+        'INPUTEPW': {
+            'elph'        : False,
+            'ep_coupling' : False,
+            'ephwrite'    : False,
+            'restart'     : True,
+        }
+    }
 
     @classmethod
     def define(cls, spec):
@@ -52,6 +65,7 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         # TODO: Seems we don't need structure input port here
         spec.input('structure', valid_type=orm.StructureData)
         spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(False))
+        spec.input('restart_type', valid_type=orm.EnumData, default=lambda: orm.EnumData(RestartType.FROM_SCRATCH))
 
         spec.expose_inputs(
             EpwB2WWorkChain, namespace=cls._B2W_NAMESPACE, exclude=(
@@ -371,6 +385,11 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         for namespace, keywords in self._forced_parameters.items():
             for keyword, value in keywords.items():
                 parameters[namespace][keyword] = value
+
+        if self.inputs.restart_type == RestartType.FROM_EPHMAT:
+            for namespace, keywords in self._restart_from_ephmat.items():
+                for keyword, value in keywords.items():
+                    parameters[namespace][keyword] = value
 
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 

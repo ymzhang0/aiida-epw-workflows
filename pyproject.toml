@@ -67,6 +67,7 @@ dev = [
 [project.entry-points."aiida.data"]
 
 [project.entry-points."aiida.calculations"]
+'epw.epw' = 'aiida_supercon.calculations.epw:EpwCalculation'
 
 [project.entry-points."aiida.parsers"]
 'epw.base' = 'aiida_supercon.parsers.epw:EpwParser'

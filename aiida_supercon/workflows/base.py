@@ -15,7 +15,7 @@ from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, Wannier
 
 from pathlib import Path
 
-EpwCalculation = CalculationFactory('quantumespresso.epw')
+EpwCalculation = CalculationFactory('epw.epw')
 
 
 class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
@@ -304,7 +304,8 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         It assumes that the k-points and q-points are required inputs for `EpwCalculation`.
         """
         epw_calc = epw_folder.creator
-        if not epw_calc.process_class is EpwBaseWorkChain._process_class:
+        # if not epw_calc.process_class is EpwBaseWorkChain._process_class:
+        if not epw_calc.process_label == 'EpwCalculation':
             raise ValueError('Parent folder of epw calculation is not a valid epw calculation.')
 
         kpoints = epw_calc.inputs.kpoints
@@ -345,7 +346,6 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         else:
             if self.inputs.parent_folder_nscf.is_cleaned:
                 raise ValueError('Parent folder of nscf calculation is cleaned. Skipping k-point mesh search.')
-
 
             try:
                 kpoints = self._get_kpoints_from_nscf_folder(self.inputs.parent_folder_nscf)

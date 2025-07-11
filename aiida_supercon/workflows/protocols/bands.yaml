@@ -8,19 +8,11 @@ default_inputs:
 
       parameters:
         INPUTEPW:
-          a2f: False
           degaussq: 0.05
           degaussw: 0.2
-          elph: True
-          epbread: False
-          epbwrite: False
-          epwread: True
-          epwwrite: False
-          fsthick: 100
-          phonselfen: False
+          fsthick: 1000
           temps: 300
-          vme: 'dipole'
-          wannierize: False
+
 
 default_protocol: moderate
 protocols:

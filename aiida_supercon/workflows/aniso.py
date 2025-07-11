@@ -231,10 +231,9 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             parameters['INPUTEPW']['filirobj'] = str(filirobj)
 
             # EPW 5.9 (IR representation) can't recognize eps_acustic.
-            # It might be a bug in the EPW code.
-            # I simply pop it out here.
 
-            # parameters['INPUTEPW'].pop('eps_acustic')
+            eps_acustic = parameters['INPUTEPW'].pop('eps_acustic', 0.1)
+            parameters['INPUTEPW']['eps_acoustic'] = eps_acustic
 
         self.ctx.inputs.epw.settings = orm.Dict(settings)
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
