@@ -1,15 +1,34 @@
 default_inputs:
   clean_workdir: False
-  a2f:
-    epw:
+  interpolation_distances:
+    - 0.2
+    - 0.1
+    # - 0.08
+    # - 0.06
+    # - 0.05
+  convergence_threshold: 0.1
+  always_run_final: True
+  b2w:
+    b2w:
       metadata:
         options:
           withmpi: True
-      parameters:
-        INPUTEPW:
-          fsthick: 0.8
-          nqstep: 500
-          temps: 1
+  bands:
+    bands:
+      metadata:
+        options:
+          withmpi: True
+  a2f:
+    a2f:
+      metadata:
+        options:
+          withmpi: True
+
+  bte:
+    bte:
+      metadata:
+        options:
+          withmpi: True
 
 default_protocol: moderate
 protocols:
@@ -17,5 +36,7 @@ protocols:
     description: 'Protocol to perform a electron-phonon calculation at normal precision at moderate computational cost.'
   precise:
     description: 'Protocol to perform a electron-phonon calculation at high precision at higher computational cost.'
+    qfpoints_distance: 0.05
   fast:
     description: 'Protocol to perform a electron-phonon calculation at low precision at minimal computational cost for testing purposes.'
+    qfpoints_distance: 0.2

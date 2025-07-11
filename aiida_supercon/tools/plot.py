@@ -9,13 +9,89 @@ from io import StringIO
 from scipy.optimize import curve_fit
 import re
 
-def plot_a2f(
-    a2f: orm.XyData,
-    output_parameters: orm.Dict = None,
+def plot_eldos(
+    a2f_workchain,
     axis = None,
-    show_data = False,
+    **kwargs,
     ):
 
+    fermi_energy_coarse = a2f_workchain.outputs.output_parameters.get('fermi_energy_coarse')
+
+    E        = a2f_workchain.outputs.a2f.dos.get_array('Energy') - fermi_energy_coarse
+    dos = a2f_workchain.outputs.a2f.dos.get_array('EDOS')
+
+    if axis is None:
+        from matplotlib import pyplot as plt
+        fig, ax = plt.subplots()
+    else:
+        ax = axis
+
+    ax.plot(
+        dos,
+        E,
+        color=kwargs.get('color', 'r'),
+        linestyle=kwargs.get('linestyle', '-'),
+        label=r"phdos")
+
+    ax.set_xticks(
+        [0, round(numpy.max(dos) * 1.05, 1)],
+        [0, round(numpy.max(dos) * 1.05, 1)],)
+    ax.set_yticks([], [])
+
+    ax.set_xlim(0, round(numpy.max(dos) * 1.05, 1))
+    ax.set_ylim(-2, 2)
+    ax.set_ylabel(r"Energy (eV)")
+
+
+    if axis is None:
+        return plt
+
+def plot_phdos(
+    phdos,
+    axis = None,
+    **kwargs,
+    ):
+    w        = phdos.get_array('Frequency')
+    dos = phdos.get_array('PHDOS')
+
+    if axis is None:
+        from matplotlib import pyplot as plt
+        fig, ax = plt.subplots()
+    else:
+        ax = axis
+
+    ax.plot(
+        dos,
+        w,
+        color=kwargs.get('color', 'r'),
+        linestyle=kwargs.get('linestyle', '-'),
+        label=r"phdos")
+
+    ax.set_xticks(
+        [0, round(numpy.max(dos) * 1.05, 1)],
+        [0, round(numpy.max(dos) * 1.05, 1)],
+        )
+    ax.set_yticks(
+        [0, round(numpy.max(w) * 1.05, 1)],
+        [0, round(numpy.max(w) * 1.05, 1)],
+        )
+    ax.set_xlim(0, round(numpy.max(dos) * 1.05, 1))
+    ax.set_ylim(0, round(numpy.max(w) * 1.05, 1))
+    ax.set_ylabel(r"$\omega$ [meV]")
+
+
+    if axis is None:
+        return plt
+
+def plot_a2f(
+    a2f_workchain,
+    axis = None,
+    show_data = False,
+    plot_dos = True,
+    **kwargs,
+    ):
+    a2f = a2f_workchain.outputs.a2f.a2f
+    output_parameters = a2f_workchain.outputs.output_parameters
     w        = a2f.get_array('frequency')
     spectral = a2f.get_array('a2f')
 
@@ -25,8 +101,22 @@ def plot_a2f(
     else:
         ax = axis
 
-    ax.plot(spectral[:, 9], w,color='#526AB1', label=r"$\alpha^2F$")
-    ax.plot(spectral[:, 19], w, color='#526AB1', label=r"$\lambda$")
+    if plot_dos:
+        dos = a2f_workchain.outputs.a2f.phdos
+        plot_phdos(dos, axis=ax)
+
+    ax.plot(
+        spectral[:, 9],
+        w,
+        color=kwargs.get('color', 'r'),
+        linestyle=kwargs.get('linestyle', '-'),
+        label=r"$\alpha^2F$")
+    ax.plot(
+        spectral[:, 19],
+        w,
+        color=kwargs.get('color', 'k'),
+        linestyle=kwargs.get('linestyle', '--'),
+        label=r"$\lambda$")
     ax.set_xticks(
         [0, round(numpy.max(spectral[:, [9, 19]]) * 1.05, 1)],
         [0, round(numpy.max(spectral[:, [9, 19]]) * 1.05, 1)],
@@ -41,7 +131,7 @@ def plot_a2f(
     ax.set_ylabel(r"$\omega$ [meV]")
 
     if show_data and output_parameters:
-        lambda_ = output_parameters.get('lambda_coupling_strength')
+        lambda_ = output_parameters.get('lambda')
         wlog = output_parameters.get('w_log')
         allen_dynes_tc = output_parameters.get('Allen_Dynes_Tc')
 

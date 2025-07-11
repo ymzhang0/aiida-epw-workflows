@@ -31,6 +31,20 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
     _QFPOINTS = [1, 1, 1]
     _KFPOINTS_FACTOR = 1
 
+    _forced_parameters = {
+        'INPUTEPW': {
+          'a2f': False,
+          'elph': True,
+          'epbread': False,
+          'epbwrite': True,
+          'epwread': False,
+          'epwwrite': True,
+          'wannierize': False,
+          'fsthick': 100,
+          'phonselfen': False,
+        }
+    }
+
     SOURCE_LIST = {
         'ph_base':[
             'DYN_MAT/dynamical-matrix-*',
@@ -50,6 +64,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             'save'
             ]
         }
+
     _NAMESPACE = 'b2w'
     _W90_NAMESPACE = 'w90_intp'
     _PH_NAMESPACE = 'ph_base'
@@ -565,6 +580,12 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
                 namespace=self._EPW_NAMESPACE)
             )
 
+        parameters = inputs.epw.parameters.get_dict()
+        for namespace, values in self._forced_parameters.items():
+            for key, value in values.items():
+                parameters[namespace][key] = value
+
+        inputs.epw.parameters = orm.Dict(parameters)
         self.ctx.inputs = inputs
 
     def generate_reciprocal_points(self):

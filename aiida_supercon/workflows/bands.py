@@ -14,11 +14,12 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
     _INTP_NAMESPACE = 'bands'
     _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE]
 
-    _frozen_bands_parameters = {
-        'INPUTEPW': {
-            'band_plot': True,
+    _forced_parameters =  EpwBaseIntpWorkChain._forced_parameters.copy()
+    _forced_parameters['INPUTEPW']  = EpwBaseIntpWorkChain._forced_parameters['INPUTEPW'] | {
+          'band_plot': True,
+          'mp_mesh_k': False,
         }
-    }
+
     @classmethod
     def validate_inputs(cls, inputs, ctx=None):
         """Validate the inputs."""
@@ -140,14 +141,6 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
 
         self.ctx.inputs.qfpoints = self.ctx.bands_kpoints
         self.ctx.inputs.kfpoints = self.ctx.bands_kpoints
-
-        parameters = self.ctx.inputs.epw.parameters.get_dict()
-
-        for namespace, _parameters in self._frozen_bands_parameters.items():
-            for keyword, value in _parameters.items():
-                parameters[namespace][keyword] = value
-
-        self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 
     def inspect_process(self):
         """Verify that the epw.x workflow finished successfully."""

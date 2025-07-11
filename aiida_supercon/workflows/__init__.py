@@ -5,6 +5,7 @@ from .bands import EpwBandsWorkChain
 from .a2f import EpwA2fWorkChain
 from .iso import EpwIsoWorkChain
 from .aniso import EpwAnisoWorkChain
+from .bte import EpwBteWorkChain
 from .supercon import EpwSuperConWorkChain
 from .transport import EpwTransportWorkChain
 # from .controllers.base import EpwBaseWorkChainController
@@ -17,6 +18,7 @@ __all__ = [
     'EpwA2fWorkChain',
     'EpwIsoWorkChain',
     'EpwAnisoWorkChain',
+    'EpwBteWorkChain',
     'EpwSuperConWorkChain',
     'EpwTransportWorkChain',
     # 'EpwBaseWorkChainController'

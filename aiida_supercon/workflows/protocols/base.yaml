@@ -18,13 +18,12 @@ default_inputs:
     parameters:
       INPUTEPW:
         degaussw: 0.025
-        elph: True
-        ep_coupling: True
         eps_acustic: 0.1
         iverbosity: 1
+        muc: 0.13
         temps: 300
         vme: 'dipole'
-        # use_ws: True
+        use_ws: True
 
 default_protocol: moderate
 protocols:

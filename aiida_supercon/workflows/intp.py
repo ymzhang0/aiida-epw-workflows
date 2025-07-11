@@ -20,12 +20,29 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
     _INTP_NAMESPACE = 'intp'  # e.g., 'a2f' for A2fWorkChain
     # ---------------------------------------------------------
 
+    # --- INTP workchain and B2W workchain share these blocked keywords ---
     _blocked_keywords = [
         ('INPUTEPW', 'use_ws'),
+        ('INPUTEPW', 'muc'),
         ('INPUTEPW', 'nbndsub'),
         ('INPUTEPW', 'bands_skipped'),
         ('INPUTEPW', 'vme'),
     ]
+    # ---------------------------------------------------------
+
+    # --- Child classes should override this _forced_parameters according to the purpose of the child workchain ---
+
+    _forced_parameters = {
+        'INPUTEPW': {
+          'epbread': False,
+          'epbwrite': False,
+          'epwread': False,
+          'epwwrite': True,
+          'mp_mesh_k': True,
+          'wannierize': False,
+        }
+    }
+    # ---------------------------------------------------------
 
     @classmethod
     def define(cls, spec):
@@ -350,6 +367,10 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         for namespace, keyword in self._blocked_keywords:
             if keyword in b2w_parameters[namespace]:
                 parameters[namespace][keyword] = b2w_parameters[namespace][keyword]
+
+        for namespace, keywords in self._forced_parameters.items():
+            for keyword, value in keywords.items():
+                parameters[namespace][keyword] = value
 
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 

@@ -38,6 +38,15 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
 
     _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE]
 
+    _forced_parameters =  EpwBaseIntpWorkChain._forced_parameters.copy()
+    _forced_parameters['INPUTEPW']  = EpwBaseIntpWorkChain._forced_parameters['INPUTEPW'] | {
+          'eliashberg': True,
+          'ephwrite': True,
+          'laniso': True,
+          'limag': True,
+          'lpade': True,
+        }
+
     _frozen_restart_parameters = {
         'INPUTEPW': {
             'elph': False,

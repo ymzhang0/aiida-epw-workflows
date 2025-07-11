@@ -14,6 +14,18 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
 
     _INTP_NAMESPACE = 'iso'
 
+    _forced_parameters =  EpwBaseIntpWorkChain._forced_parameters.copy()
+    _forced_parameters['INPUTEPW']  = EpwBaseIntpWorkChain._forced_parameters['INPUTEPW'] | {
+          'eliashberg': True,
+          'ephwrite': True,
+          'liso': True,
+          'limag': True,
+          'lpade': False,
+          'laniso': False,
+          'tc_linear': True,
+          'tc_linear_solver': 'power'
+        }
+
     _MIN_TEMP = 1.0
 
     @classmethod

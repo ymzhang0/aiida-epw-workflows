@@ -33,14 +33,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     _ISO_NAMESPACE = EpwIsoWorkChain._INTP_NAMESPACE
     _ANISO_NAMESPACE = EpwAnisoWorkChain._INTP_NAMESPACE
 
-    _blocked_keywords = [
-        ('INPUTEPW', 'use_ws'),
-        ('INPUTEPW', 'muc'),
-        ('INPUTEPW', 'nbndsub'),
-        ('INPUTEPW', 'bands_skipped'),
-        ('INPUTEPW', 'vme'),
-    ]
-
     _restart_from_ephmat = {
         'INPUTEPW': (
             ('elph',        False),
@@ -240,6 +232,19 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         from importlib_resources import files
         from . import protocols
         return files(protocols) / f'{cls._NAMESPACE}.yaml'
+    @classmethod
+    def get_protocol_overrides(cls) -> dict:
+        """Get the ``overrides`` for default protocol.
+        :return: The overrides.
+        """
+        from importlib_resources import files
+        import yaml
+
+        from . import protocols
+
+        path = files(protocols) / f"{cls._NAMESPACE}.yaml"
+        with path.open() as file:
+            return yaml.safe_load(file)
 
     @classmethod
     def get_builder_restart_from_b2w(
@@ -468,12 +473,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 a2f_workchain = descendants[cls._A2F_NAMESPACE][0]
                 if a2f_workchain and a2f_workchain.is_finished_ok:
                     builder.pop(cls._A2F_NAMESPACE)
-                    builder[cls._ISO_NAMESPACE][cls._ISO_NAMESPACE]['parent_folder_epw'] = a2f_workchain.outputs.parent_folder_epw
                 else:
                     a2f_builder = EpwA2fWorkChain.get_builder_restart(
                         from_a2f_workchain=a2f_workchain,
                         )
-                    a2f_builder['parent_folder_epw'] = a2f_workchain.inputs[cls._A2F_NAMESPACE].parent_folder_epw
                     builder[cls._A2F_NAMESPACE]._data = a2f_builder._data
                     return builder
             else:
@@ -487,7 +490,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 iso_builder = EpwIsoWorkChain.get_builder_restart(
                     from_iso_workchain=iso_workchain,
                 )
-                iso_builder['parent_folder_epw'] = iso_workchain.inputs[cls._ISO_NAMESPACE].parent_folder_epw
                 builder[cls._ISO_NAMESPACE]._data = iso_builder._data
                 return builder
             else:
@@ -504,7 +506,6 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 aniso_builder = EpwAnisoWorkChain.get_builder_restart(
                     from_aniso_workchain=aniso_workchain,
                     )
-                aniso_builder['parent_folder_epw'] = aniso_workchain.inputs[cls._ANISO_NAMESPACE].parent_folder_epw
                 builder[cls._ANISO_NAMESPACE]._data = aniso_builder._data
                 return builder
             else:

@@ -6,20 +6,25 @@ from aiida.engine import calcfunction, ToContext, if_
 
 from .intp import EpwBaseIntpWorkChain
 
-class EpwA2fWorkChain(EpwBaseIntpWorkChain):
+class EpwBteWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the spectral function.
     It will run the `EpwB2WWorkChain` for the electron-phonon coupling matrix on Wannier basis.
     and then the `EpwBaseWorkChain` for interpolation to a fine k/q-grid. the spectral function is computed
     from the interpolated grids.
     """
 
-    _INTP_NAMESPACE = 'a2f'
+    _INTP_NAMESPACE = 'bte'
     _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE]
 
     _forced_parameters =  EpwBaseIntpWorkChain._forced_parameters.copy()
     _forced_parameters['INPUTEPW']  = EpwBaseIntpWorkChain._forced_parameters['INPUTEPW'] | {
-          'eliashberg': True,
-          'ephwrite': True,
+          'etf_mem': 3,
+          'scattering': True,
+          'scattering_serta': True,
+          'int_mob': False,
+          'carrier': True,
+          'iterative_bte': True,
+          'epmatkqread': False,
         }
 
     @classmethod
@@ -32,12 +37,13 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
         """Define the work chain specification."""
         super().define(spec)
 
-
+        spec.input('is_polar', valid_type=orm.Bool, default=lambda: orm.Bool(False))
+        spec.input('use_serta', valid_type=orm.Bool, default=lambda: orm.Bool(True))
         spec.inputs[cls._INTP_NAMESPACE].validator = cls.validate_inputs
         spec.inputs.validator = cls.validate_inputs
 
         spec.exit_code(
-            402, 'ERROR_SUB_PROCESS_A2F',
+            402, 'ERROR_SUB_PROCESS_BTE',
             message='The `epw.x` workflow failed.'
             )
 
@@ -53,14 +59,14 @@ class EpwA2fWorkChain(EpwBaseIntpWorkChain):
     @classmethod
     def get_builder_restart(
         cls,
-        from_a2f_workchain
+        from_bte_workchain
         ):
         """Return a builder prepopulated with inputs extracted from the a2f workchain.
         :param from_a2f_workchain: The a2f workchain.
         :return: The builder.
         """
         return super()._get_builder_restart(
-            from_intp_workchain=from_a2f_workchain,
+            from_intp_workchain=from_bte_workchain,
             )
 
 
