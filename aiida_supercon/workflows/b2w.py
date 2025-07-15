@@ -53,12 +53,14 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             ],
         'epw': [
             'crystal.fmt',
-            'dmedata.fmt',
             'epwdata.fmt',
             # 'selecq.fmt',
             'dmedata.fmt',
+            # 'vmedata.fmt',
             'aiida.kgmap',
             'aiida.kmap',
+            'aiida.bvec',
+            'aiida.mmn',
             'aiida.ukk',
             'out/aiida.epmatwp',
             'save'
@@ -234,7 +236,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
                 'target_base': target_basepath,
                 'source_list': EpwB2WWorkChain.SOURCE_LIST[target_base_prefix]
                 }
-
 
     @classmethod
     def get_builder_restart(
@@ -615,7 +616,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             kpoints_nscf.set_kpoints_mesh([v * self.inputs.kpoints_factor_nscf.value for v in qpoints_mesh])
 
             self.ctx.kpoints_nscf = kpoints_nscf
-
 
     def should_run_wannier90(self):
         """Check if the wannier90 workflow should be run.

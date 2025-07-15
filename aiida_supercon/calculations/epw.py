@@ -135,9 +135,11 @@ class EpwCalculation(CalcJob):
         else:
             settings = {}
 
-        remote_list = remote_symlink_list if settings.pop(
-            'PARENT_FOLDER_SYMLINK', self._default_symlink_usage
-        ) else remote_copy_list
+        # We will have a mixture of remote_copy_list and remote_symlink_list so I modify the following codes
+        # remote_list = remote_symlink_list if settings.pop(
+        #     'PARENT_FOLDER_SYMLINK', self._default_symlink_usage
+        # ) else remote_copy_list
+        remote_list = remote_copy_list
 
         if 'parent_folder_nscf' in self.inputs:
             parent_folder_nscf = self.inputs.parent_folder_nscf
@@ -209,13 +211,42 @@ class EpwCalculation(CalcJob):
                 'dipole': 'dmedata.fmt',
                 'wannier': 'vmedata.fmt',
             }
-            file_list = [
-                'selecq.fmt', 'crystal.fmt', 'epwdata.fmt', vme_fmt_dict[parameters['INPUTEPW']['vme']],
-                f'{self._PREFIX}.kgmap', f'{self._PREFIX}.kmap', f'{self._PREFIX}.ukk', self._OUTPUT_SUBFOLDER,
-                self._FOLDER_SAVE
-            ]
-            if parameters['INPUTEPW'].get('restart', False):
-                file_list.append('restart.fmt')
+            # file_list = [
+            #     'selecq.fmt', 'crystal.fmt', 'epwdata.fmt', vme_fmt_dict[parameters['INPUTEPW']['vme']],
+            #     f'{self._PREFIX}.kgmap', f'{self._PREFIX}.kmap',
+            #     f'{self._PREFIX}.ukk', self._OUTPUT_SUBFOLDER,
+            #     self._FOLDER_SAVE
+            # ]
+            # If ephwrite = .false.and restart = .true., it must be that ephmat folder is saved.
+            # We can restart by linking the parent_folder_epw/prefix.ephmat folder to the current folder since this folder won't be modified.
+            if (
+                (not parameters['INPUTEPW'].get('ephwrite', True))
+                and
+                parameters['INPUTEPW'].get('restart', False)
+                ):
+                file_list = ['crystal.fmt', 'selecq.fmt', 'restart.fmt', f'{self._PREFIX}.a2f']
+                remote_symlink_list.append(
+                    (
+                        parent_folder_epw.computer.uuid,
+                        Path(epw_path, f'{self._OUTPUT_SUBFOLDER}/{self._PREFIX}.ephmat').as_posix(),
+                        Path(f'{self._OUTPUT_SUBFOLDER}/{self._PREFIX}.ephmat').as_posix()
+                    )
+                )
+            # If epwread = .true., it must be that prefix.epmatwp file is saved.
+
+            elif parameters['INPUTEPW'].get('epwread', False):
+                file_list = [
+                    'crystal.fmt', 'epwdata.fmt', vme_fmt_dict[parameters['INPUTEPW']['vme']],
+                    f'{self._PREFIX}.kgmap', f'{self._PREFIX}.kmap',
+                    f'{self._PREFIX}.ukk', self._FOLDER_SAVE
+                ]
+                remote_symlink_list.append(
+                    (
+                        parent_folder_epw.computer.uuid,
+                        Path(epw_path, f'{self._OUTPUT_SUBFOLDER}/{self._PREFIX}.epmatwp').as_posix(),
+                        Path(f'{self._OUTPUT_SUBFOLDER}/{self._PREFIX}.epmatwp').as_posix()
+                    )
+                )
 
             for filename in file_list:
                 remote_list.append(

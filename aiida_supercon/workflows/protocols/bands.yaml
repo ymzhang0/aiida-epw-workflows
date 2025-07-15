@@ -10,7 +10,7 @@ default_inputs:
         INPUTEPW:
           degaussq: 0.05
           degaussw: 0.2
-          fsthick: 1000
+          fsthick: 100
           temps: 300
 
 

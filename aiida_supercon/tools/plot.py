@@ -7,7 +7,10 @@ from matplotlib import pyplot as plt
 import numpy
 from io import StringIO
 from scipy.optimize import curve_fit
+from rich import print as rprint
 import re
+import os
+
 
 def plot_eldos(
     a2f_workchain,
@@ -138,8 +141,11 @@ def plot_a2f(
         title = f"$\lambda$ = {lambda_:.2f}\n$\omega_{{log}}$ = {wlog:.2f} \n$T_c^{{AD}}$ = {allen_dynes_tc:.2f} K"
         props = dict(boxstyle='round', facecolor='#526AB1', alpha=0.3)
 
-        ax.text(
-            0.05, 0.95, title, transform=ax.transAxes, fontsize=16, verticalalignment='top', bbox=props
+        ax.legend(
+            title,
+            loc='upper right',
+            fontsize=kwargs.get('legend_fontsize', 10),
+            framealpha=0.5,
         )
 
     if axis is None:
@@ -472,6 +478,9 @@ def plot_epw_interpolated_bands(
     axes[0].axhline(0, color='k', linewidth=1, linestyle='--')
     axes[1].axhline(0, color='k', linewidth=1, linestyle='--')
 
+    axes[0].set_xticks([])
+    axes[0].set_xticklabels([])
+
     axes[1].set_xticks(xticks)
     axes[1].set_xticklabels(xticklabels)
 
@@ -495,7 +504,7 @@ def plot_epw_interpolated_bands(
 
 def check_wannier_optimize(w90_optimize_workchain, filename=None):
 
-    bands_qe = w90_optimize_workchain.inputs.optimize_reference_bands
+    bands_qe = w90_optimize_workchain.inumpyuts.optimize_reference_bands
     bands_w90 = w90_optimize_workchain.outputs.band_structure
     fermi_qe = bands_qe.creator.outputs.output_parameters.get_dict()['fermi_energy']
     fermi_w90 = w90_optimize_workchain.outputs.nscf.output_parameters.get_dict()['fermi_energy']
@@ -549,3 +558,180 @@ def find_clusters(temps, delta_nk, threshold):
         clusters.append(cluster)
 
     return clusters
+
+
+def fitting_function(T, p, delta_zero, Tc):
+    return delta_zero * (1 - (T / Tc) ** p) ** 0.5
+
+
+def find_average(data, T):
+
+    data = data[data[:,1] >= 0]
+
+    T = float(T)
+
+    midpoint = numpy.average(data[:, 1], weights=data[:, 0]-T)
+    return midpoint
+
+
+def plot_sc(
+    aniso_workchain,
+    axis,
+    remove_temps = [0, 0],
+    suggested_p = None,
+    exclude_points = None,
+    suppression = 1.0,
+    **kwargs,
+    ):
+
+    temps = []
+    average_deltas = []
+    rhos = []
+
+
+    aniso_gap_functions = aniso_workchain.outputs.aniso.aniso_gap_functions
+
+    for filename in aniso_gap_functions.get_arraynames():
+        parse = aniso_gap_functions.get_array(filename)
+        temp = numpy.min(parse[:,0])
+        try:
+            rho = parse[:,0]
+            delta_nk = parse[:,1]
+
+
+            if len(rho) <=2:
+                continue
+            mid = find_average(parse, temp)
+
+            temps.append(temp)
+            average_deltas.append(mid)
+            rhos.append(parse)
+
+        except IndexError:
+            continue
+
+
+    _, sorted_rhos = zip(*sorted(zip(temps, rhos)))
+
+    sorted_pairs = sorted(zip(temps, average_deltas), key=lambda x: x[0])
+    temps_sorted, average_deltas_sorted = zip(*sorted_pairs)
+
+    if remove_temps != [0, 0]:
+        rprint(f'[italic green]Removed temps[/italic green]: {remove_temps}')
+        temps_sorted = temps_sorted[remove_temps[0]:ntemps-remove_temps[1]]
+        average_deltas_sorted = average_deltas_sorted[remove_temps[0]:ntemps-remove_temps[1]]
+        sorted_rhos = sorted_rhos[remove_temps[0]:ntemps-remove_temps[1]]
+
+    if exclude_points:
+        rprint(f'[italic green]Excluded points[/italic green]: {exclude_points}')
+        temps_sorted = [temps_sorted[i] for i in range(ntemps) if i not in exclude_points]
+        average_deltas_sorted = [average_deltas_sorted[i] for i in range(ntemps) if i not in exclude_points]
+        sorted_rhos = [sorted_rhos[i] for i in range(ntemps) if i not in exclude_points]
+
+
+    ntemps = len(temps_sorted)
+    if ntemps <=2:
+        rprint('[bold red]less than 2 temperature, can\'t be fit[/bold red]')
+        return {
+            'well_fit': False,
+            'remove_temps': remove_temps,
+            'exclude_points': exclude_points,
+            'temps': temps,
+            'average_deltas': average_deltas,
+            'rhos': rhos,
+        }
+    well_fit = False
+
+    if ntemps == 3:
+        if suggested_p is not None:
+            p = suggested_p
+        else:
+            p = [1, average_deltas[0], max(temps)]
+        rprint(f'[italic green]Using initial guess[/italic green]: {p}')
+        p_opt, p_cov = curve_fit(fitting_function, temps_sorted, average_deltas_sorted, p0=p, maxfev=1000000)
+        diff = fitting_function(temps_sorted, *p_opt) -  average_deltas_sorted
+        well_fit = True
+
+    else:
+        if suggested_p is not None:
+            p = suggested_p
+        else:
+            p = [2, average_deltas[0], temps_sorted[-1]]
+        rprint(f'[bold green]Using initial guess[/bold green]: {p}')
+        try:
+            p_opt, p_cov = curve_fit(fitting_function, temps_sorted, average_deltas_sorted, p0=p, maxfev=1000000)
+            diff = fitting_function(temps_sorted, *p_opt) -  average_deltas_sorted
+            if numpy.linalg.norm(p_cov) < 1:
+                well_fit = True
+                rprint(f'[bold green]Fit successfully[/bold green]')
+            else:
+                rprint('[bold red]Curve fit failed with p_cov[/bold red]')
+        except:
+            rprint('[bold red]Curve fit failed with exception[/bold red]')
+
+
+    if well_fit:
+
+        final_temps = temps_sorted
+        final_rhos  = sorted_rhos
+
+        width_and_incre = []
+        for idr, rho in enumerate(final_rhos[:-1]):
+            width_of_rho  = numpy.max(rho[:,0]) - final_temps[idr]
+            incre_of_temp = final_temps[idr+1] - final_temps[idr]
+            width_and_incre.append([width_of_rho/incre_of_temp])
+
+        max_ratio = numpy.max(width_and_incre)
+        if max_ratio > 1:
+            suppression = 0.9/max_ratio
+        else:
+            suppression = 1
+
+        max_rho = 0
+
+        for T, rho in zip(final_temps, final_rhos):
+            axis.axvline(numpy.min(rho[:,0]), color='k', linestyle='-', linewidth=1.5)
+            axis.plot(T + suppression*(rho[:,0] - T), rho[:,1], color='black', linewidth=1.5)
+            max_rho = numpy.max([numpy.max(rho[:,1]), max_rho])
+
+        axis.scatter(final_temps, average_deltas_sorted, c = 'r', s=70)
+        axis.set_xlabel('$T$ [K]', fontsize=kwargs.get('label_fontsize', 10))
+        axis.set_ylabel('$\Delta_{nk}$ [meV]', fontsize=kwargs.get('label_fontsize', 10))
+        axis.set_ylim([0, max_rho])
+
+        x_fit = numpy.linspace(numpy.min(temps)*0.7, p_opt[-1]-0.0001, 1000)
+        y_fit = fitting_function(x_fit, *p_opt)
+
+        axis.plot(x_fit, y_fit, color='red', linestyle='--', linewidth=1.5,)
+
+        axis.set_xlim([numpy.min(temps)*0.8, numpy.round(p_opt[-1]*1.2, decimals=0)])
+        axis.set_xticks([numpy.round(numpy.min(temps)*0.8, decimals=0), numpy.round(p_opt[-1]*1.2, decimals=0)],
+                    [numpy.round(numpy.min(temps)*0.8, decimals=0), numpy.round(p_opt[-1]*1.2, decimals=0)], fontsize=kwargs.get('ticklabel_fontsize', 10))
+
+        axis.set_yticks([0.0, numpy.round(p_opt[1]*1.3, decimals=0)],
+                    [0.0, numpy.round(p_opt[1]*1.3, decimals=0)], fontsize=kwargs.get('ticklabel_fontsize', 10))
+
+
+        rprint(f'[bold green]Aniso par:[/bold green] {p_opt}')
+        return {
+            'remove_temps': remove_temps,
+            'exclude_points': exclude_points,
+            'temps': temps,
+            'average_deltas': average_deltas,
+            'rhos': rhos,
+            'Tc': p_opt[2],
+            'delta0': p_opt[1],
+            'expo': p_opt[0],
+            'well_fit': True,
+            }
+
+    else:
+        return {
+            'remove_temps': remove_temps,
+            'exclude_points': exclude_points,
+            'temps': temps,
+            'average_deltas': average_deltas,
+            'rhos': rhos,
+            'well_fit': False,
+            }
+

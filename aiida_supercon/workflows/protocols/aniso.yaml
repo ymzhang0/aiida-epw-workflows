@@ -17,7 +17,7 @@ default_inputs:
           wscut: 0.5
           broyden_beta: 0.4
           conv_thr_iaxis: 0.001
-          nstemp: 15
+          nstemp: 20
 
 default_protocol: moderate
 protocols:

@@ -31,9 +31,7 @@ default_inputs:
       metadata:
         options:
           withmpi: True
-      parameters:
-        INPUTEPW:
-          degaussq: 0.05
+
 
 
 default_protocol: moderate

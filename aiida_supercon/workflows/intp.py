@@ -28,6 +28,7 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         ('INPUTEPW', 'muc'),
         ('INPUTEPW', 'nbndsub'),
         ('INPUTEPW', 'bands_skipped'),
+        # ('INPUTEPW', 'degaussq'),
         ('INPUTEPW', 'vme'),
     ]
     # ---------------------------------------------------------
@@ -359,7 +360,7 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         # We set the parent folder here to keep the logic of restart from EpwB2WWorkChain
         # Since the only connection between the EpwBaseIntpWorkChain and EpwB2WWorkChain is the parent_folder_epw
         # And the parameter of EpwB2WWorkChain is deduced from the parent_folder_epw
-        self.ctx.inputs.parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
+        self.ctx.inputs.parent_folder_epw = b2w_workchain.outputs.epw.remote_stash
 
         self.out_many(
             self.exposed_outputs(

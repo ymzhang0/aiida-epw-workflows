@@ -44,6 +44,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(True))
         spec.input('structure', valid_type=orm.StructureData)
         spec.input('interpolation_distances', required=False, valid_type=orm.List)
+        spec.input('kfpoints_factor', required=False, valid_type=orm.Int, default=lambda: orm.Int(1))
         spec.input('convergence_threshold', required=False, valid_type=orm.Float)
         spec.input('always_run_final', required=False, valid_type=orm.Bool, default=lambda: orm.Bool(True))
         spec.input('use_ir', required=False, valid_type=orm.Bool, default=lambda: orm.Bool(False))
@@ -262,7 +263,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         if from_b2w_workchain.is_finished_ok:
             builder.pop(EpwA2fWorkChain._B2W_NAMESPACE)
-            parent_folder_epw = from_b2w_workchain.outputs.epw.remote_folder
+            parent_folder_epw = from_b2w_workchain.outputs.epw.remote_stash
         else:
             b2w_builder = EpwB2WWorkChain.get_builder_restart(
                 from_b2w_workchain=from_b2w_workchain,
@@ -300,6 +301,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         builder.structure = from_b2w_workchain.inputs.structure
         builder.interpolation_distances = orm.List(inputs.get('interpolation_distances', None))
+        builder.kfpoints_factor = orm.Int(inputs.get('kfpoints_factor', 1))
         builder.convergence_threshold = orm.Float(inputs['convergence_threshold'])
         builder.always_run_final = orm.Bool(inputs.get('always_run_final', True))
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
@@ -397,8 +399,8 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 # If the b2w workchain is finished, simply pop it.
             if b2w_workchain.is_finished_ok:
                 builder.pop(cls._B2W_NAMESPACE)
-                builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw.remote_folder
-                builder[cls._A2F_NAMESPACE][cls._A2F_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw.remote_folder
+                builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw.remote_stash
+                builder[cls._A2F_NAMESPACE][cls._A2F_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw.remote_stash
 
             # If the b2w workchain is not finished, we only need to restart from b2w workchain leaving the following inputs unchanged.
             else:
@@ -421,7 +423,11 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             if bands_workchain.is_finished_ok:
                 builder.pop(cls._BANDS_NAMESPACE)
             else:
-                builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = bands_workchain.outputs.epw.remote_folder
+                # bands_builder = EpwBandsWorkChain.get_builder_restart(
+                #     from_bands_workchain=bands_workchain,
+                # )
+                # builder[cls._BANDS_NAMESPACE]._data = bands_builder._data
+                # builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = bands_workchain.inputs.epw.remote_folder
                 return builder
         else:
             builder.pop(cls._BANDS_NAMESPACE)
@@ -470,10 +476,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 if a2f_workchain and a2f_workchain.is_finished_ok:
                     builder.pop(cls._A2F_NAMESPACE)
                 else:
-                    a2f_builder = EpwA2fWorkChain.get_builder_restart(
-                        from_a2f_workchain=a2f_workchain,
-                        )
-                    builder[cls._A2F_NAMESPACE]._data = a2f_builder._data
+                    # a2f_builder = EpwA2fWorkChain.get_builder_restart(
+                    #     from_a2f_workchain=a2f_workchain,
+                    #     )
+                    # builder[cls._A2F_NAMESPACE]._data = a2f_builder._data
                     return builder
             else:
                 builder.pop(cls._A2F_NAMESPACE)
@@ -489,10 +495,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             if iso_workchain.is_finished_ok:
                 builder.pop(cls._ISO_NAMESPACE)
             else:
-                iso_builder = EpwIsoWorkChain.get_builder_restart(
-                    from_iso_workchain=iso_workchain,
-                )
-                builder[cls._ISO_NAMESPACE]._data = iso_builder._data
+                # iso_builder = EpwIsoWorkChain.get_builder_restart(
+                #     from_iso_workchain=iso_workchain,
+                # )
+                # builder[cls._ISO_NAMESPACE]._data = iso_builder._data
                 return builder
 
         else:
@@ -511,10 +517,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 builder[cls._ANISO_NAMESPACE][cls._ANISO_NAMESPACE].parent_folder_epw = aniso_workchain.inputs[cls._ANISO_NAMESPACE].parent_folder_epw
                 return builder
             else:
-                aniso_builder = EpwAnisoWorkChain.get_builder_restart(
-                    from_aniso_workchain=aniso_workchain,
-                    )
-                builder[cls._ANISO_NAMESPACE]._data = aniso_builder._data
+                # aniso_builder = EpwAnisoWorkChain.get_builder_restart(
+                #     from_aniso_workchain=aniso_workchain,
+                #     )
+                # builder[cls._ANISO_NAMESPACE]._data = aniso_builder._data
                 return builder
         else:
             raise Warning('The `EpwSuperConWorkChain` has already finished.')
@@ -660,37 +666,9 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
             builder[epw_namespace]._data = epw_builder._data
 
-        use_ir = inputs.get('use_ir', False)
-
-        if use_ir:
-            if 'epw_ir' not in codes:
-                raise ValueError(
-                    'Usually the ir version of epw is different from the regular version. '
-                    'Please provide the `epw_ir` code.'
-                )
-
-            epw_builder = EpwAnisoWorkChain.get_builder_from_protocol(
-                *args,
-                overrides=inputs.get(cls._ANISO_NAMESPACE, None),
-                **kwargs
-            )
-            epw_builder.use_ir = orm.Bool(True)
-            epw_builder.pop(EpwAnisoWorkChain._B2W_NAMESPACE)
-
-            builder[cls._ANISO_NAMESPACE]._data = epw_builder._data
-        else:
-            epw_builder = EpwAnisoWorkChain.get_builder_from_protocol(
-                *args,
-                overrides=inputs.get(cls._ANISO_NAMESPACE, None),
-                **kwargs
-            )
-            epw_builder.use_ir = orm.Bool(False)
-            epw_builder.pop(EpwAnisoWorkChain._B2W_NAMESPACE)
-
-            builder[cls._ANISO_NAMESPACE]._data = epw_builder._data
-
         builder.structure = structure
         builder.interpolation_distances = orm.List(inputs.get('interpolation_distances', None))
+        builder.kfpoints_factor = orm.Int(inputs.get('kfpoints_factor', 1))
         builder.convergence_threshold = orm.Float(inputs['convergence_threshold'])
         builder.always_run_final = orm.Bool(inputs.get('always_run_final', True))
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
@@ -721,10 +699,14 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             self.ctx.inputs_bands = AttributeDict(self.exposed_inputs(EpwBandsWorkChain, namespace=self._BANDS_NAMESPACE))
         if self._A2F_NAMESPACE in self.inputs:
             self.ctx.inputs_a2f = AttributeDict(self.exposed_inputs(EpwA2fWorkChain, namespace=self._A2F_NAMESPACE))
+            self.ctx.inputs_a2f[self._A2F_NAMESPACE].kfpoints_factor = self.inputs.kfpoints_factor
+
         if self._ISO_NAMESPACE in self.inputs:
             self.ctx.inputs_iso = AttributeDict(self.exposed_inputs(EpwIsoWorkChain, namespace=self._ISO_NAMESPACE))
+            self.ctx.inputs_iso[self._ISO_NAMESPACE].kfpoints_factor = self.inputs.kfpoints_factor
 
         self.ctx.inputs_aniso = AttributeDict(self.exposed_inputs(EpwAnisoWorkChain, namespace=self._ANISO_NAMESPACE))
+        self.ctx.inputs_aniso[self._ANISO_NAMESPACE].kfpoints_factor = self.inputs.kfpoints_factor
 
         if 'interpolation_distances' in self.inputs:
             self.report("Will check convergence")
@@ -776,7 +758,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             if self.should_run_b2w():
                 b2w_workchain = self.ctx.workchain_b2w
 
-                parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
+                parent_folder_epw = b2w_workchain.outputs.epw.remote_stash
 
                 self.ctx.inputs_bands[self._BANDS_NAMESPACE].parent_folder_epw = parent_folder_epw
 
@@ -813,14 +795,22 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         )
 
         import numpy
-        ph_bands = bands_workchain.outputs.bands.bands.ph_band_structure.get_bands()
+        ph_bands = bands_workchain.outputs.bands.ph_band_structure.get_bands()
         min_freq = numpy.min(ph_bands)
         max_freq = numpy.max(ph_bands)
 
         if min_freq < EpwBandsWorkChain._MIN_FREQ:
             return self.exit_codes.ERROR_IMAGINARY_PHONON_FREQ
 
-        self.ctx.inputs_a2f[self._A2F_NAMESPACE].epw.parameters['INPUTEPW']['degaussq'] = max_freq / 100
+        for namespace, key in (
+            (self._A2F_NAMESPACE, 'inputs_a2f'),
+            (self._ISO_NAMESPACE, 'inputs_iso'),
+            (self._ANISO_NAMESPACE, 'inputs_aniso'),
+        ):
+            if key in self.ctx:
+                parameters = self.ctx[key][namespace].epw.parameters.get_dict()
+                parameters['INPUTEPW']['degaussq'] = max_freq / 100
+                self.ctx[key][namespace].epw.parameters = orm.Dict(parameters)
 
     def prepare_intp(self):
         """Prepare the inputs for the interpolation workflow."""
@@ -834,9 +824,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if self.should_run_b2w():
             b2w_workchain = self.ctx.workchain_b2w
 
-            parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
+            parent_folder_epw = b2w_workchain.outputs.epw.remote_stash
 
             self.ctx.inputs_a2f[self._A2F_NAMESPACE].parent_folder_epw = parent_folder_epw
+
 
     @staticmethod
     def check_convergence(
@@ -931,7 +922,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         ):
             if self.should_run_b2w():
                 b2w_workchain = self.ctx.workchain_b2w
-                parent_folder_epw = b2w_workchain.outputs.epw.remote_folder
+                parent_folder_epw = b2w_workchain.outputs.epw.remote_stash
                 self.ctx.inputs_a2f[self._A2F_NAMESPACE].parent_folder_epw = parent_folder_epw
             return True
         else:

@@ -20,6 +20,8 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
           'mp_mesh_k': False,
         }
 
+    _MIN_FREQ = -1.0 # meV ~ 8.1 cm-1
+
     @classmethod
     def validate_inputs(cls, inputs, ctx=None):
         """Validate the inputs."""

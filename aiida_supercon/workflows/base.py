@@ -494,10 +494,14 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
                 parameters['INPUTEPW']['nbndsub'] = w90_params['num_wann']
 
                 wannier_chk_path = Path(self.inputs.parent_folder_chk.get_remote_path(), 'aiida.chk')
+                wannier_mmn_path = Path(self.inputs.parent_folder_chk.get_remote_path(), 'aiida.mmn')
+                wannier_bvec_path = Path(self.inputs.parent_folder_chk.get_remote_path(), 'aiida.bvec')
                 nscf_xml_path = Path(self.inputs.parent_folder_nscf.get_remote_path(), 'out/aiida.xml')
 
                 prepend_text = self.ctx.inputs.metadata.options.get('prepend_text', '')
-                prepend_text += f'\n{self.inputs.w90_chk_to_ukk_script.get_remote_path()} {wannier_chk_path} {nscf_xml_path} aiida.ukk'
+                prepend_text += f'\n{self.inputs.w90_chk_to_ukk_script.get_remote_path()} {wannier_chk_path} {nscf_xml_path} {self._process_class._PREFIX}.ukk'
+                prepend_text += f'\ncp {wannier_mmn_path} {self._process_class._PREFIX}.mmn'
+                prepend_text += f'\ncp {wannier_bvec_path} {self._process_class._PREFIX}.bvec'
 
                 self.ctx.inputs.metadata.options.prepend_text = prepend_text
 
