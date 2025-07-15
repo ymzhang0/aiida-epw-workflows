@@ -852,12 +852,17 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     def should_run_conv(self):
         """Check if the conv loop should continue or not."""
 
+        # If no interpolation distances are provided, we do not run the conv loop.
         if 'interpolation_distances' not in self.inputs:
             return False
 
+        # If a2f_conv is not in self.ctx yet, we run the conv loop.
+        if 'a2f_conv' not in self.ctx:
+            return True
+
         is_converged, msg = self.check_convergence(
             self.ctx.a2f_conv,
-            self.inputs.convergence_threshold
+            self.inputs.convergence_threshold.value
         )
 
         self.ctx.is_converged = is_converged
