@@ -54,9 +54,8 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         'epw': [
             'crystal.fmt',
             'epwdata.fmt',
-            # 'selecq.fmt',
             'dmedata.fmt',
-            # 'vmedata.fmt',
+            'vmedata.fmt',
             'aiida.kgmap',
             'aiida.kmap',
             'aiida.bvec',
@@ -73,6 +72,8 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
     _EPW_NAMESPACE = 'epw'
 
     _NAMESPACE_LIST = [ _W90_NAMESPACE, _PH_NAMESPACE, _EPW_NAMESPACE]
+
+    _MIN_FREQ = -5.0 # cm^{-1}
 
     @classmethod
     def validate_inputs(cls, inputs, ctx=None):  # pylint: disable=unused-argument
@@ -95,6 +96,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         spec.input('kpoints_factor_nscf', valid_type=orm.Int, required=False)
         spec.input('qpoints_distance', valid_type=orm.Float, required=False)
         spec.input('qpoints', valid_type=orm.KpointsData, required=False)
+        spec.input('check_stability', valid_type=orm.Bool, required=False, default=lambda: orm.Bool(True))
 
         spec.expose_inputs(
             Wannier90OptimizeWorkChain,
@@ -182,14 +184,14 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             cls.inspect_epw,
             cls.results,
         )
-        spec.exit_code(401, 'ERROR_SUB_PROCESS_FAILED_BANDS',
-            message='The `PwBandsWorkChain` sub process failed')
         spec.exit_code(402, 'ERROR_SUB_PROCESS_FAILED_WANNIER90',
-            message='The `Wannier90BandsWorkChain` sub process failed')
+            message='The `Wannier90OptimizeWorkChain` sub process failed')
         spec.exit_code(403, 'ERROR_SUB_PROCESS_FAILED_PHONON',
-            message='The electron-phonon `PhBaseWorkChain` sub process failed')
+            message='The `PhBaseWorkChain` sub process failed')
         spec.exit_code(404, 'ERROR_SUB_PROCESS_FAILED_EPW',
-            message='The `EpwWorkChain` sub process failed')
+            message='The `EpwBaseWorkChain` sub process failed')
+        spec.exit_code(405, 'ERROR_PH_BASE_UNSTABLE',
+            message='The phonon dynamical matrices are unstable')
 
     @classmethod
     def get_protocol_filepath(cls):
@@ -568,6 +570,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
         builder[cls._EPW_NAMESPACE]._data = epw._data
 
+        builder.check_stability = orm.Bool(inputs.get('check_stability', True))
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
         return builder
@@ -666,13 +669,12 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
         workchain = self.ctx.workchain_w90_intp
 
-        self.ctx.parent_folder_scf = workchain.outputs.scf.remote_folder
-        self.ctx.inputs.parent_folder_nscf = workchain.outputs.nscf.remote_folder
-        self.ctx.inputs.parent_folder_chk = get_parent_folder_chk_from_w90_workchain(workchain)
-
         if not workchain.is_finished_ok:
             self.report(f'`Wannier90BandsWorkChain` failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90
+
+        self.ctx.inputs.parent_folder_nscf = workchain.outputs.nscf.remote_folder
+        self.ctx.inputs.parent_folder_chk = get_parent_folder_chk_from_w90_workchain(workchain)
 
         self.out_many(
             self.exposed_outputs(
@@ -717,11 +719,11 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         """
         workchain = self.ctx.workchain_ph
 
-        self.ctx.inputs.parent_folder_ph = workchain.outputs.remote_folder
-
         if not workchain.is_finished_ok:
             self.report(f'Electron-phonon `PhBaseWorkChain` failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PHONON
+
+        self.ctx.inputs.parent_folder_ph = workchain.outputs.remote_folder
 
         self.out_many(
             self.exposed_outputs(
@@ -730,6 +732,20 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
                 namespace=self._PH_NAMESPACE,
             ),
         )
+
+        if self.inputs.check_stability.value:
+            is_stable = True
+            number_of_qpoints = workchain.output_parameters.get('number_of_qpoints')
+
+            for iq in range(2, 1+number_of_qpoints):
+                frequencies = workchain.output_parameters.get(f'dynamical_matrix_{iq}').get('frequencies')
+                q_point = workchain.output_parameters.get(f'dynamical_matrix_{iq}').get('q_point')
+                if any(f < self._MIN_FREQ for f in frequencies):
+                    self.report(f'Phonon at {iq}th qpoint {q_point} is unstable')
+                    is_stable = False
+            if not is_stable:
+                return self.exit_codes.ERROR_PH_BASE_UNSTABLE
+
     def run_epw(self):
         """Run the `epw.x` calculation."""
 

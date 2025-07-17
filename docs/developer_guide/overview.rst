@@ -2,7 +2,7 @@
 Project Structure
 =================
 
-This page provides an overview of the ``aiida-supercon`` repository structure, explaining the role of each key directory and module. The layout is based on standard AiiDA plugin conventions to facilitate maintainability and collaboration.
+This page provides an overview of the ``aiida-epw-workflows`` repository structure, explaining the role of each key directory and module. The layout is based on standard AiiDA plugin conventions to facilitate maintainability and collaboration.
 
 High-Level Overview
 -------------------
@@ -11,8 +11,8 @@ The project follows a layered architecture to maximize code reuse and separate c
 
 .. code-block:: text
 
-   aiida-supercon/
-   ├── aiida_supercon/
+   aiida-epw-workflows/
+   ├── aiida_epw_workflows/
    │   ├── workflows/
    │   │   ├── __init__.py
    │   │   ├── base.py
@@ -36,7 +36,7 @@ The project follows a layered architecture to maximize code reuse and separate c
 Module Breakdown
 ----------------
 
-``aiida_supercon/workflows/``
+``aiida_epw_workflows/workflows/``
 *****************************
 
 This is the core of the plugin, containing all the AiiDA ``WorkChain`` definitions.
@@ -58,7 +58,7 @@ This is a crucial **base class** that defines a generic **two-step computational
 
 It contains all the shared logic for handling restarts, setting up inputs, and passing the ``parent_folder`` from the first step to the second. It is not meant to be run directly.
 
-``a2f.py``, ``iso.py``, ``aniso.py``: Concrete Implementations
+``bands.py``, ``a2f.py``, ``iso.py``, ``aniso.py``, ``bte.py``: Concrete Implementations
 ==============================================================
 These are the workchains you would typically run for a specific task. They all **inherit** from ``EpwBaseIntpWorkChain``.
 
@@ -78,6 +78,13 @@ This is the highest-level **orchestrator** workchain. It coordinates a complex c
 3.  It then uses the output of this single `b2w` run to launch the `EpwA2fWorkChain` on different fine grids for a convergence test with respect to the Allen-Dynes Tc.
 4.  It subsequently runs the `EpwIsoWorkChain` and `EpwAnisoWorkChain` to get the isotropic and anisotropic critical temperatures.
 
-``aiida_supercon/controllers/``
+``transport.py``: `EpwTransportWorkChain`
+=========================================
+This is the workchain for calculating the transport properties.
+
+
+
+
+``aiida_epw_workflows/controllers/``
 *******************************
 This module contains submission controllers based on `aiida-submission-controller`. The ``EpwSuperconWorkChainController`` provides a powerful interface for submitting large batches of ``EpwSuperconWorkChain`` calculations, for instance, for a high-throughput screening campaign across a group of structures. It handles duplicate checking and concurrency management. It is to be developed in the future.

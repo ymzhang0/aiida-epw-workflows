@@ -138,15 +138,22 @@ def plot_a2f(
         wlog = output_parameters.get('w_log')
         allen_dynes_tc = output_parameters.get('Allen_Dynes_Tc')
 
-        title = f"$\lambda$ = {lambda_:.2f}\n$\omega_{{log}}$ = {wlog:.2f} \n$T_c^{{AD}}$ = {allen_dynes_tc:.2f} K"
-        props = dict(boxstyle='round', facecolor='#526AB1', alpha=0.3)
+        title = f'$\lambda$ = {lambda_:.2f}\n$\omega_{{log}}$ = {wlog:.2f} \n$T_c^{{AD}}$ = {allen_dynes_tc:.2f} K'
 
-        ax.legend(
-            title,
-            loc='upper right',
+        # ax.legend(
+        #     title,
+        #     loc='upper right',
+        #     fontsize=kwargs.get('legend_fontsize', 10),
+        #     framealpha=0.5,
+        # )
+
+        props = dict(boxstyle='round', facecolor='#526AB1', alpha=0.3)
+        ax.text(
+            0.05, 0.95, title,
+            transform=ax.transAxes,
             fontsize=kwargs.get('legend_fontsize', 10),
-            framealpha=0.5,
-        )
+            verticalalignment='top',
+            bbox=props)
 
     if axis is None:
         return plt

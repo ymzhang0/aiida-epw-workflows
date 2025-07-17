@@ -183,9 +183,6 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             **kwargs
         )
 
-        if use_ir:
-            builder[cls._INTP_NAMESPACE]['epw']['code'] = codes['epw_ir']
-
         builder.plot_gap_function = orm.Bool(inputs.get('plot_gap_function', True))
         builder.fbw = orm.Bool(inputs.get('fbw', False))
         builder.use_ir = orm.Bool(use_ir)
@@ -218,9 +215,7 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
             settings = {}
 
         settings['ADDITIONAL_RETRIEVE_LIST'] = [
-            'out/aiida.dos', 'aiida.a2f*', 'aiida.phdos*',
-            'aiida.pade_aniso_gap0_*', 'aiida.imag_aniso_gap0*',
-            'aiida.lambda_k_pairs', 'aiida.lambda_FS'
+            'aiida.lambda_k_pairs', 'aiida.lambda_FS',
             ]
 
         if self.inputs.plot_gap_function.value:

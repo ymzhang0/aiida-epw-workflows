@@ -128,11 +128,6 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             settings = {}
 
         settings['ADDITIONAL_RETRIEVE_LIST'] = [
-            'aiida.a2f',
-            'aiida.a2f_proj',
-            'out/aiida.dos',
-            'aiida.phdos',
-            'aiida.phdos_proj',
             'aiida.lambda_FS',
             'aiida.lambda_k_pairs'
             ]

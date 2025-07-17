@@ -15,6 +15,8 @@ from .base import EpwBaseWorkChain
 
 from ..common.types import RestartType
 
+from rich import print as rprint
+
 @calcfunction
 def split_list(list_node: orm.List) -> dict:
     return {f'el_{no}': orm.Float(el) for no, el in enumerate(list_node.get_list())}
@@ -401,7 +403,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 builder.pop(cls._B2W_NAMESPACE)
                 builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw.remote_stash
                 builder[cls._A2F_NAMESPACE][cls._A2F_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw.remote_stash
-
+                rprint('[bold green]b2w subprocess finished successfully[/bold green]')
             # If the b2w workchain is not finished, we only need to restart from b2w workchain leaving the following inputs unchanged.
             else:
                 b2w_builder = EpwB2WWorkChain.get_builder_restart(
@@ -410,28 +412,31 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
                 builder[cls._B2W_NAMESPACE]._data = b2w_builder._data
 
+                rprint('[bold red]b2w subprocess not finished, restarting from b2w workchain[/bold red]')
                 return builder
 
         # If B2W_NAMESPACE is not in the inputs, it means that the previous workchain did not do a b2w calculation.
         # So the previous workchain itself is a restart one and b2w is finished. We can pop the b2w namespace.
         else:
-            print('b2w namespace is not in the inputs')
+            rprint('[italic green]b2w subprocess is not in the inputs[/italic green]')
             builder.pop(cls._B2W_NAMESPACE)
 
         if cls._BANDS_NAMESPACE in from_supercon_workchain.inputs:
             bands_workchain = descendants[cls._BANDS_NAMESPACE][0]
             if bands_workchain.is_finished_ok:
                 builder.pop(cls._BANDS_NAMESPACE)
+                rprint('[bold green]bands subprocess finished successfully[/bold green]')
             else:
                 # bands_builder = EpwBandsWorkChain.get_builder_restart(
                 #     from_bands_workchain=bands_workchain,
                 # )
                 # builder[cls._BANDS_NAMESPACE]._data = bands_builder._data
                 # builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = bands_workchain.inputs.epw.remote_folder
+                rprint('[bold red]bands subprocess not finished, restarting from bands workchain[/bold red]')
                 return builder
         else:
             builder.pop(cls._BANDS_NAMESPACE)
-            print('bands namespace is not in the inputs')
+            rprint('[italic green]bands subprocess is not in the inputs[/italic green]')
         # If interpolation list is not an input port, it must be that the previous
         # workchain has finished convergence test. Or it start from a given grid without convergence test.
 
@@ -442,7 +447,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
             is_converged, _ = cls.check_convergence(
                 a2f_conv_workchains,
-                from_supercon_workchain.inputs.convergence_threshold
+                from_supercon_workchain.inputs.convergence_threshold.value
             )
 
             for a2f_conv_workchain in a2f_conv_workchains:
@@ -450,22 +455,26 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                     initial_interpolation_distances.remove(a2f_conv_workchain.inputs.a2f.qfpoints_distance.value)
 
             if len(initial_interpolation_distances) > 0:
-                builder[cls._A2F_NAMESPACE][cls._A2F_NAMESPACE]['parent_folder_epw'] = a2f_conv_workchains[0].inputs[cls._A2F_NAMESPACE].parent_folder_epw
                 builder['interpolation_distances'] = orm.List(initial_interpolation_distances)
                 builder['convergence_threshold'] = orm.Float(from_supercon_workchain.inputs.convergence_threshold)
                 builder['always_run_final'] = orm.Bool(from_supercon_workchain.inputs.always_run_final)
+                rprint('[bold red]There are unfinished interpolation distances, continuing...[/bold red]')
                 return builder
 
             else:
                 always_run_final = from_supercon_workchain.inputs.always_run_final
-
-                if always_run_final:
+                if is_converged or always_run_final:
                     builder[cls._ISO_NAMESPACE][cls._ISO_NAMESPACE]['parent_folder_epw'] = a2f_conv_workchains[-1].outputs.remote_folder
 
+                    rprint('[bold green]Convergence not reached, but `always_run_final`, continuing...[/bold green]')
                     builder.pop(cls._A2F_NAMESPACE)
                     builder.pop('interpolation_distances')
                     builder.pop('convergence_threshold')
                     builder.pop('always_run_final')
+                    if is_converged:
+                        rprint('[bold green]Convergence reached[/bold green]')
+                    else:
+                        rprint('[bold green]Convergence not reached, but `always_run_final` is True, continuing...[/bold green]')
                 else:
                     raise ValueError('Convergence can not reach, either add more interpolation distances or set `always_run_final` to True.')
         # If there is no interpolation distance, either it's finished or we don't do it at all.
@@ -474,14 +483,19 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             if cls._A2F_NAMESPACE in from_supercon_workchain.inputs:
                 a2f_workchain = descendants[cls._A2F_NAMESPACE][0]
                 if a2f_workchain and a2f_workchain.is_finished_ok:
+                    builder[cls._ISO_NAMESPACE][cls._ISO_NAMESPACE]['parent_folder_epw'] = a2f_conv_workchains[-1].outputs.remote_folder
+
                     builder.pop(cls._A2F_NAMESPACE)
+                    rprint('[bold green]a2f subprocess finished successfully[/bold green]')
                 else:
                     # a2f_builder = EpwA2fWorkChain.get_builder_restart(
                     #     from_a2f_workchain=a2f_workchain,
                     #     )
                     # builder[cls._A2F_NAMESPACE]._data = a2f_builder._data
+                    rprint('[bold red]a2f subprocess not finished, restarting from a2f workchain[/bold red]')
                     return builder
             else:
+                rprint('[bold red]a2f subprocess not finished, restarting from a2f workchain[/bold red]')
                 builder.pop(cls._A2F_NAMESPACE)
 
         if cls._ISO_NAMESPACE in from_supercon_workchain.inputs:
@@ -493,17 +507,20 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
             iso_workchain = descendants[cls._ISO_NAMESPACE][0]
             if iso_workchain.is_finished_ok:
+                builder[cls._ANISO_NAMESPACE][cls._ANISO_NAMESPACE]['parent_folder_epw'] = iso_workchain.outputs.remote_folder
+                rprint('[bold green]iso subprocess finished successfully[/bold green]')
                 builder.pop(cls._ISO_NAMESPACE)
             else:
                 # iso_builder = EpwIsoWorkChain.get_builder_restart(
                 #     from_iso_workchain=iso_workchain,
                 # )
                 # builder[cls._ISO_NAMESPACE]._data = iso_builder._data
+                rprint('[bold red]iso subprocess not finished, restarting from iso workchain[/bold red]')
                 return builder
 
         else:
             builder.pop(cls._ISO_NAMESPACE)
-
+            rprint('[italic green]iso subprocess is not in the inputs[/italic green]')
         if cls._ANISO_NAMESPACE in from_supercon_workchain.inputs:
             if not cls._ANISO_NAMESPACE in descendants:
                 raise Warning(
@@ -513,8 +530,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
             aniso_workchain = descendants[cls._ANISO_NAMESPACE][0]
             if aniso_workchain.is_finished_ok:
-                print('The `EpwSuperConWorkChain` has already finished.')
-                builder[cls._ANISO_NAMESPACE][cls._ANISO_NAMESPACE].parent_folder_epw = aniso_workchain.inputs[cls._ANISO_NAMESPACE].parent_folder_epw
+                rprint('[bold green]The `EpwSuperConWorkChain` has already finished.[/bold green]')
                 return builder
             else:
                 # aniso_builder = EpwAnisoWorkChain.get_builder_restart(

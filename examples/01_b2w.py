@@ -4,7 +4,7 @@
 Usage: ./01_a2f.py
 """
 import click
-
+from typing import Dict
 from aiida import cmdline, orm
 
 from aiida_supercon.workflows.a2f import EpwA2fWorkChain
@@ -19,14 +19,17 @@ from aiida_supercon.utils.workflows.builder.submit import (
 
 
 def submit(
-    code: orm.Code,
+    codes: Dict[str, orm.Code],
     structure: orm.StructureData,
     group: orm.Group = None,
     run: bool = False,
 ):
     """Submit a ``EpwA2fWorkChain`` to calculate spectral function on lead."""
-    builder = EpwA2fWorkChain.get_builder_from_protocol(code, structure=structure)
-    builder.pop("relax")
+    builder = EpwA2fWorkChain.get_builder_from_protocol(
+        codes=codes,
+        structure=structure,
+        protocol='fast',
+    )
 
     # You can change parallelization here
     parallelization = {
@@ -43,18 +46,18 @@ def submit(
 
 @click.command()
 @cmdline.utils.decorators.with_dbenv()
-@cmdline.params.options.CODE(help="The pw.x code identified by its ID, UUID or label.")
+@cmdline.params.options.CODES(help="The pw.x code identified by its ID, UUID or label.")
 @cmdline.params.options.GROUP(help="The group to add the submitted workchain.")
 @click.argument("filename", type=click.Path(exists=True))
 @RUN()
-def cli(filename, code, group, run):
+def cli(filename, codes, group, run):
     """Run a ``EpwA2fWorkChain`` to calculate spectral function on lead.
 
     FILENAME: a crystal structure file, e.g., ``input_files/GaAs.xsf``.
     """
     struct = read_structure(filename, store=True)
     # struct = orm.load_node(126831)
-    submit(code, struct, group, run)
+    submit(codes, struct, group, run)
 
 
 if __name__ == "__main__":

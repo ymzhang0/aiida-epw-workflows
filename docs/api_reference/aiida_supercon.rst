@@ -1,4 +1,4 @@
-aiida\_supercon package
+aiida\_epw\_workflows package
 =======================
 
 Subpackages
@@ -7,15 +7,15 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   aiida_supercon.data
-   aiida_supercon.parsers
-   aiida_supercon.tools
-   aiida_supercon.workflows
+   aiida_epw_workflows.data
+   aiida_epw_workflows.parsers
+   aiida_epw_workflows.tools
+   aiida_epw_workflows.workflows
 
 Module contents
 ---------------
 
-.. automodule:: aiida_supercon
+.. automodule:: aiida_epw_workflows
    :members:
    :show-inheritance:
    :undoc-members:

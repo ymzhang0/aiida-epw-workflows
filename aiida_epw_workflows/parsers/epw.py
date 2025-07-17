@@ -4,9 +4,10 @@ import re
 from aiida import orm
 import numpy
 
-from aiida_quantumespresso.calculations.epw import EpwCalculation
 from aiida_quantumespresso.parsers.base import BaseParser
 from aiida_quantumespresso.utils.mapping import get_logging_container
+
+from ..calculations.epw import EpwCalculation
 
 
 class EpwParser(BaseParser):
@@ -23,6 +24,10 @@ class EpwParser(BaseParser):
     _OUTPUT_A2F_PROJ_FILE = _PREFIX + '.a2f_proj'
     _OUTPUT_LAMBDA_FS_FILE = _PREFIX + '.lambda_FS'
     _OUTPUT_LAMBDA_K_PAIRS_FILE = _PREFIX + '.lambda_k_pairs'
+
+    class_error_map = {
+        'Size of required memory exceeds max_memlt': 'ERROR_MEMORY_EXCEEDS_MAX_MEMLT',
+    }
 
     def parse(self, **kwargs):
         """Parse the retrieved files of a completed ``EpwCalculation`` into output nodes."""
@@ -95,6 +100,12 @@ class EpwParser(BaseParser):
             self.out('max_eigenvalue', parsed_data.pop('max_eigenvalue'))
 
         self.out('output_parameters', orm.Dict(parsed_data))
+
+        for exit_code in list(self.get_error_map().values()):
+            if exit_code in logs.error:
+                return self.exit(self.exit_codes.get(exit_code), logs)
+
+        # return self.exit(logs=logs)
 
         if 'ERROR_OUTPUT_STDOUT_INCOMPLETE' in logs.error:
             return self.exit(self.exit_codes.get('ERROR_OUTPUT_STDOUT_INCOMPLETE'), logs)

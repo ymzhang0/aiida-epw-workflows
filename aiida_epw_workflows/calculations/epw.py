@@ -96,6 +96,8 @@ class EpwCalculation(CalcJob):
             message='The stdout output file could not be read.')
         spec.exit_code(312, 'ERROR_OUTPUT_STDOUT_INCOMPLETE',
             message='The stdout output file was incomplete probably because the calculation got interrupted.')
+        spec.exit_code(313, 'ERROR_MEMORY_EXCEEDS_MAX_MEMLT',
+            message='The memory required for the calculation exceeds the maximum memory limit.')
         # yapf: enable
 
     def prepare_for_submission(self, folder):
@@ -233,12 +235,13 @@ class EpwCalculation(CalcJob):
                     )
                 )
             # If epwread = .true., it must be that prefix.epmatwp file is saved.
-
+            # From EPW 5.9, vmedata.fmt and dmedata.fmt are always saved and used no matter vme = dipole or wannier.
+            # and prefix.mmn, prefix.bvec are also used.
             elif parameters['INPUTEPW'].get('epwread', False):
                 file_list = [
-                    'crystal.fmt', 'epwdata.fmt', vme_fmt_dict[parameters['INPUTEPW']['vme']],
+                    'crystal.fmt', 'epwdata.fmt', 'vmedata.fmt', 'dmedata.fmt',
                     f'{self._PREFIX}.kgmap', f'{self._PREFIX}.kmap',
-                    f'{self._PREFIX}.ukk', self._FOLDER_SAVE
+                    f'{self._PREFIX}.ukk', f'{self._PREFIX}.mmn', f'{self._PREFIX}.bvec'
                 ]
                 remote_symlink_list.append(
                     (
@@ -308,10 +311,15 @@ class EpwCalculation(CalcJob):
             raise exceptions.InputValidationError('Cannot get the fine k-point grid') from exception
 
         if parameters['INPUTEPW'].get('band_plot'):
-            retrieve_list += ['band.eig', 'phband.freq']
+            retrieve_list += [self._output_elbands_file, self._output_phbands_file]
+
+        if parameters['INPUTEPW'].get('eliashberg', False):
+            retrieve_list += [f'{self._PREFIX}.a2f*', f'{self._PREFIX}.phdos*', f"{self._OUTPUT_SUBFOLDER}/{self._PREFIX}.dos"]
 
         if parameters['INPUTEPW'].get('laniso', False):
-            retrieve_list.append('aiida.imag_aniso_gap*')
+            retrieve_list.append(f'{self._PREFIX}.imag_aniso_gap*')
+            if parameters['INPUTEPW'].get('lpade', False):
+                retrieve_list.append(f'{self._PREFIX}.pade_aniso_gap0_*')
 
         # customized namelists, otherwise not present in the distributed epw code
         try:

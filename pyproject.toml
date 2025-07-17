@@ -5,10 +5,10 @@ build-backend = "flit_core.buildapi"
 
 [project]
 # See https://www.python.org/dev/peps/pep-0621/
-name = "aiida-supercon"
+name = "aiida-epw-workflows"
 dynamic = ["version"]
-description = "AiiDA plugin package with work chains for superconductivity research."
-authors = [{name = "Marnik Bercx", email = "marnik.bercx@psi.ch"}]
+description = "AiiDA plugin package with experimental work chains for EPW software."
+authors = [{name = "Yiming Zhang", email = "yiming.zhang@uclouvain.be"}]
 
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -25,13 +25,13 @@ requires-python = ">=3.7"
 dependencies = [
     "aiida-core~=2.5",
     "aiida-wannier90-workflows~=2.2",
-    "aiida-quantumespresso~=4.7",
+    "aiida-quantumespresso~=4.11",
     "importlib_resources",
     "PyYAML",
 ]
 
 [project.urls]
-Source = "https://github.com/mbercx/aiida-supercon"
+Source = "https://github.com/ymzhang0/aiida-supercon"
 
 [project.optional-dependencies]
 
@@ -67,25 +67,25 @@ dev = [
 [project.entry-points."aiida.data"]
 
 [project.entry-points."aiida.calculations"]
-'epw.epw' = 'aiida_supercon.calculations.epw:EpwCalculation'
+'epw.epw' = 'aiida_epw_workflows.calculations.epw:EpwCalculation'
 
 [project.entry-points."aiida.parsers"]
-'epw.base' = 'aiida_supercon.parsers.epw:EpwParser'
+'epw.base' = 'aiida_epw_workflows.parsers.epw:EpwParser'
 
 [project.entry-points."aiida.cmdline.data"]
 
 [project.entry-points.'aiida.workflows']
-'epw.base' = 'aiida_supercon.workflows.base:EpwBaseWorkChain'
-'epw.intp' = 'aiida_supercon.workflows.intp:EpwIntpWorkChain'
-'epw.bands' = 'aiida_supercon.workflows.bands:EpwBandsWorkChain'
-'epw.a2f' = 'aiida_supercon.workflows.a2f:EpwA2fWorkChain'
-'epw.iso' = 'aiida_supercon.workflows.iso:EpwIsoWorkChain'
-'epw.aniso' = 'aiida_supercon.workflows.aniso:EpwAnisoWorkChain'
-'epw.supercon' = 'aiida_supercon.workflows.supercon:EpwSuperConWorkChain'
-'epw.transport' = 'aiida_supercon.workflows.transport:EpwTransportWorkChain'
+'epw.base' = 'aiida_epw_workflows.workflows.base:EpwBaseWorkChain'
+'epw.intp' = 'aiida_epw_workflows.workflows.intp:EpwIntpWorkChain'
+'epw.bands' = 'aiida_epw_workflows.workflows.bands:EpwBandsWorkChain'
+'epw.a2f' = 'aiida_epw_workflows.workflows.a2f:EpwA2fWorkChain'
+'epw.iso' = 'aiida_epw_workflows.workflows.iso:EpwIsoWorkChain'
+'epw.aniso' = 'aiida_epw_workflows.workflows.aniso:EpwAnisoWorkChain'
+'epw.supercon' = 'aiida_epw_workflows.workflows.supercon:EpwSuperConWorkChain'
+'epw.transport' = 'aiida_epw_workflows.workflows.transport:EpwTransportWorkChain'
 
 [tool.flit.module]
-name = "aiida_supercon"
+name = "aiida_epw_workflows"
 
 [tool.pylint.format]
 max-line-length = 125
@@ -113,7 +113,7 @@ filterwarnings = [
 [tool.coverage.run]
 # Configuration of [coverage.py](https://coverage.readthedocs.io)
 # reporting which lines of your plugin are covered by tests
-source=["aiida_supercon"]
+source=["aiida_epw_workflows"]
 
 [tool.isort]
 # Configuration of [isort](https://isort.readthedocs.io)
