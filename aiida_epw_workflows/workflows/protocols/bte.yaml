@@ -1,0 +1,24 @@
+default_inputs:
+  clean_workdir: False
+  bte:
+    epw:
+      metadata:
+        options:
+          withmpi: True
+      parameters:
+        INPUTEPW:
+          ncarrier: -1.0e13
+          mob_maxiter: 300
+          broyden_beta: 1.0
+          bfieldx: 0.0
+          bfieldy: 0.0
+          bfieldz: 1.0e-10
+
+default_protocol: moderate
+protocols:
+  moderate:
+    description: 'Protocol to perform a electron-phonon calculation at normal precision at moderate computational cost.'
+  precise:
+    description: 'Protocol to perform a electron-phonon calculation at high precision at higher computational cost.'
+  fast:
+    description: 'Protocol to perform a electron-phonon calculation at low precision at minimal computational cost for testing purposes.'

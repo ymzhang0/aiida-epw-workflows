@@ -1,0 +1,24 @@
+default_inputs:
+  clean_workdir: False
+  bands:
+    epw:
+      metadata:
+        options:
+          withmpi: True
+
+      parameters:
+        INPUTEPW:
+          degaussq: 0.05
+          degaussw: 0.2
+          fsthick: 100
+          temps: 300
+
+
+default_protocol: moderate
+protocols:
+  moderate:
+    description: 'Protocol to perform a electron-phonon calculation at normal precision at moderate computational cost.'
+  precise:
+    description: 'Protocol to perform a electron-phonon calculation at high precision at higher computational cost.'
+  fast:
+    description: 'Protocol to perform a electron-phonon calculation at low precision at minimal computational cost for testing purposes.'

@@ -1,0 +1,31 @@
+default_inputs:
+  clean_workdir: False
+  estimated_Tc_aniso: 40.0
+  plot_gap_function: True
+  fbw: True
+  use_ir: False
+  aniso:
+    epw:
+      metadata:
+        options:
+          withmpi: True
+      parameters:
+        INPUTEPW:
+          fsthick: 0.8
+          nqstep: 500
+          nsiter: 500
+          wscut: 0.5
+          broyden_beta: 0.4
+          conv_thr_iaxis: 0.001
+          nstemp: 20
+
+default_protocol: moderate
+protocols:
+  moderate:
+    description: 'Protocol to perform a electron-phonon calculation at normal precision at moderate computational cost.'
+  precise:
+    description: 'Protocol to perform a electron-phonon calculation at high precision at higher computational cost.'
+    qfpoints_distance: 0.05
+  fast:
+    description: 'Protocol to perform a electron-phonon calculation at low precision at minimal computational cost for testing purposes.'
+    qfpoints_distance: 0.2

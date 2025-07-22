@@ -1,7 +1,20 @@
+# .readthedocs.yml - Final Correct Version
+
 version: 2
 
+# 1. Specify the build environment
+build:
+  os: "ubuntu-22.04"
+  tools:
+    python: "3.11"
+
+# 2. Specify the path to the Sphinx configuration file
+#    THIS IS THE NEW PART
+sphinx:
+  configuration: docs/conf.py
+
+# 3. Specify how to install Python dependencies
 python:
-  version: "3.8"
   install:
     - method: pip
       path: .
