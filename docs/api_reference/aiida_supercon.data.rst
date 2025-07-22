@@ -7,7 +7,7 @@ Submodules
 aiida\_supercon.data.chk module
 -------------------------------
 
-.. automodule:: aiida_supercon.data.chk
+.. automodule:: aiida_epw_workflows.data.chk
    :members:
    :show-inheritance:
    :undoc-members:
@@ -15,7 +15,7 @@ aiida\_supercon.data.chk module
 aiida\_supercon.data.dicttree module
 ------------------------------------
 
-.. automodule:: aiida_supercon.data.dicttree
+.. automodule:: aiida_epw_workflows.data.dicttree
    :members:
    :show-inheritance:
    :undoc-members:
@@ -23,7 +23,7 @@ aiida\_supercon.data.dicttree module
 Module contents
 ---------------
 
-.. automodule:: aiida_supercon.data
+.. automodule:: aiida_epw_workflows.data
    :members:
    :show-inheritance:
    :undoc-members:

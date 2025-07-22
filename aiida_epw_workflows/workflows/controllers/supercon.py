@@ -5,8 +5,8 @@ from pydantic import ConfigDict
 from aiida_wannier90_workflows.common.types import WannierProjectionType
 
 from aiida_quantumespresso.workflows.ph.base import PhBaseWorkChain
-from aiida_supercon.workflows import EpwB2WWorkChain, EpwSuperConWorkChain
-from aiida_supercon.tools.ph import get_negative_frequencies, get_phonon_wc_from_epw_wc
+from aiida_epw_workflows.workflows import EpwB2WWorkChain, EpwSuperConWorkChain
+from aiida_epw_workflows.tools.ph import get_negative_frequencies, get_phonon_wc_from_epw_wc
 
 from aiida_submission_controller import FromGroupSubmissionController
 

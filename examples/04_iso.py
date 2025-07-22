@@ -7,13 +7,13 @@ import click
 from typing import Dict
 from aiida import cmdline, orm
 
-from aiida_supercon.workflows.a2f import EpwA2fWorkChain
+from aiida_epw_workflows.workflows.a2f import EpwA2fWorkChain
 
-from aiida_supercon.cli.params import RUN
-from aiida_supercon.utils.structure import read_structure
-from aiida_supercon.utils.workflows.builder.serializer import print_builder
-from aiida_supercon.utils.workflows.builder.setter import set_parallelization
-from aiida_supercon.utils.workflows.builder.submit import (
+from aiida_epw_workflows.cli.params import RUN
+from aiida_epw_workflows.utils.structure import read_structure
+from aiida_epw_workflows.utils.workflows.builder.serializer import print_builder
+from aiida_epw_workflows.utils.workflows.builder.setter import set_parallelization
+from aiida_epw_workflows.utils.workflows.builder.submit import (
     submit_and_add_group,
 )
 

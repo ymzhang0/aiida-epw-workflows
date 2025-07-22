@@ -7,7 +7,7 @@ Submodules
 aiida\_supercon.parsers.epw module
 ----------------------------------
 
-.. automodule:: aiida_supercon.parsers.epw
+.. automodule:: aiida_epw_workflows.parsers.epw
    :members:
    :show-inheritance:
    :undoc-members:
@@ -15,7 +15,7 @@ aiida\_supercon.parsers.epw module
 Module contents
 ---------------
 
-.. automodule:: aiida_supercon.parsers
+.. automodule:: aiida_epw_workflows.parsers
    :members:
    :show-inheritance:
    :undoc-members:

@@ -57,3 +57,4 @@ def calculate_iso_tc(max_eigenvalue: XyData) -> Float:
         return Float(0.0)
     else:
         return Float(float(interp1d(me_array[:, 1], me_array[:, 0])(1.0)))
+

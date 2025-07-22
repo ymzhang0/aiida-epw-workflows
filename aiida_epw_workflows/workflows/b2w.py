@@ -10,6 +10,8 @@ import warnings
 from aiida.engine import ProcessBuilder, WorkChain, ToContext, if_
 from aiida_quantumespresso.workflows.ph.base import PhBaseWorkChain
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
+from aiida_quantumespresso.workflows.q2r.base import Q2rBaseWorkChain
+from aiida_quantumespresso.workflows.matdyn.base import MatdynBaseWorkChain
 
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
 
@@ -69,9 +71,11 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
     _NAMESPACE = 'b2w'
     _W90_NAMESPACE = 'w90_intp'
     _PH_NAMESPACE = 'ph_base'
-    _EPW_NAMESPACE = 'epw'
+    _Q2R_NAMESPACE = 'q2r_base'
+    _MATDYN_NAMESPACE = 'matdyn_base'
+    _EPW_NAMESPACE = 'epw_base'
 
-    _NAMESPACE_LIST = [ _W90_NAMESPACE, _PH_NAMESPACE, _EPW_NAMESPACE]
+    _NAMESPACE_LIST = [ _W90_NAMESPACE, _PH_NAMESPACE, _Q2R_NAMESPACE, _MATDYN_NAMESPACE, _EPW_NAMESPACE]
 
     _MIN_FREQ = -5.0 # cm^{-1}
 
@@ -83,6 +87,13 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             validate_inputs_w90(inputs)
         else:
             pass
+
+        if not hasattr(inputs, cls._EPW_NAMESPACE):
+            return 'The `epw_base` namespace is required.'
+
+        if hasattr(inputs, cls._Q2R_NAMESPACE) != hasattr(inputs, cls._MATDYN_NAMESPACE):
+            return f'The {cls._Q2R_NAMESPACE} and {cls._MATDYN_NAMESPACE} namespaces must be either both present or both absent.'
+
 
         return None
 
@@ -128,7 +139,24 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
                 'help': 'Inputs for the `PwBaseWorkChain` that does the `ph.x` calculation.'
             }
         )
-
+        spec.expose_inputs(
+            Q2rBaseWorkChain,
+            namespace=cls._Q2R_NAMESPACE,
+            namespace_options={
+                'required': False,
+                'populate_defaults': False,
+                'help': 'Inputs for the `Q2rBaseWorkChain` that does the `q2r.x` calculation.'
+            }
+        )
+        spec.expose_inputs(
+            MatdynBaseWorkChain,
+            namespace=cls._MATDYN_NAMESPACE,
+            namespace_options={
+                'required': False,
+                'populate_defaults': False,
+                'help': 'Inputs for the `MatdynBaseWorkChain` that does the `matdyn.x` calculation. '
+            }
+        )
         spec.expose_inputs(
             EpwBaseWorkChain,
             namespace=cls._EPW_NAMESPACE,
@@ -165,6 +193,21 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_outputs(
+            Q2rBaseWorkChain,
+            namespace=cls._Q2R_NAMESPACE,
+            namespace_options={
+                'required': False,
+            }
+        )
+
+        spec.expose_outputs(
+            MatdynBaseWorkChain,
+            namespace=cls._MATDYN_NAMESPACE,
+            namespace_options={
+                'required': False,
+            }
+        )
+        spec.expose_outputs(
             EpwBaseWorkChain,
             namespace=cls._EPW_NAMESPACE,
         )
@@ -176,21 +219,31 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
                 cls.run_wannier90,
                 cls.inspect_wannier90,
             ),
-            if_(cls.should_run_ph)(
-                cls.run_ph,
-                cls.inspect_ph,
+            if_(cls.should_run_ph_base)(
+                cls.run_ph_base,
+                cls.inspect_ph_base,
             ),
-            cls.run_epw,
-            cls.inspect_epw,
+            if_(cls.should_run_ph_disp)(
+                cls.run_q2r_base,
+                cls.inspect_q2r_base,
+                cls.run_matdyn_base,
+                cls.inspect_matdyn_base,
+            ),
+            cls.run_epw_base,
+            cls.inspect_epw_base,
             cls.results,
         )
         spec.exit_code(402, 'ERROR_SUB_PROCESS_FAILED_WANNIER90',
             message='The `Wannier90OptimizeWorkChain` sub process failed')
         spec.exit_code(403, 'ERROR_SUB_PROCESS_FAILED_PHONON',
             message='The `PhBaseWorkChain` sub process failed')
-        spec.exit_code(404, 'ERROR_SUB_PROCESS_FAILED_EPW',
+        spec.exit_code(404, 'ERROR_SUB_PROCESS_FAILED_Q2R',
+            message='The `Q2rBaseWorkChain` sub process failed')
+        spec.exit_code(405, 'ERROR_SUB_PROCESS_FAILED_MATDYN',
+            message='The `MatdynBaseWorkChain` sub process failed')
+        spec.exit_code(406, 'ERROR_SUB_PROCESS_FAILED_EPW',
             message='The `EpwBaseWorkChain` sub process failed')
-        spec.exit_code(405, 'ERROR_PH_BASE_UNSTABLE',
+        spec.exit_code(407, 'ERROR_PH_BASE_UNSTABLE',
             message='The phonon dynamical matrices are unstable')
 
     @classmethod
@@ -684,7 +737,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             ),
         )
 
-    def should_run_ph(self):
+    def should_run_ph_base(self):
         """Check if the phonon workflow should be run.
         If 'ph_base' is not in the inputs or the 'qpoints' is not in the context, it will return False.
         """
@@ -694,7 +747,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             'qpoints' in self.ctx
             )
 
-    def run_ph(self):
+    def run_ph_base(self):
         """Run the `PhBaseWorkChain`."""
         inputs = AttributeDict(self.exposed_inputs(PhBaseWorkChain, namespace=self._PH_NAMESPACE))
 
@@ -709,11 +762,11 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         self.set_target_base(inputs.ph, self._PH_NAMESPACE)
         workchain_node = self.submit(PhBaseWorkChain, **inputs)
 
-        self.report(f'launching `ph` {workchain_node.pk}')
+        self.report(f'launching `ph_base` {workchain_node.pk}')
 
         return ToContext(workchain_ph=workchain_node)
 
-    def inspect_ph(self):
+    def inspect_ph_base(self):
         """Verify that the `PhBaseWorkChain` finished successfully.
         If the phonon workflow passed, it will generate the parent folder for the epw workflow and the outputs of the phonon workflow.
         """
@@ -735,18 +788,90 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
         if self.inputs.check_stability.value:
             is_stable = True
-            number_of_qpoints = workchain.output_parameters.get('number_of_qpoints')
+            number_of_qpoints = workchain.outputs.output_parameters.get('number_of_qpoints')
 
             for iq in range(2, 1+number_of_qpoints):
-                frequencies = workchain.output_parameters.get(f'dynamical_matrix_{iq}').get('frequencies')
-                q_point = workchain.output_parameters.get(f'dynamical_matrix_{iq}').get('q_point')
+                frequencies = workchain.outputs.output_parameters.get(f'dynamical_matrix_{iq}').get('frequencies')
+                q_point = workchain.outputs.output_parameters.get(f'dynamical_matrix_{iq}').get('q_point')
                 if any(f < self._MIN_FREQ for f in frequencies):
                     self.report(f'Phonon at {iq}th qpoint {q_point} is unstable')
                     is_stable = False
             if not is_stable:
                 return self.exit_codes.ERROR_PH_BASE_UNSTABLE
 
-    def run_epw(self):
+    def should_run_q2r_base(self):
+        """Check if the q2r workflow should be run.
+        If 'q2r_base' is not in the inputs or the 'qpoints' is not in the context, it will return False.
+        """
+        return (
+            self._Q2R_NAMESPACE in self.inputs
+            and
+            self._MATDYN_NAMESPACE in self.ctx
+            )
+
+    def run_q2r_base(self):
+        """Run the `q2r.x` calculation."""
+        inputs = AttributeDict(self.exposed_inputs(Q2rBaseWorkChain, namespace=self._Q2R_NAMESPACE))
+
+        inputs.q2r.parent_folder = self.ctx.workchain_ph.outputs.remote_folder
+        inputs.metadata.call_link_label = self._Q2R_NAMESPACE
+
+        workchain_node = self.submit(Q2rBaseWorkChain, **inputs)
+        self.report(f'launching `q2r_base` {workchain_node.pk}')
+
+        return ToContext(workchain_q2r=workchain_node)
+
+    def inspect_q2r_base(self):
+        """Verify that the `q2r.x` calculation finished successfully.
+        If the q2r workflow passed, it will generate the parent folder for the epw workflow and the outputs of the q2r workflow.
+        """
+        workchain = self.ctx.workchain_q2r
+
+        if not workchain.is_finished_ok:
+            self.report(f'`Q2rBaseWorkChain` failed with exit status {workchain.exit_status}')
+            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_Q2R
+
+        self.out_many(
+            self.exposed_outputs(
+                self.ctx.workchain_q2r,
+                Q2rBaseWorkChain,
+                namespace=self._Q2R_NAMESPACE,
+            ),
+        )
+
+        self.ctx.force_constants = workchain.outputs.force_constants
+
+    def run_matdyn_base(self):
+        """Run the `matdyn.x` calculation."""
+        inputs = AttributeDict(self.exposed_inputs(MatdynBaseWorkChain, namespace=self._MATDYN_NAMESPACE))
+
+        inputs.matdyn.force_constants = self.ctx.force_constants
+        inputs.metadata.call_link_label = self._MATDYN_NAMESPACE
+
+        workchain_node = self.submit(MatdynBaseWorkChain, **inputs)
+        self.report(f'launching `matdyn_base` {workchain_node.pk}')
+
+        return ToContext(workchain_matdyn=workchain_node)
+
+    def inspect_matdyn_base(self):
+        """Verify that the `matdyn.x` calculation finished successfully.
+        If the matdyn workflow passed, it will generate the parent folder for the epw workflow and the outputs of the matdyn workflow.
+        """
+        workchain = self.ctx.workchain_matdyn
+
+        if not workchain.is_finished_ok:
+            self.report(f'`MatdynBaseWorkChain` failed with exit status {workchain.exit_status}')
+            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_MATDYN
+
+        self.out_many(
+            self.exposed_outputs(
+                self.ctx.workchain_matdyn,
+                MatdynBaseWorkChain,
+                namespace=self._MATDYN_NAMESPACE,
+            ),
+        )
+
+    def run_epw_base(self):
         """Run the `epw.x` calculation."""
 
         # inputs = AttributeDict(self.exposed_inputs(EpwCalculation, namespace='epw'))
@@ -762,11 +887,11 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = self._EPW_NAMESPACE
         self.set_target_base(inputs.epw, self._EPW_NAMESPACE)
         workchain_node = self.submit(EpwBaseWorkChain, **inputs)
-        self.report(f'launching `epw` {workchain_node.pk}')
+        self.report(f'launching `epw_base` {workchain_node.pk}')
 
         return ToContext(workchain_epw=workchain_node)
 
-    def inspect_epw(self):
+    def inspect_epw_base(self):
         """Verify that the `epw.x` calculation finished successfully.
         If the epw workflow passed, it will generate the outputs of the epw workflow.
         """
