@@ -26,6 +26,8 @@ First, make sure you are in a running `verdi shell` or have loaded the AiiDA pro
 1. It is recommended to use PDWF to automate the wannierization. And one can find the installation here: https://github.com/qiaojunfeng/wannier90/tree/p2w_ham
 2. If you want to use intermediate representation for an accelaration of low temperature calculation, you should add another 'epw_ir' code.
 
+Important: please download the package from https://github.com/ymzhang0/aiida-epw-workflows.
+
 Step 2: Prepare the input structure
 ====================================
 
@@ -45,7 +47,7 @@ We will use the `get_builder_from_protocol` factory method to easily set up the 
 
 .. code-block:: python
 
-   from aiida_supercon.workflows.supercon import EpwSuperconWorkChain
+   from aiida_epw_workflows.workflows.supercon import EpwSuperconWorkChain
    from aiida_wannier90_workflows.common.types import WannierProjectionType
 
    builder = EpwSuperconWorkChain.get_builder_from_protocol(
@@ -99,7 +101,7 @@ Once the `EpwSuperconWorkChain` has finished successfully, you can inspect its o
    print(f"Available outputs: {results.keys()}")
 
    # You may plot the electron/phonon band structures, density of states, (accumulated) spectral functions using the tools provided by the package.
-   from aiida_supercon.tools.plot import (
+   from aiida_epw_workflows.tools.plot import (
         plot_epw_interpolated_bands,
         plot_a2f,
         plot_eldos,

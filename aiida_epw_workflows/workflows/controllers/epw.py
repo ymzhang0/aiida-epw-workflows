@@ -7,7 +7,7 @@ from aiida_quantumespresso.workflows.pw.relax import PwRelaxWorkChain
 
 from aiida_submission_controller import FromGroupSubmissionController
 
-from aiida_supercon.workflows.base import EpwBaseWorkChain
+from aiida_epw_workflows.workflows.base import EpwBaseWorkChain
 from aiida_quantumespresso.workflows.protocols.utils import recursive_merge
 
 class EpwBaseWorkChainController(FromGroupSubmissionController):

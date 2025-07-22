@@ -2,7 +2,7 @@
 """Temporary home for various plotting tools."""
 from aiida import orm
 from typing import Tuple
-from aiida_supercon.tools.calculators import calculate_lambda_omega, allen_dynes
+from aiida_epw_workflows.tools.calculators import calculate_lambda_omega, allen_dynes
 from matplotlib import pyplot as plt
 import numpy
 from io import StringIO
@@ -581,7 +581,7 @@ def find_average(data, T):
     return midpoint
 
 
-def plot_sc(
+def plot_gap_function(
     aniso_workchain,
     axis,
     remove_temps = [0, 0],
@@ -604,7 +604,6 @@ def plot_sc(
         try:
             rho = parse[:,0]
             delta_nk = parse[:,1]
-
 
             if len(rho) <=2:
                 continue

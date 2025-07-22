@@ -245,8 +245,8 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
 
             # EPW 5.9 (IR representation) can't recognize eps_acustic.
 
-            eps_acustic = parameters['INPUTEPW'].pop('eps_acustic', 0.1)
-            parameters['INPUTEPW']['eps_acoustic'] = eps_acustic
+            # eps_acustic = parameters['INPUTEPW'].pop('eps_acustic', 0.1)
+            # parameters['INPUTEPW']['eps_acoustic'] = eps_acustic
 
         temps = f'{min_temp} {self.inputs.estimated_Tc_aniso.value*1.5}'
         nstemp = max(5, int((self.inputs.estimated_Tc_aniso.value*1.5 - min_temp) // 2) + 1)

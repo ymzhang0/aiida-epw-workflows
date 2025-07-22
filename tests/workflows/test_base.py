@@ -2,7 +2,7 @@
 
 from aiida.engine import ProcessHandlerReport
 from aiida_quantumespresso.calculations.epw import EpwCalculation
-from aiida_supercon.workflows import EpwBaseWorkChain
+from aiida_epw_workflows.workflows import EpwBaseWorkChain
 from aiida.common import AttributeDict
 from aiida.orm import StructureData
 from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
