@@ -1,4 +1,4 @@
-# `aiida-epw-workchains`
+# `aiida-epw-workflows`
 
 AiiDA plugin package with workflows for superconductivity research based on the Quantum ESPRESSO software suite and the Electron-Phonon Wannier (EPW) code.
 
@@ -7,7 +7,7 @@ AiiDA plugin package with workflows for superconductivity research based on the 
 To install the latest version from the PyPI, simply run:
 
 ```
-pip install aiida-epw-workchains
+pip install aiida-epw-workflows
 ```
 
 ## Acknowledgements

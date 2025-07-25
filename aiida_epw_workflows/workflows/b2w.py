@@ -33,6 +33,13 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
     _QFPOINTS = [1, 1, 1]
     _KFPOINTS_FACTOR = 1
 
+    _NAMESPACE = 'b2w'
+    _W90_NAMESPACE = 'w90_intp'
+    _PH_NAMESPACE = 'ph_base'
+    _Q2R_NAMESPACE = 'q2r_base'
+    _MATDYN_NAMESPACE = 'matdyn_base'
+    _EPW_NAMESPACE = 'epw_base'
+
     _forced_parameters = {
         'INPUTEPW': {
           'a2f': False,
@@ -48,12 +55,12 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
     }
 
     SOURCE_LIST = {
-        'ph_base':[
+        _PH_NAMESPACE: [
             'DYN_MAT/dynamical-matrix-*',
             'out/_ph0/aiida.dvscf1',
             'out/_ph0/aiida.q_*/aiida.dvscf1',
             ],
-        'epw': [
+        _EPW_NAMESPACE: [
             'crystal.fmt',
             'epwdata.fmt',
             'dmedata.fmt',
@@ -67,13 +74,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             'save'
             ]
         }
-
-    _NAMESPACE = 'b2w'
-    _W90_NAMESPACE = 'w90_intp'
-    _PH_NAMESPACE = 'ph_base'
-    _Q2R_NAMESPACE = 'q2r_base'
-    _MATDYN_NAMESPACE = 'matdyn_base'
-    _EPW_NAMESPACE = 'epw_base'
 
     _NAMESPACE_LIST = [ _W90_NAMESPACE, _PH_NAMESPACE, _Q2R_NAMESPACE, _MATDYN_NAMESPACE, _EPW_NAMESPACE]
 
@@ -142,6 +142,10 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         spec.expose_inputs(
             Q2rBaseWorkChain,
             namespace=cls._Q2R_NAMESPACE,
+            exclude=(
+                'clean_workdir',
+                'q2r.parent_folder'
+            ),
             namespace_options={
                 'required': False,
                 'populate_defaults': False,
@@ -151,6 +155,11 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         spec.expose_inputs(
             MatdynBaseWorkChain,
             namespace=cls._MATDYN_NAMESPACE,
+            exclude=(
+                'clean_workdir',
+                'matdyn.force_constants',
+                'matdyn.kpoints'
+            ),
             namespace_options={
                 'required': False,
                 'populate_defaults': False,
@@ -264,7 +273,6 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         path = files(protocols) / f"{cls._NAMESPACE}.yaml"
         with path.open() as file:
             return yaml.safe_load(file)
-
 
     @property
     def namespace_list(self):
@@ -565,6 +573,8 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
                 'pw': code pw.x,
                 'ph': code ph.x,
                 'epw': code epw.x,
+                'q2r': code q2r.x,
+                'matdyn': code matdyn.x,
                 'pw2wannier90': code pw2wannier90.x,
                 'wannier': code wannier90.x,
             }
@@ -611,6 +621,23 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             **kwargs
             )
         builder[cls._PH_NAMESPACE] = ph_base
+
+        q2r_builder = Q2rBaseWorkChain.get_builder()
+
+        q2r_builder.q2r.metadata = inputs.get(cls._Q2R_NAMESPACE, {}).get('q2r', {}).get('metadata', {})
+        q2r_builder.q2r.parameters = inputs.get(cls._Q2R_NAMESPACE, {}).get('q2r', {}).get('parameters', {})
+
+        q2r_builder.q2r.code = codes['q2r']
+
+        builder[cls._Q2R_NAMESPACE] = q2r_builder
+
+        matdyn_builder = MatdynBaseWorkChain.get_builder()
+        matdyn_builder.matdyn.metadata = inputs.get(cls._MATDYN_NAMESPACE, {}).get('matdyn', {}).get('metadata', {})
+        matdyn_builder.matdyn.parameters = inputs.get(cls._MATDYN_NAMESPACE, {}).get('matdyn', {}).get('parameters', {})
+
+        matdyn_builder.matdyn.code = codes['matdyn']
+
+        builder[cls._MATDYN_NAMESPACE] = matdyn_builder
 
         epw = EpwBaseWorkChain.get_builder_from_protocol(
             code=codes['epw'],
@@ -672,6 +699,11 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             kpoints_nscf.set_kpoints_mesh([v * self.inputs.kpoints_factor_nscf.value for v in qpoints_mesh])
 
             self.ctx.kpoints_nscf = kpoints_nscf
+
+        if self.should_run_ph_base():
+            from aiida.tools.data.array.kpoints.main import get_explicit_kpoints_path
+            seekpath_params = get_explicit_kpoints_path(self.inputs.structure)
+            self.ctx.kpoints_matdyn = seekpath_params['explicit_kpoints']
 
     def should_run_wannier90(self):
         """Check if the wannier90 workflow should be run.
@@ -799,7 +831,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             if not is_stable:
                 return self.exit_codes.ERROR_PH_BASE_UNSTABLE
 
-    def should_run_q2r_base(self):
+    def should_run_ph_disp(self):
         """Check if the q2r workflow should be run.
         If 'q2r_base' is not in the inputs or the 'qpoints' is not in the context, it will return False.
         """
@@ -813,7 +845,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         """Run the `q2r.x` calculation."""
         inputs = AttributeDict(self.exposed_inputs(Q2rBaseWorkChain, namespace=self._Q2R_NAMESPACE))
 
-        inputs.q2r.parent_folder = self.ctx.workchain_ph.outputs.remote_folder
+        inputs.q2r.parent_folder = self.ctx.parent_folder_ph
         inputs.metadata.call_link_label = self._Q2R_NAMESPACE
 
         workchain_node = self.submit(Q2rBaseWorkChain, **inputs)
@@ -846,6 +878,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         inputs = AttributeDict(self.exposed_inputs(MatdynBaseWorkChain, namespace=self._MATDYN_NAMESPACE))
 
         inputs.matdyn.force_constants = self.ctx.force_constants
+        inputs.matdyn.kpoints = self.ctx.kpoints_matdyn
         inputs.metadata.call_link_label = self._MATDYN_NAMESPACE
 
         workchain_node = self.submit(MatdynBaseWorkChain, **inputs)
