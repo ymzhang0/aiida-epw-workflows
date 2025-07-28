@@ -8,8 +8,8 @@ from aiida.common import AttributeDict
 import warnings
 
 from aiida.engine import ProcessBuilder, WorkChain, ToContext, if_
-from aiida_quantumespresso.workflows.ph.base import PhBaseWorkChain
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
+from aiida_quantumespresso.workflows.ph.base import PhBaseWorkChain
 from aiida_quantumespresso.workflows.q2r.base import Q2rBaseWorkChain
 from aiida_quantumespresso.workflows.matdyn.base import MatdynBaseWorkChain
 
@@ -108,6 +108,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         spec.input('qpoints_distance', valid_type=orm.Float, required=False)
         spec.input('qpoints', valid_type=orm.KpointsData, required=False)
         spec.input('check_stability', valid_type=orm.Bool, required=False, default=lambda: orm.Bool(True))
+
 
         spec.expose_inputs(
             Wannier90OptimizeWorkChain,
@@ -253,7 +254,9 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         spec.exit_code(406, 'ERROR_SUB_PROCESS_FAILED_EPW',
             message='The `EpwBaseWorkChain` sub process failed')
         spec.exit_code(407, 'ERROR_PH_BASE_UNSTABLE',
-            message='The phonon dynamical matrices are unstable')
+            message='The phonon from `PhBaseWorkChain` are unstable')
+        spec.exit_code(408, 'ERROR_MATDYN_BASE_UNSTABLE',
+            message='The phonon from `MatdynBaseWorkChain` are unstable')
 
     @classmethod
     def get_protocol_filepath(cls):
@@ -363,11 +366,15 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
             builder[cls._EPW_NAMESPACE].parent_folder_ph = descendants[cls._PH_NAMESPACE][0].outputs.remote_folder
 
+            if cls._Q2R_NAMESPACE in from_b2w_workchain.inputs:
+
+                builder[cls._Q2R_NAMESPACE].q2r.parent_folder = descendants[cls._PH_NAMESPACE][0].outputs.remote_folder
+
         else:
             builder[cls._PH_NAMESPACE]._data = descendants[cls._PH_NAMESPACE][0]._data
 
         # Get the epw workchain
-        if descendants[cls._EPW_NAMESPACE][0].is_finished_ok:
+        if cls._EPW_NAMESPACE in descendants and descendants[cls._EPW_NAMESPACE][0].is_finished_ok:
             raise Warning(
                 f"The `EpwB2WWorkChain` <{from_b2w_workchain.pk}> is already finished.",
                 )
@@ -592,8 +599,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         builder.structure = structure
         builder.qpoints_distance = orm.Float(inputs['qpoints_distance'])
         builder.kpoints_factor_nscf = orm.Int(inputs['kpoints_factor_nscf'])
-        if band_kpoints:
-            builder.band_kpoints = band_kpoints
+
         # Set up the wannier90 sub-workchain
         w90_intp_inputs = inputs.get(cls._W90_NAMESPACE, {})
         pseudo_family = inputs.pop('pseudo_family', None)
@@ -658,6 +664,14 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
     def setup(self):
         """Setup the work chain."""
 
+        if self.should_run_ph_disp():
+            inputs_q2r = AttributeDict(
+                self.exposed_inputs(
+                    Q2rBaseWorkChain,
+                    namespace=self._Q2R_NAMESPACE)
+                )
+            self.ctx.inputs_q2r = inputs_q2r
+
         inputs = AttributeDict(
             self.exposed_inputs(
                 EpwBaseWorkChain,
@@ -700,21 +714,17 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
             self.ctx.kpoints_nscf = kpoints_nscf
 
-        if self.should_run_ph_base():
+        if self.should_run_ph_disp():
             from aiida.tools.data.array.kpoints.main import get_explicit_kpoints_path
             seekpath_params = get_explicit_kpoints_path(self.inputs.structure)
-            self.ctx.kpoints_matdyn = seekpath_params['explicit_kpoints']
+            self.ctx.bands_kpoints = seekpath_params['explicit_kpoints']
 
     def should_run_wannier90(self):
         """Check if the wannier90 workflow should be run.
         If 'w90_intp' is not in the inputs or the 'kpoints_nscf' is not in the context, it will return False.
         """
 
-        return (
-            self._W90_NAMESPACE in self.inputs
-            and
-            'kpoints_nscf' in self.ctx
-            )
+        return self._W90_NAMESPACE in self.inputs
 
     def run_wannier90(self):
         """Run the wannier90 workflow."""
@@ -809,6 +819,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PHONON
 
         self.ctx.inputs.parent_folder_ph = workchain.outputs.remote_folder
+        self.ctx.inputs_q2r.q2r.parent_folder = workchain.outputs.remote_folder
 
         self.out_many(
             self.exposed_outputs(
@@ -819,15 +830,9 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         )
 
         if self.inputs.check_stability.value:
-            is_stable = True
-            number_of_qpoints = workchain.outputs.output_parameters.get('number_of_qpoints')
-
-            for iq in range(2, 1+number_of_qpoints):
-                frequencies = workchain.outputs.output_parameters.get(f'dynamical_matrix_{iq}').get('frequencies')
-                q_point = workchain.outputs.output_parameters.get(f'dynamical_matrix_{iq}').get('q_point')
-                if any(f < self._MIN_FREQ for f in frequencies):
-                    self.report(f'Phonon at {iq}th qpoint {q_point} is unstable')
-                    is_stable = False
+            from aiida_epw_workflows.tools.check import check_stability_ph_base
+            is_stable, message = check_stability_ph_base(workchain, self._MIN_FREQ)
+            self.report(message)
             if not is_stable:
                 return self.exit_codes.ERROR_PH_BASE_UNSTABLE
 
@@ -838,14 +843,13 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         return (
             self._Q2R_NAMESPACE in self.inputs
             and
-            self._MATDYN_NAMESPACE in self.ctx
+            self._MATDYN_NAMESPACE in self.inputs
             )
 
     def run_q2r_base(self):
         """Run the `q2r.x` calculation."""
-        inputs = AttributeDict(self.exposed_inputs(Q2rBaseWorkChain, namespace=self._Q2R_NAMESPACE))
+        inputs = self.ctx.inputs_q2r
 
-        inputs.q2r.parent_folder = self.ctx.parent_folder_ph
         inputs.metadata.call_link_label = self._Q2R_NAMESPACE
 
         workchain_node = self.submit(Q2rBaseWorkChain, **inputs)
@@ -878,7 +882,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         inputs = AttributeDict(self.exposed_inputs(MatdynBaseWorkChain, namespace=self._MATDYN_NAMESPACE))
 
         inputs.matdyn.force_constants = self.ctx.force_constants
-        inputs.matdyn.kpoints = self.ctx.kpoints_matdyn
+        inputs.matdyn.kpoints = self.ctx.bands_kpoints
         inputs.metadata.call_link_label = self._MATDYN_NAMESPACE
 
         workchain_node = self.submit(MatdynBaseWorkChain, **inputs)
@@ -951,6 +955,22 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
         pass
 
+    @staticmethod
+    def _clean_workdir(node):
+        """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
+
+        cleaned_calcs = []
+
+        for called_descendant in node.called_descendants:
+            if isinstance(called_descendant, orm.CalcJobNode):
+                try:
+                    called_descendant.outputs.remote_folder._clean()  # pylint: disable=protected-access
+                    cleaned_calcs.append(called_descendant.pk)
+                except (IOError, OSError, KeyError):
+                    pass
+
+        return cleaned_calcs
+
     def on_terminated(self):
         """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
         super().on_terminated()
@@ -959,15 +979,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             self.report('remote folders will not be cleaned')
             return
 
-        cleaned_calcs = []
-
-        for called_descendant in self.node.called_descendants:
-            if isinstance(called_descendant, orm.CalcJobNode):
-                try:
-                    called_descendant.outputs.remote_folder._clean()  # pylint: disable=protected-access
-                    cleaned_calcs.append(called_descendant.pk)
-                except (IOError, OSError, KeyError):
-                    pass
+        cleaned_calcs = self._clean_workdir(self.node)
 
         if cleaned_calcs:
             self.report(f"cleaned remote folders of calculations: {' '.join(map(str, cleaned_calcs))}")

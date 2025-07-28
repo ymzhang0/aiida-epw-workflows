@@ -42,7 +42,7 @@ def check_stability_ph_base(
     workchain: orm.WorkChainNode,
     min_freq: float = -5.0 # cm^{-1}
     ) -> tuple[bool, str]:
-    """Check if the phonon band structure is stable."""
+    """Check if the phonon on the coarse grid is stable."""
 
     is_stable = True
     number_of_qpoints = workchain.outputs.output_parameters.get('number_of_qpoints')
@@ -53,14 +53,24 @@ def check_stability_ph_base(
         if any(f < min_freq for f in frequencies):
             is_stable = False
             message += f'Phonon at {iq}th qpoint {q_point} is unstable\n'
+    if is_stable:
+        message = 'Phonon is stable from `ph_base`.'
 
     return (is_stable, message)
+
+def check_stability_matdyn_base(
+    workchain: orm.WorkChainNode,
+    min_freq: float = -5.0 # cm^{-1}
+    ) -> tuple[bool, str]:
+    """Check if the matdyn.x interpolated phonon band structure is stable."""
+
+    pass
 
 def check_stability_epw_bands(
     bands_workchain: orm.WorkChainNode,
     min_freq: float # meV ~ 8.1 cm-1
     ) -> tuple[bool, str]:
-    """Check if the phonon band structure is stable."""
+    """Check if the epw.x interpolated phonon band structure is stable."""
 
     import numpy
     ph_bands = bands_workchain.outputs.bands.ph_band_structure.get_bands()

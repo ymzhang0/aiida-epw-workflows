@@ -4,6 +4,7 @@ from aiida.common import AttributeDict, NotExistent
 
 from aiida.engine import BaseRestartWorkChain, ProcessHandlerReport, process_handler, while_
 from aiida.plugins import CalculationFactory
+from aiida.common.lang import type_check
 
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import create_kpoints_from_distance
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
@@ -25,6 +26,7 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
     _process_class = EpwCalculation
 
+    _MAX_NSTEMP = 50
 
     @classmethod
     def define(cls, spec):
@@ -157,8 +159,8 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """
         from .utils.overrides import recursive_copy
 
-        if isinstance(code, str):
-            code = orm.load_code(code)
+        type_check(code, orm.Code)
+        type_check(structure, orm.StructureData)
 
         inputs = cls.get_protocol_inputs(protocol, overrides)
 
@@ -181,14 +183,19 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         builder.epw['metadata'] = metadata
 
         if parent_folder_nscf:
+            type_check(parent_folder_nscf, orm.RemoteData)
             builder.parent_folder_nscf = parent_folder_nscf
         if parent_folder_ph:
+            type_check(parent_folder_ph, (orm.RemoteData, orm.RemoteStashFolderData))
             builder.parent_folder_ph = parent_folder_ph
         if parent_folder_chk:
+            type_check(parent_folder_chk, orm.RemoteData)
             builder.parent_folder_chk = parent_folder_chk
         if parent_folder_epw:
+            type_check(parent_folder_epw, (orm.RemoteData, orm.RemoteStashFolderData))
             builder.parent_folder_epw = parent_folder_epw
         if w90_chk_to_ukk_script:
+            type_check(w90_chk_to_ukk_script, orm.RemoteData)
             builder.w90_chk_to_ukk_script = w90_chk_to_ukk_script
 
         if 'settings' in inputs['epw']:
@@ -472,6 +479,10 @@ class EpwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         submission. We rely on the parent `run_process` to create the builder.
         """
         parameters = self.ctx.inputs.parameters.get_dict()
+        nstemp = parameters['INPUTEPW'].get('nstemp', None)
+        if nstemp and nstemp > self._MAX_NSTEMP:
+            self.report(f'nstemp too large, reset it to maximum allowed: {self._MAX_NSTEMP}')
+            parameters['INPUTEPW']['nstemp'] = self._MAX_NSTEMP
 
         wannierize = parameters['INPUTEPW'].get('wannierize', False)
 

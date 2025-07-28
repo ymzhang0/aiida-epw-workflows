@@ -2,9 +2,11 @@
 from aiida import orm
 from aiida.common import AttributeDict, LinkType
 from aiida.engine import WorkChain, ToContext, if_, while_, append_
-
+from aiida_quantumespresso.workflows.ph.base import PhBaseWorkChain
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 from aiida.engine import calcfunction
+from aiida_quantumespresso.workflows.pw.relax import PwRelaxWorkChain
+from aiida_quantumespresso.workflows.pw.bands import PwBandsWorkChain
 
 from .b2w import EpwB2WWorkChain
 from .bands import EpwBandsWorkChain
@@ -30,12 +32,15 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
     _CONV_NAMESPACE  = 'a2f_conv'
 
+    _PW_RELAX_NAMESPACE = "pw_relax"
+    _PW_BANDS_NAMESPACE = "pw_bands"
     _B2W_NAMESPACE   = EpwB2WWorkChain._NAMESPACE
     _BANDS_NAMESPACE = EpwBandsWorkChain._INTP_NAMESPACE
     _A2F_NAMESPACE   = EpwA2fWorkChain._INTP_NAMESPACE
     _ISO_NAMESPACE   = EpwIsoWorkChain._INTP_NAMESPACE
     _ANISO_NAMESPACE = EpwAnisoWorkChain._INTP_NAMESPACE
 
+    _NAMESPACE_LIST = [ _PW_BANDS_NAMESPACE, _B2W_NAMESPACE, _BANDS_NAMESPACE, _A2F_NAMESPACE, _ISO_NAMESPACE, _ANISO_NAMESPACE]
     _MIN_FREQ = -1.0 # meV ~ 8.1 cm-1
 
     @classmethod
@@ -52,10 +57,40 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         spec.input('use_ir', required=False, valid_type=orm.Bool, default=lambda: orm.Bool(False))
 
         spec.expose_inputs(
+            PwRelaxWorkChain,
+            namespace=cls._PW_RELAX_NAMESPACE,
+            exclude=(
+                'structure',
+                'clean_workdir',
+            ),
+            namespace_options={
+                'required': False,
+                'populate_defaults': False,
+                'help': 'Inputs for the `PwRelaxWorkChain`.'
+            }
+        )
+        spec.expose_inputs(
+            PwBandsWorkChain,
+            namespace=cls._PW_BANDS_NAMESPACE,
+            exclude=(
+                'structure',
+                'clean_workdir',
+                'bands_kpoints',
+                'bands_kpoints_distance',
+            ),
+            namespace_options={
+                'required': False,
+                'populate_defaults': False,
+                'help': 'Inputs for the `PwBandsWorkChain`.'
+            }
+        )
+
+        spec.expose_inputs(
             EpwB2WWorkChain,
             namespace=cls._B2W_NAMESPACE,
             exclude=(
                 'clean_workdir',
+                'structure',
             ),
             namespace_options={
                 'required': False,
@@ -132,6 +167,14 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         spec.outline(
             cls.setup,
             cls.validate_inputs,
+            if_(cls.should_run_pw_relax)(
+                cls.run_pw_relax,
+                cls.inspect_pw_relax,
+            ),
+            if_(cls.should_run_pw_bands)(
+                cls.run_pw_bands,
+                cls.inspect_pw_bands,
+            ),
             if_(cls.should_run_b2w)(
                 cls.run_b2w,
                 cls.inspect_b2w,
@@ -158,6 +201,28 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 cls.inspect_aniso,
             ),
             cls.results
+        )
+
+        spec.output(
+            "seekpath_parameters",
+            valid_type=orm.Dict,
+            required=False,
+            help="The parameters used in the SeeKpath call to normalize the input or relaxed structure.",
+        )
+
+        spec.expose_outputs(
+            PwRelaxWorkChain,
+            namespace=cls._PW_RELAX_NAMESPACE,
+            namespace_options={
+                'required': False,
+            }
+        )
+        spec.expose_outputs(
+            PwBandsWorkChain,
+            namespace=cls._PW_BANDS_NAMESPACE,
+            namespace_options={
+                'required': False,
+            }
         )
 
         spec.expose_outputs(
@@ -206,23 +271,27 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             }
         )
 
-        spec.exit_code(401, 'ERROR_SUB_PROCESS_B2W',
+        spec.exit_code(401, 'ERROR_SUB_PROCESS_PW_RELAX',
+            message='The `pw_relax` sub process failed')
+        spec.exit_code(402, 'ERROR_SUB_PROCESS_PW_BANDS',
+            message='The `pw_bands` sub process failed')
+        spec.exit_code(403, 'ERROR_SUB_PROCESS_B2W',
             message='The `b2w` sub process failed')
-        spec.exit_code(402, 'ERROR_CONVERGENCE_NOT_REACHED',
+        spec.exit_code(404, 'ERROR_CONVERGENCE_NOT_REACHED',
             message='The convergence is not reached in current interpolation list.')
-        spec.exit_code(403, 'ERROR_SUB_PROCESS_BANDS',
+        spec.exit_code(405, 'ERROR_SUB_PROCESS_BANDS',
             message='The `bands` sub process failed')
-        spec.exit_code(404, 'ERROR_IMAGINARY_PHONON_FREQ',
-            message='The phonon frequency is too low.')
-        spec.exit_code(405, 'ERROR_SUB_PROCESS_A2F',
+        spec.exit_code(406, 'ERROR_EPW_BANDS_UNSTABLE',
+            message='The phonon is not stable from epw interpolation.')
+        spec.exit_code(407, 'ERROR_SUB_PROCESS_A2F',
             message='The `a2f` sub process failed')
-        spec.exit_code(406, 'ERROR_ALLEN_DYNES_TC_TOO_LOW',
+        spec.exit_code(408, 'ERROR_ALLEN_DYNES_TC_TOO_LOW',
             message='The Allen-Dynes Tc is too low.')
-        spec.exit_code(407, 'ERROR_SUB_PROCESS_ISO',
+        spec.exit_code(409, 'ERROR_SUB_PROCESS_ISO',
             message='The `iso` sub process failed')
-        spec.exit_code(408, 'ERROR_ISOTROPIC_TC_TOO_LOW',
+        spec.exit_code(410, 'ERROR_ISOTROPIC_TC_TOO_LOW',
             message='The isotropic Tc is too low.')
-        spec.exit_code(409, 'ERROR_SUB_PROCESS_ANISO',
+        spec.exit_code(411, 'ERROR_SUB_PROCESS_ANISO',
             message='The `aniso` sub process failed')
 
     @classmethod
@@ -265,7 +334,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         if from_b2w_workchain.is_finished_ok:
             builder.pop(EpwA2fWorkChain._B2W_NAMESPACE)
-            parent_folder_epw = from_b2w_workchain.outputs.epw.remote_stash
+            parent_folder_epw = from_b2w_workchain.outputs.epw_base.remote_stash
         else:
             b2w_builder = EpwB2WWorkChain.get_builder_restart(
                 from_b2w_workchain=from_b2w_workchain,
@@ -393,6 +462,25 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         except KeyError:
             pass
 
+        if cls._PW_RELAX_NAMESPACE in from_supercon_workchain.inputs:
+            pw_relax_workchain = descendants[cls._PW_RELAX_NAMESPACE][0]
+            if pw_relax_workchain.is_finished_ok:
+                builder.pop(cls._PW_RELAX_NAMESPACE)
+                builder.structure = pw_relax_workchain.outputs.output_structure
+                rprint('[bold green]pw_relax subprocess finished successfully[/bold green]')
+        else:
+            builder.pop(cls._PW_RELAX_NAMESPACE)
+            rprint('[italic green]pw_relax subprocess is not in the inputs[/italic green]')
+
+        if cls._PW_BANDS_NAMESPACE in from_supercon_workchain.inputs:
+            pw_bands_workchain = descendants[cls._PW_BANDS_NAMESPACE][0]
+            if pw_bands_workchain.is_finished_ok:
+                builder.pop(cls._PW_BANDS_NAMESPACE)
+                rprint('[bold green]pw_bands subprocess finished successfully[/bold green]')
+        else:
+            builder.pop(cls._PW_BANDS_NAMESPACE)
+            rprint('[italic green]pw_bands subprocess is not in the inputs[/italic green]')
+
         # Firstly we should check whether we should restart from b2w workchain.
         # If B2W_NAMESPACE is in the inputs, it means that the previous workchain did a b2w calculation.
         # So we need to check the status of the b2w workchain.
@@ -401,8 +489,8 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 # If the b2w workchain is finished, simply pop it.
             if b2w_workchain.is_finished_ok:
                 builder.pop(cls._B2W_NAMESPACE)
-                builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw.remote_stash
-                builder[cls._A2F_NAMESPACE][cls._A2F_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw.remote_stash
+                builder[cls._BANDS_NAMESPACE][cls._BANDS_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw_base.remote_stash
+                builder[cls._A2F_NAMESPACE][cls._A2F_NAMESPACE]['parent_folder_epw'] = b2w_workchain.outputs.epw_base.remote_stash
                 rprint('[bold green]b2w subprocess finished successfully[/bold green]')
             # If the b2w workchain is not finished, we only need to restart from b2w workchain leaving the following inputs unchanged.
             else:
@@ -454,7 +542,15 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 if a2f_conv_workchain.is_finished_ok:
                     initial_interpolation_distances.remove(a2f_conv_workchain.inputs.a2f.qfpoints_distance.value)
 
-            if len(initial_interpolation_distances) > 0:
+            if is_converged:
+                rprint('[bold green]Convergence reached[/bold green]')
+                builder.pop(cls._A2F_NAMESPACE)
+                builder.pop('interpolation_distances')
+                builder.pop('convergence_threshold')
+                builder.pop('always_run_final')
+                builder[cls._ISO_NAMESPACE][cls._ISO_NAMESPACE]['parent_folder_epw'] = a2f_conv_workchains[-1].outputs.remote_folder
+
+            elif len(initial_interpolation_distances) > 0:
                 builder['interpolation_distances'] = orm.List(initial_interpolation_distances)
                 builder['convergence_threshold'] = orm.Float(from_supercon_workchain.inputs.convergence_threshold)
                 builder['always_run_final'] = orm.Bool(from_supercon_workchain.inputs.always_run_final)
@@ -463,7 +559,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
             else:
                 always_run_final = from_supercon_workchain.inputs.always_run_final
-                if is_converged or always_run_final:
+                if always_run_final:
                     builder[cls._ISO_NAMESPACE][cls._ISO_NAMESPACE]['parent_folder_epw'] = a2f_conv_workchains[-1].outputs.remote_folder
 
                     rprint('[bold green]Convergence not reached, but `always_run_final`, continuing...[/bold green]')
@@ -658,6 +754,30 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         builder = cls.get_builder()
 
+        # Set up the pw relax sub-workchain
+        pw_relax_builder = PwRelaxWorkChain.get_builder_from_protocol(
+            code=codes['pw'],
+            structure=structure,
+            overrides=inputs.get(cls._PW_RELAX_NAMESPACE, {}),
+            **kwargs
+        )
+
+        pw_relax_builder.pop('structure', None)
+        pw_relax_builder.pop('clean_workdir', None)
+        pw_relax_builder.pop('base_final_scf', None)
+
+        builder[cls._PW_RELAX_NAMESPACE]._data = pw_relax_builder._data
+
+        # Set up the pw bands sub-workchain
+        pw_bands_builder = PwBandsWorkChain.get_builder_from_protocol(
+            code=codes['pw'],
+            structure=structure,
+            overrides=inputs.get(cls._PW_BANDS_NAMESPACE, {}),
+        )
+        pw_bands_builder.pop('relax', None)
+
+        builder[cls._PW_BANDS_NAMESPACE]._data = pw_bands_builder._data
+
         b2w_builder = EpwB2WWorkChain.get_builder_from_protocol(
             *args,
             overrides=inputs.get(cls._B2W_NAMESPACE, None),
@@ -711,6 +831,8 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         # Here we expose the inputs in advance so that we can modify the
         # parent_folder_epw in the should_run_b2w, should_run_a2f, should_run_iso, should_run_aniso methods.
 
+        self.ctx.current_structure = self.inputs.structure
+
         if self._BANDS_NAMESPACE in self.inputs:
             self.ctx.inputs_bands = AttributeDict(self.exposed_inputs(EpwBandsWorkChain, namespace=self._BANDS_NAMESPACE))
         if self._A2F_NAMESPACE in self.inputs:
@@ -732,6 +854,112 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             self.ctx.allen_dynes_values = []
             self.ctx.is_converged = False
 
+        if (
+            self._PW_BANDS_NAMESPACE in self.inputs
+            or
+            self._BANDS_NAMESPACE in self.inputs
+            ):
+            from aiida_quantumespresso.calculations.functions.seekpath_structure_analysis import seekpath_structure_analysis
+
+            inputs = {
+                "structure": self.inputs.structure,
+                'metadata': {
+                    'call_link_label': 'seekpath'
+                }
+            }
+
+            if 'bands_kpoints_distance' in self.inputs:
+                inputs['reference_distance'] = self.inputs.bands_kpoints_distance
+
+            result = seekpath_structure_analysis(**inputs)
+            self.ctx.bands_kpoints = result['explicit_kpoints']
+            self.out('seekpath_parameters', result['parameters'])
+
+    def should_run_pw_relax(self):
+        """Check if the pw relax workflow should be run.
+        If 'pw_relax' is not in the inputs, it will return False.
+        """
+
+        return self._PW_RELAX_NAMESPACE in self.inputs
+
+    def run_pw_relax(self):
+        """Run the pw relax workflow."""
+
+        inputs = AttributeDict(
+            self.exposed_inputs(
+                PwRelaxWorkChain,
+                namespace=self._PW_RELAX_NAMESPACE
+            )
+        )
+
+        inputs.metadata.call_link_label = self._PW_RELAX_NAMESPACE
+        inputs.structure = self.ctx.current_structure
+
+        workchain_node = self.submit(PwRelaxWorkChain, **inputs)
+        self.report(f'launching `PwRelaxWorkChain`<{workchain_node.pk}>')
+
+        return ToContext(workchain_pw_relax=workchain_node)
+
+    def inspect_pw_relax(self):
+        """Verify that the pw relax workflow finished successfully."""
+
+        workchain = self.ctx.workchain_pw_relax
+
+        if not workchain.is_finished_ok:
+            self.report(f'`PwRelaxWorkChain` failed with exit status {workchain.exit_status}')
+            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PW_RELAX
+
+        self.ctx.current_structure = workchain.outputs.output_structure
+        self.out_many(
+            self.exposed_outputs(
+                self.ctx.workchain_pw_relax,
+                PwRelaxWorkChain,
+                namespace=self._PW_RELAX_NAMESPACE,
+            ),
+        )
+    def should_run_pw_bands(self):
+        """Check if the pw bands workflow should be run.
+        If 'pw_bands' is not in the inputs or the 'kpoints_nscf' is not in the context, it will return False.
+        """
+
+        return self._PW_BANDS_NAMESPACE in self.inputs
+
+    def run_pw_bands(self):
+        """Run the pw bands workflow."""
+
+        inputs = AttributeDict(
+            self.exposed_inputs(
+                PwBandsWorkChain,
+                namespace=self._PW_BANDS_NAMESPACE
+                )
+        )
+
+        inputs.metadata.call_link_label = self._PW_BANDS_NAMESPACE
+        inputs.structure = self.ctx.current_structure
+        inputs.bands_kpoints = self.ctx.bands_kpoints
+
+        workchain_node = self.submit(PwBandsWorkChain, **inputs)
+        self.report(f'launching `PwBandsWorkChain`<{workchain_node.pk}>')
+
+        return ToContext(workchain_pw_bands=workchain_node)
+
+    def inspect_pw_bands(self):
+        """Verify that the pw bands workflow finished successfully."""
+
+        workchain = self.ctx.workchain_pw_bands
+
+        if not workchain.is_finished_ok:
+            self.report(f'`PwBandsWorkChain` failed with exit status {workchain.exit_status}')
+            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PW_BANDS
+
+        self.out_many(
+            self.exposed_outputs(
+                self.ctx.workchain_pw_bands,
+                PwBandsWorkChain,
+                namespace=self._PW_BANDS_NAMESPACE,
+            ),
+        )
+
     def should_run_b2w(self):
         """Check if the b2w workflow should continue or not."""
 
@@ -745,6 +973,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 namespace=self._B2W_NAMESPACE
             )
         )
+        inputs.structure = self.ctx.current_structure
         inputs.metadata.call_link_label = self._B2W_NAMESPACE
         workchain_node = self.submit(EpwB2WWorkChain, **inputs)
 
@@ -774,7 +1003,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             if self.should_run_b2w():
                 b2w_workchain = self.ctx.workchain_b2w
 
-                parent_folder_epw = b2w_workchain.outputs.epw.remote_stash
+                parent_folder_epw = b2w_workchain.outputs.epw_base.remote_stash
 
                 self.ctx.inputs_bands[self._BANDS_NAMESPACE].parent_folder_epw = parent_folder_epw
 
@@ -785,7 +1014,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     def run_bands(self):
         """Run the bands workflow."""
         inputs = self.ctx.inputs_bands
-        inputs.structure = self.inputs.structure
+        inputs.structure = self.ctx.current_structure
         inputs.metadata.call_link_label = self._BANDS_NAMESPACE
 
         workchain_node = self.submit(EpwBandsWorkChain, **inputs)
@@ -840,7 +1069,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         if self.should_run_b2w():
             b2w_workchain = self.ctx.workchain_b2w
 
-            parent_folder_epw = b2w_workchain.outputs.epw.remote_stash
+            parent_folder_epw = b2w_workchain.outputs.epw_base.remote_stash
 
             self.ctx.inputs_a2f[self._A2F_NAMESPACE].parent_folder_epw = parent_folder_epw
 
@@ -907,7 +1136,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         """Run the ``restart`` EPW calculation for the current interpolation distance."""
 
         inputs = self.ctx.inputs_a2f
-        inputs.structure = self.inputs.structure
+        inputs.structure = self.ctx.current_structure
         inputs.a2f.qfpoints_distance = self.ctx.interpolation_distances.pop()
 
         inputs.metadata.call_link_label = self._CONV_NAMESPACE
@@ -943,7 +1172,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         ):
             if self.should_run_b2w():
                 b2w_workchain = self.ctx.workchain_b2w
-                parent_folder_epw = b2w_workchain.outputs.epw.remote_stash
+                parent_folder_epw = b2w_workchain.outputs.epw_base.remote_stash
                 self.ctx.inputs_a2f[self._A2F_NAMESPACE].parent_folder_epw = parent_folder_epw
             return True
         else:
@@ -952,7 +1181,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     def run_a2f(self):
         """Run the a2f workflow."""
         inputs = self.ctx.inputs_a2f
-        inputs.structure = self.inputs.structure
+        inputs.structure = self.ctx.current_structure
 
         inputs.metadata.call_link_label = self._A2F_NAMESPACE
         workchain_node = self.submit(EpwA2fWorkChain, **inputs)
@@ -1001,7 +1230,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     def run_iso(self):
         """Run the iso workflow."""
         inputs = self.ctx.inputs_iso
-        inputs.structure = self.inputs.structure
+        inputs.structure = self.ctx.current_structure
         inputs.restart_type = orm.EnumData(RestartType.FROM_EPHMAT)
         parent_folder_epw = inputs[self._ISO_NAMESPACE].parent_folder_epw
 
@@ -1053,7 +1282,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
     def run_aniso(self):
         """Run the aniso workflow."""
         inputs = self.ctx.inputs_aniso
-        inputs.structure = self.inputs.structure
+        inputs.structure = self.ctx.current_structure
         inputs.restart_type = orm.EnumData(RestartType.FROM_EPHMAT)
 
         parent_folder_epw = inputs[self._ANISO_NAMESPACE].parent_folder_epw

@@ -3,7 +3,7 @@
 
 from aiida import orm
 from .intp import EpwBaseIntpWorkChain
-
+from .base import EpwBaseWorkChain
 from ..tools.calculators import calculate_iso_tc
 
 
@@ -119,6 +119,10 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         parameters = self.ctx.inputs.epw.parameters.get_dict()
         temps = f'{self._MIN_TEMP} {self.inputs.estimated_Tc_iso.value*1.5}'
         parameters['INPUTEPW']['temps'] = temps
+        parameters['INPUTEPW']['nstemp'] = min(
+            int(self.inputs.estimated_Tc_iso.value*1.5),
+            EpwBaseWorkChain._MAX_NSTEMP
+            )
 
         self.ctx.inputs.epw.parameters = orm.Dict(parameters)
 

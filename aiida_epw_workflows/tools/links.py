@@ -15,7 +15,7 @@ def get_descendants_by_label(
 
 def get_descendants(
     parent_workchain: orm.WorkChainNode,
-    link_type: LinkType
+    link_type: LinkType = LinkType.CALL_WORK
     ) -> dict:
     """Get the descendant nodes of the parent workchain."""
 

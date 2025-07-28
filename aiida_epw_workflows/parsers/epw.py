@@ -168,7 +168,8 @@ class EpwParser(BaseParser):
             ('ebndmin', float, re.compile(r'ebndmin\s*=\s*([+-]?[\d\.]+)')),
             ('ibndmax', int, re.compile(r'ibndmax\s*=\s*(\d+)')),
             ('ebndmax', float, re.compile(r'ebndmax\s*=\s*([+-]?[\d\.]+)')),
-            ('nbnd_skip', int, re.compile(r'^\s*Skipping the first\s+(\d+)\s+bands:')),
+            # ('nbnd_skip', int, re.compile(r'^\s*Skipping the first\s+(\d+)\s+bands:')),
+            ('nbnd_skip', int, re.compile(r'^\s*Skipping\s+(\d+)\s+occupied bands:')),
             ('fermi_energy_coarse', float, re.compile(r'^\s*Fermi energy coarse grid =\s*([+-]?[\d\.]+)\s+eV')),
             ('fermi_energy_fine', float, re.compile(r'^\s*Fermi energy is calculated from the fine k-mesh: Ef =\s*([+-]?[\d\.]+)\s+eV')),
             ('fine_q_mesh', lambda m: [int(x) for x in m.split()], re.compile(r'^\s*Using uniform q-mesh:\s+((?:\d+\s*)+)')),
@@ -178,11 +179,17 @@ class EpwParser(BaseParser):
             ('electron_smearing', lambda s: float(s.replace('D', 'E').replace('d', 'E')), re.compile(r'Electron smearing \(eV\)\s*=\s*([\d\.D+-]+)')),
             ('fermi_window', lambda s: float(s.replace('D', 'E').replace('d', 'E')), re.compile(r'Fermi window \(eV\)\s*=\s*([\d\.D+-]+)')),
             ('lambda', float, re.compile(r'Electron-phonon coupling strength\s*=\s*([\d\.]+)')),
-            ('Allen_Dynes_Tc', float, re.compile(r'Estimated Allen-Dynes Tc\s*=\s*([\d\.]+) K for muc')),
+            # For EPW > 6.0
+            # ('Allen_Dynes_Tc', float, re.compile(r'Estimated Allen-Dynes Tc\s*=\s*([\d\.]+) K for muc')),
+            ('McMillan_Tc', float, re.compile(r'Estimated Tc using McMillan expression\s*=\s*([\d\.]+) K for muc')),
+            ('Allen_Dynes_Tc', float, re.compile(r'Estimated Tc using Allen-Dynes modified McMillan expression\s*=\s*([\d\.]+) K')),
+            ('SISSO_Tc', float, re.compile(r'Estimated Tc using SISSO machine learning model\s*=\s*([\d\.]+) K')),
             ('muc', float, re.compile(r'for muc\s*=\s*([\d\.]+)')),
-            ('w_log', float, re.compile(r'Estimated w_log in Allen-Dynes Tc\s*=\s*([\d\.]+) meV')),
-            ('BCS_gap', float, re.compile(r'Estimated BCS superconducting gap\s*=\s*([\d\.]+) meV')),
-            ('ML_tc', float, re.compile(r'Estimated Tc from machine learning model\s*=\s*([\d\.]+) K')),
+            # ('w_log', float, re.compile(r'Estimated w_log in Allen-Dynes Tc\s*=\s*([\d\.]+) meV')),
+            ('w_log', float, re.compile(r'Estimated w_log\s*=\s*([\d\.]+) meV')),
+            # ('BCS_gap', float, re.compile(r'Estimated BCS superconducting gap\s*=\s*([\d\.]+) meV')),
+            ('BCS_gap', float, re.compile(r'Estimated BCS superconducting gap using McMillan Tc\s*=\s*([\d\.]+) meV')),
+            # ('ML_tc', float, re.compile(r'Estimated Tc from machine learning model\s*=\s*([\d\.]+) K')),
         )
 
         parsed_data = {}

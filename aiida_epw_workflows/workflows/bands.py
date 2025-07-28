@@ -37,8 +37,14 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
         spec.inputs.validator = cls.validate_inputs
 
         spec.input(
+            'bands_kpoints', valid_type=orm.KpointsData, required=False,
+            help='The kpoints to use for the band structure.'
+            )
+
+        spec.input(
             'bands_kpoints_distance', valid_type=orm.Float, required=False,
-            help='The distance between the kpoints in the band structure.')
+            help='The distance between the kpoints in the band structure.'
+            )
 
         spec.output(
             "seekpath_parameters",
@@ -81,6 +87,7 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
             structure,
             protocol=None,
             overrides=None,
+            kpoints=None,
             **kwargs
         ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
@@ -105,6 +112,9 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
             **kwargs
             )
 
+        if kpoints:
+            builder.kpoints = kpoints
+
         return builder
 
     def setup(self):
@@ -116,20 +126,23 @@ class EpwBandsWorkChain(EpwBaseIntpWorkChain):
 
         from aiida_quantumespresso.calculations.functions.seekpath_structure_analysis import seekpath_structure_analysis
 
-        inputs = {
-            "structure": self.inputs.structure,
-            'metadata': {
-                'call_link_label': 'seekpath'
+        if 'kpoints' in self.inputs:
+            self.ctx.bands_kpoints = self.inputs.bands_kpoints
+        else:
+            inputs = {
+                "structure": self.inputs.structure,
+                'metadata': {
+                    'call_link_label': 'seekpath'
+                }
             }
-        }
 
-        if 'bands_kpoints_distance' in self.inputs:
-            inputs['reference_distance'] = self.inputs.bands_kpoints_distance
+            if 'bands_kpoints_distance' in self.inputs:
+                inputs['reference_distance'] = self.inputs.bands_kpoints_distance
 
-        result = seekpath_structure_analysis(**inputs)
-        self.ctx.bands_kpoints = result['explicit_kpoints']
+            result = seekpath_structure_analysis(**inputs)
+            self.ctx.bands_kpoints = result['explicit_kpoints']
 
-        self.out('seekpath_parameters', result['parameters'])
+            self.out('seekpath_parameters', result['parameters'])
 
     def prepare_process(self):
         """Prepare the `EpwBaseWorkChain`.
