@@ -2,7 +2,7 @@
 Quick Start
 ************
 
-This tutorial will guide you through running a complete `EpwSuperconWorkChain` to calculate the superconducting properties of a material.
+This tutorial will guide you through running a complete `EpwSuperconWorkChain` or `EpwTransportWorkChain` to calculate the superconducting properties of a material.
 
 Step 1: Setup your AiiDA environment
 =======================================
@@ -33,14 +33,28 @@ Step 2: Prepare the input structure
 
 Load the crystal structure you want to calculate.
 
-For superconductivity calculation, lead is a good example.
+For superconductivity calculation, Pb and MgB$_2$ are good examples. You can find the structures in the `examples/structures/` folder within the package.
 
 .. code-block:: python
 
-   # Load a structure from its PK or UUID
-   structure = orm.load_node(123)
+   # Load a structure from files
+   structure =  read_structure_from_file(
+        package / 'examples/structures/Pb.xsf'
+        )
+    or
+    structure =  read_structure_from_file(
+        package / 'examples/structures/MgB2.xsf'
+        )
 
-Step 3: Create the builder
+For transport calculations, you may choose silicon as an example.
+.. code-block:: python
+
+   # Load a structure from files
+   structure =  read_structure_from_file(
+        package / 'examples/structures/Si.xsf'
+        )
+
+Step 3: Create the builder for superconductivity calculation
 ==========================
 
 We will use the `get_builder_from_protocol` factory method to easily set up the inputs. We will run a "fast" calculation from scratch.
@@ -100,43 +114,6 @@ Once the `EpwSuperconWorkChain` has finished successfully, you can inspect its o
    print(f"WorkChain finished with status: {node.process_state}")
    print(f"Available outputs: {results.keys()}")
 
-   # You may plot the electron/phonon band structures, density of states, (accumulated) spectral functions using the tools provided by the package.
-   from aiida_epw_workflows.tools.plot import (
-        plot_epw_interpolated_bands,
-        plot_a2f,
-        plot_eldos,
-    )
-
-   import matplotlib.pyplot as plt
-   import matplotlib.gridspec as gridspec
-
-    fig = plt.figure(figsize=(10, 8))
-    gs = gridspec.GridSpec(2, 2, width_ratios=[4, 1])
-    ax1 = fig.add_subplot(gs[0, 0])
-    ax2 = fig.add_subplot(gs[1, 0])
-    ax3 = fig.add_subplot(gs[1, 1])
-    ax4 = fig.add_subplot(gs[0, 1])
-
-    descendants = EpwSuperConWorkChain.get_descendants_workchains(
-        node,
-        link_type=LinkType.CALL,
-    )
-    plot_epw_interpolated_bands(
-        epw_workchain = descendants['bands'][0],
-        axes=numpy.array([ax1, ax2]),
-    )
-
-    plot_a2f(
-        a2f_workchain = descendants['a2f'][0],
-        axis = ax3,
-        show_data = True,
-        )
-
-    plot_eldos(
-        a2f_workchain = descendants['a2f'][0],
-        axis = ax4,
-        )
-
    # Get the final Allen-Dynes Tc from the 'a2f' sub-process results
 
     tc = descendants['a2f'][0].outputs.output_parameters.get('Allen_Dynes_Tc')
@@ -149,5 +126,6 @@ Once the `EpwSuperconWorkChain` has finished successfully, you can inspect its o
     # You can also get the anisotropic Tc from the 'aniso' sub-process results
     tc = descendants['aniso'][0].outputs.output_parameters.get('Allen_Dynes_Tc')
     print(f"Calculated Allen-Dynes Tc = {tc:.2f} K")
+
 
 This concludes the quick start tutorial. For more advanced topics, such as restarting calculations or using the submission controller, please refer to the User Guide.

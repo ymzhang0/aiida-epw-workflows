@@ -330,7 +330,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         # Then check if the previous EpwB2WWorkChain is finished_ok
 
         # Get the wannier90 workchain
-        from ..tools.links import get_descendants
+        from aiida_epw_workflows.tools import get_descendants
         from aiida.common.links import LinkType
 
         descendants = get_descendants(from_b2w_workchain, LinkType.CALL_WORK)
@@ -752,7 +752,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         inputs.scf.pop('kpoints', None)
 
         workchain_node = self.submit(Wannier90OptimizeWorkChain, **inputs)
-        self.report(f'launching wannier90 work chain {workchain_node.pk}')
+        self.report(f'launching `Wannier90OptimizeWorkChain`<{workchain_node.pk}>')
 
         return ToContext(workchain_w90_intp=workchain_node)
 
@@ -791,20 +791,20 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
     def run_ph_base(self):
         """Run the `PhBaseWorkChain`."""
-        inputs = AttributeDict(self.exposed_inputs(PhBaseWorkChain, namespace=self._PH_NAMESPACE))
+        inputs = AttributeDict(
+            self.exposed_inputs(PhBaseWorkChain, namespace=self._PH_NAMESPACE)
+            )
 
         if 'workchain_w90_intp' in self.ctx:
             inputs.ph.parent_folder = self.ctx.workchain_w90_intp.outputs.scf.remote_folder
 
-
         inputs.qpoints = self.ctx.qpoints
-
         inputs.metadata.call_link_label = self._PH_NAMESPACE
 
         self.set_target_base(inputs.ph, self._PH_NAMESPACE)
         workchain_node = self.submit(PhBaseWorkChain, **inputs)
 
-        self.report(f'launching `ph_base` {workchain_node.pk}')
+        self.report(f'launching `PhBaseWorkChain`<{workchain_node.pk}>')
 
         return ToContext(workchain_ph=workchain_node)
 
@@ -830,7 +830,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         )
 
         if self.inputs.check_stability.value:
-            from aiida_epw_workflows.tools.check import check_stability_ph_base
+            from aiida_epw_workflows.tools import check_stability_ph_base
             is_stable, message = check_stability_ph_base(workchain, self._MIN_FREQ)
             self.report(message)
             if not is_stable:
@@ -853,7 +853,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = self._Q2R_NAMESPACE
 
         workchain_node = self.submit(Q2rBaseWorkChain, **inputs)
-        self.report(f'launching `q2r_base` {workchain_node.pk}')
+        self.report(f'launching `Q2rBaseWorkChain`<{workchain_node.pk}>')
 
         return ToContext(workchain_q2r=workchain_node)
 
@@ -879,14 +879,19 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
 
     def run_matdyn_base(self):
         """Run the `matdyn.x` calculation."""
-        inputs = AttributeDict(self.exposed_inputs(MatdynBaseWorkChain, namespace=self._MATDYN_NAMESPACE))
+        inputs = AttributeDict(
+            self.exposed_inputs(
+                MatdynBaseWorkChain,
+                namespace=self._MATDYN_NAMESPACE
+                )
+            )
 
         inputs.matdyn.force_constants = self.ctx.force_constants
         inputs.matdyn.kpoints = self.ctx.bands_kpoints
         inputs.metadata.call_link_label = self._MATDYN_NAMESPACE
 
         workchain_node = self.submit(MatdynBaseWorkChain, **inputs)
-        self.report(f'launching `matdyn_base` {workchain_node.pk}')
+        self.report(f'launching `MatdynBaseWorkChain`<{workchain_node.pk}>')
 
         return ToContext(workchain_matdyn=workchain_node)
 
@@ -908,6 +913,14 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
             ),
         )
 
+        if self.inputs.check_stability.value:
+            from aiida_epw_workflows.tools import check_stability_matdyn_base
+            is_stable, message = check_stability_matdyn_base(workchain, self._MIN_FREQ)
+            self.report(message)
+            if not is_stable:
+                return self.exit_codes.ERROR_MATDYN_BASE_UNSTABLE
+
+
     def run_epw_base(self):
         """Run the `epw.x` calculation."""
 
@@ -924,7 +937,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = self._EPW_NAMESPACE
         self.set_target_base(inputs.epw, self._EPW_NAMESPACE)
         workchain_node = self.submit(EpwBaseWorkChain, **inputs)
-        self.report(f'launching `epw_base` {workchain_node.pk}')
+        self.report(f'launching `EpwBaseWorkChain`<{workchain_node.pk}>')
 
         return ToContext(workchain_epw=workchain_node)
 

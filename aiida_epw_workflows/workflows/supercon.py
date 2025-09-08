@@ -277,12 +277,12 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             message='The `pw_bands` sub process failed')
         spec.exit_code(403, 'ERROR_SUB_PROCESS_B2W',
             message='The `b2w` sub process failed')
-        spec.exit_code(404, 'ERROR_CONVERGENCE_NOT_REACHED',
-            message='The convergence is not reached in current interpolation list.')
-        spec.exit_code(405, 'ERROR_SUB_PROCESS_BANDS',
+        spec.exit_code(404, 'ERROR_SUB_PROCESS_BANDS',
             message='The `bands` sub process failed')
-        spec.exit_code(406, 'ERROR_EPW_BANDS_UNSTABLE',
+        spec.exit_code(405, 'ERROR_EPW_BANDS_UNSTABLE',
             message='The phonon is not stable from epw interpolation.')
+        spec.exit_code(406, 'ERROR_CONVERGENCE_NOT_REACHED',
+            message='The convergence is not reached in current interpolation list.')
         spec.exit_code(407, 'ERROR_SUB_PROCESS_A2F',
             message='The `a2f` sub process failed')
         spec.exit_code(408, 'ERROR_ALLEN_DYNES_TC_TOO_LOW',
@@ -443,7 +443,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         # if from_supercon_workchain.is_finished_ok:
         #     raise Warning('The `EpwSuperConWorkChain` is already finished.')
 
-        from ..tools.links import get_descendants
+        from aiida_epw_workflows.tools import get_descendants
         from aiida.common.links import LinkType
 
         descendants = get_descendants(
@@ -832,6 +832,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         # parent_folder_epw in the should_run_b2w, should_run_a2f, should_run_iso, should_run_aniso methods.
 
         self.ctx.current_structure = self.inputs.structure
+        self.ctx.nbnd = 0
 
         if self._BANDS_NAMESPACE in self.inputs:
             self.ctx.inputs_bands = AttributeDict(self.exposed_inputs(EpwBandsWorkChain, namespace=self._BANDS_NAMESPACE))
@@ -847,7 +848,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         self.ctx.inputs_aniso[self._ANISO_NAMESPACE].kfpoints_factor = self.inputs.kfpoints_factor
 
         if 'interpolation_distances' in self.inputs:
-            self.report("Will check convergence")
+            self.report("Will test convergence of Allen-Dynes Tc")
             self.ctx.interpolation_distances = self.inputs.get('interpolation_distances').get_list()
             self.ctx.interpolation_distances.sort()
             self.ctx.final_a2f = None
@@ -907,9 +908,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         if not workchain.is_finished_ok:
             self.report(f'`PwRelaxWorkChain` failed with exit status {workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PW_RELAX
+            return self.exit_codes.ERROR_SUB_PROCESS_PW_RELAX
 
         self.ctx.current_structure = workchain.outputs.output_structure
+        self.ctx.nbnd = workchain.outputs.output_parameters.get('number_of_bands')
         self.out_many(
             self.exposed_outputs(
                 self.ctx.workchain_pw_relax,
@@ -917,6 +919,10 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 namespace=self._PW_RELAX_NAMESPACE,
             ),
         )
+
+        # Immediately clean the workdir of the pw relax workchain
+        self._clean_workdir(workchain)
+
     def should_run_pw_bands(self):
         """Check if the pw bands workflow should be run.
         If 'pw_bands' is not in the inputs or the 'kpoints_nscf' is not in the context, it will return False.
@@ -938,6 +944,11 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         inputs.structure = self.ctx.current_structure
         inputs.bands_kpoints = self.ctx.bands_kpoints
 
+        parameters = inputs.scf.pw.parameters.get_dict()
+        if self.ctx.nbnd:
+            parameters['SYSTEM']['nbnd'] = self.ctx.nbnd
+        inputs.scf.pw.parameters = orm.Dict(parameters)
+
         workchain_node = self.submit(PwBandsWorkChain, **inputs)
         self.report(f'launching `PwBandsWorkChain`<{workchain_node.pk}>')
 
@@ -950,7 +961,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
 
         if not workchain.is_finished_ok:
             self.report(f'`PwBandsWorkChain` failed with exit status {workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PW_BANDS
+            return self.exit_codes.ERROR_SUB_PROCESS_PW_BANDS
 
         self.out_many(
             self.exposed_outputs(
@@ -959,6 +970,9 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 namespace=self._PW_BANDS_NAMESPACE,
             ),
         )
+
+        # Immediately clean the workdir of the pw bands workchain
+        self._clean_workdir(workchain)
 
     def should_run_b2w(self):
         """Check if the b2w workflow should continue or not."""
@@ -975,6 +989,12 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         )
         inputs.structure = self.ctx.current_structure
         inputs.metadata.call_link_label = self._B2W_NAMESPACE
+
+        scf_parameters = inputs.w90_intp.scf.pw.parameters.get_dict()
+        if self.ctx.nbnd:
+            scf_parameters['SYSTEM']['nbnd'] = self.ctx.nbnd
+        inputs.w90_intp.scf.pw.parameters = orm.Dict(scf_parameters)
+
         workchain_node = self.submit(EpwB2WWorkChain, **inputs)
 
         self.report(f'launching EpwB2WWorkChain<{workchain_node.pk}>')
@@ -986,7 +1006,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         b2w_workchain = self.ctx.workchain_b2w
 
         if not b2w_workchain.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {b2w_workchain.exit_status}')
+            self.report(f'`EpwB2WWorkChain` failed with exit status {b2w_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_B2W
 
         self.out_many(
@@ -1028,7 +1048,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         bands_workchain = self.ctx.workchain_bands
 
         if not bands_workchain.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {bands_workchain.exit_status}')
+            self.report(f'`EpwBandsWorkChain` failed with exit status {bands_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_BANDS
 
         self.out_many(
@@ -1039,13 +1059,14 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             )
         )
 
-        import numpy
-        ph_bands = bands_workchain.outputs.bands.ph_band_structure.get_bands()
-        min_freq = numpy.min(ph_bands)
-        max_freq = numpy.max(ph_bands)
+        from aiida_epw_workflows.tools.ph import check_stability_epw_bands
+        is_stable, msg, max_freq = check_stability_epw_bands(
+            bands_workchain, self._MIN_FREQ
+            )
 
-        if min_freq < EpwBandsWorkChain._MIN_FREQ:
-            return self.exit_codes.ERROR_IMAGINARY_PHONON_FREQ
+        if not is_stable:
+            self.report(msg)
+            return self.exit_codes.ERROR_EPW_BANDS_UNSTABLE
 
         for namespace, key in (
             (self._A2F_NAMESPACE, 'inputs_a2f'),
@@ -1118,7 +1139,18 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         ## Leaving only the final a2f calculation for later use.
 
         if self.ctx.is_converged:
+            self.report('Cleaning the remote folders of the previous a2f calculations.')
+            for node in self.ctx.a2f_conv[:-1]:
+                self._clean_workdir(node)
+
             self.ctx.inputs_iso[self._ISO_NAMESPACE].parent_folder_epw = self.ctx.a2f_conv[-1].outputs.remote_folder
+            self.out_many(
+                self.exposed_outputs(
+                    self.ctx.a2f_conv[-1],
+                    EpwA2fWorkChain,
+                    namespace=self._A2F_NAMESPACE
+                )
+            )
             return False
 
         else:
@@ -1126,6 +1158,16 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 if self.inputs.always_run_final.value:
                     self.ctx.inputs_iso[self._ISO_NAMESPACE].parent_folder_epw = self.ctx.a2f_conv[-1].outputs.remote_folder
                     self.report('Allen-Dynes Tc is not converged, but will run the following workchains!.')
+                    self.report('Cleaning the remote folders of the previous a2f calculations.')
+                    for node in self.ctx.a2f_conv[:-1]:
+                        self._clean_workdir(node)
+                    self.out_many(
+                        self.exposed_outputs(
+                            self.ctx.a2f_conv[-1],
+                            EpwA2fWorkChain,
+                            namespace=self._A2F_NAMESPACE
+                        )
+                    )
                     return False
                 else:
                     return self.exit_codes.ERROR_CONVERGENCE_NOT_REACHED
@@ -1151,7 +1193,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         a2f_workchain = self.ctx.a2f_conv[-1]
 
         if not a2f_workchain.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {a2f_workchain.exit_status}')
+            self.report(f'`EpwA2fWorkChain` failed with exit status {a2f_workchain.exit_status}')
             self.ctx.a2f_conv.pop()
         else:
             ## TODO: Use better way to get the mesh
@@ -1194,7 +1236,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         """Inspect the a2f workflow."""
         a2f_workchain = self.ctx.workchain_a2f
         if not a2f_workchain.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {a2f_workchain.exit_status}')
+            self.report(f'`EpwA2fWorkChain` failed with exit status {a2f_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_A2F
 
         self.out_many(
@@ -1300,7 +1342,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         """Inspect the aniso workflow."""
         aniso_workchain = self.ctx.workchain_aniso
         if not aniso_workchain.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {aniso_workchain.exit_status}')
+            self.report(f'`EpwAnisoWorkChain` failed with exit status {aniso_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_ANISO
 
         self.out_many(
@@ -1312,15 +1354,23 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
         )
     def results(self):
         """TODO"""
+        pass
 
-        if 'a2f_conv' in self.ctx:
-            self.out_many(
-                self.exposed_outputs(
-                    self.ctx.a2f_conv[-1],
-                    EpwA2fWorkChain,
-                    namespace=self._CONV_NAMESPACE
-                )
-            )
+    @staticmethod
+    def _clean_workdir(node):
+        """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
+
+        cleaned_calcs = []
+
+        for called_descendant in node.called_descendants:
+            if isinstance(called_descendant, orm.CalcJobNode):
+                try:
+                    called_descendant.outputs.remote_folder._clean()  # pylint: disable=protected-access
+                    cleaned_calcs.append(called_descendant.pk)
+                except (IOError, OSError, KeyError):
+                    pass
+
+        return cleaned_calcs
 
     def on_terminated(self):
         """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
@@ -1330,15 +1380,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
             self.report('remote folders will not be cleaned')
             return
 
-        cleaned_calcs = []
-
-        for called_descendant in self.node.called_descendants:
-            if isinstance(called_descendant, orm.CalcJobNode):
-                try:
-                    called_descendant.outputs.remote_folder._clean()  # pylint: disable=protected-access
-                    cleaned_calcs.append(called_descendant.pk)
-                except (IOError, OSError, KeyError):
-                    pass
+        cleaned_calcs = self._clean_workdir(self.node)
 
         if cleaned_calcs:
             self.report(f"cleaned remote folders of calculations: {' '.join(map(str, cleaned_calcs))}")

@@ -1,5 +1,5 @@
 aiida_epw_workflows
-==============
+===================
 
 .. toctree::
    :maxdepth: 4

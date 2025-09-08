@@ -1,4 +1,3 @@
-from aiida import orm
 
 def is_compatible(
     kpoints,

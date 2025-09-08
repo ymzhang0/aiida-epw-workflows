@@ -1,6 +1,8 @@
-=================
+.. _overview:
+
+===================
 Project Structure
-=================
+===================
 
 This page provides an overview of the ``aiida-epw-workflows`` repository structure, explaining the role of each key directory and module. The layout is based on standard AiiDA plugin conventions to facilitate maintainability and collaboration.
 
@@ -34,10 +36,10 @@ The project follows a layered architecture to maximize code reuse and separate c
    └── pyproject.toml
 
 Module Breakdown
-----------------
+=================
 
 ``aiida_epw_workflows/workflows/``
-*****************************
+**********************************
 
 This is the core of the plugin, containing all the AiiDA ``WorkChain`` definitions.
 
@@ -46,7 +48,7 @@ This is the core of the plugin, containing all the AiiDA ``WorkChain`` definitio
 This is the lowest-level workchain wrapper around a single ``EpwCalculation``. It should include robust error handling and restart logic for a single ``epw.x`` run, but does not handle complex, multi-step physics workflows.
 
 ``b2w.py``: `EpwB2WWorkChain`
-==============================
+===============================
 This is a wrapper around the `Wannier90OptimizeWorkChain`, `PhBaseWorkChain` and `EpwBaseWorkChain`. It internally runs the full `Wannier90OptimizeWorkChain`, a `PhBaseWorkChain`, and a final `EpwBaseWorkChain` to generate the electron-phonon matrix elements in the Wannier representation (``.epmatwp`` files). It can be run standalone or as a preparatory step for other calculations.
 
 ``intp.py``: `EpwBaseIntpWorkChain`
@@ -59,7 +61,7 @@ This is a crucial **base class** that defines a generic **two-step computational
 It contains all the shared logic for handling restarts, setting up inputs, and passing the ``parent_folder`` from the first step to the second. It is not meant to be run directly.
 
 ``bands.py``, ``a2f.py``, ``iso.py``, ``aniso.py``, ``bte.py``: Concrete Implementations
-==============================================================
+=========================================================================================
 These are the workchains you would typically run for a specific task. They all **inherit** from ``EpwBaseIntpWorkChain``.
 
 Their code is very concise, as they only need to:
@@ -86,5 +88,5 @@ This is the workchain for calculating the transport properties.
 
 
 ``aiida_epw_workflows/controllers/``
-*******************************
+*************************************
 This module contains submission controllers based on `aiida-submission-controller`. The ``EpwSuperconWorkChainController`` provides a powerful interface for submitting large batches of ``EpwSuperconWorkChain`` calculations, for instance, for a high-throughput screening campaign across a group of structures. It handles duplicate checking and concurrency management. It is to be developed in the future.

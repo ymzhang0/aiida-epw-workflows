@@ -156,6 +156,8 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
             }
 
         Tc_iso = calculate_iso_tc(**inputs)
+        self.report(f'The isotropic Tc is {Tc_iso.value} K.')
+
         self.ctx.Tc_iso = Tc_iso
 
     def results(self):

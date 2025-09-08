@@ -1,10 +1,10 @@
-aiida\_supercon.workflows.protocols package
-===========================================
+aiida\_epw\_workflows.workflows.protocols package
+=================================================
 
 Module contents
 ---------------
 
 .. automodule:: aiida_epw_workflows.workflows.protocols
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:

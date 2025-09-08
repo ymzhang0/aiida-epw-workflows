@@ -13,4 +13,10 @@ This section contains information for developers who want to contribute to the `
    base
    b2w
    intp
+   bands
+   a2f
+   iso
+   aniso
    supercon
+   bte
+   transport

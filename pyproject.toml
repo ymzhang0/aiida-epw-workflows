@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://github.com/ymzhang0/aiida-supercon"
+Source = "https://github.com/ymzhang0/aiida-epw-workflows"
 
 [project.optional-dependencies]
 

@@ -15,9 +15,9 @@ sys.path.insert(0, os.path.abspath('..'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'aiida-epw'
-copyright = '2024, Marnik Bercx'
-author = 'Marnik Bercx, Yiming Zhang'
+project = 'aiida-epw-workflows'
+copyright = '2025, Yiming Zhang, Marnik Bercx'
+author = 'Yiming Zhang, Marnik Bercx'
 release = '0.1.0'
 
 # -- General configuration ---------------------------------------------------

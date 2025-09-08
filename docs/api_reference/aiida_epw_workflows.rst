@@ -1,5 +1,5 @@
 aiida\_epw\_workflows package
-=======================
+=============================
 
 Subpackages
 -----------
@@ -7,6 +7,7 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
+   aiida_epw_workflows.calculations
    aiida_epw_workflows.data
    aiida_epw_workflows.parsers
    aiida_epw_workflows.tools
@@ -17,5 +18,5 @@ Module contents
 
 .. automodule:: aiida_epw_workflows
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
