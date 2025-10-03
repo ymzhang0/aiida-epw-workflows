@@ -76,7 +76,7 @@ dev = [
 
 [project.entry-points.'aiida.workflows']
 'epw.base' = 'aiida_epw_workflows.workflows.base:EpwBaseWorkChain'
-'epw.intp' = 'aiida_epw_workflows.workflows.intp:EpwIntpWorkChain'
+'epw.intp' = 'aiida_epw_workflows.workflows.intp:EpwBaseIntpWorkChain'
 'epw.bands' = 'aiida_epw_workflows.workflows.bands:EpwBandsWorkChain'
 'epw.a2f' = 'aiida_epw_workflows.workflows.a2f:EpwA2fWorkChain'
 'epw.iso' = 'aiida_epw_workflows.workflows.iso:EpwIsoWorkChain'

@@ -4,7 +4,7 @@ import struct
 
 import numpy as np
 
-from aiida.common.datastructures import SinglefileData
+from aiida.orm import SinglefileData
 
 
 Int32 = "int32"
@@ -13,7 +13,6 @@ Float64 = "float64"
 class FString:
     def __init__(self, length):
         self.length = length
-
 
 class FortranFile:
     def __init__(self, filename):
@@ -146,7 +145,7 @@ class ChkData(SinglefileData):
         :return: a boolean
         """
         return self.base.attributes.get('have_disentangled')
-    
+
     @property
     def omega_invariant(self):
         """Return the omega invariant.
@@ -154,7 +153,7 @@ class ChkData(SinglefileData):
         :return: a scalar
         """
         return self.base.attributes.get('omega_invariant')
-    
+
     @property
     def n_dis(self):
         """Return the number of disentangled bands.
@@ -162,9 +161,9 @@ class ChkData(SinglefileData):
         :return: a list of integers
         """
         return self.base.attributes.get('n_dis')
-    
+
     def get_Udis(self):
-        
+
         n_kpts = self.n_kpts
         n_wann = self.n_wann
 
@@ -193,7 +192,7 @@ class ChkData(SinglefileData):
 
         U = [d @ m for d, m in zip(Udis, Uml)]
         return U
-    
+
     def Chk2Ukk(self, alat):
         n_bands = self.n_bands
         exclude_bands = self.exclude_bands
@@ -270,7 +269,7 @@ def parse_chk_file(filename):
         omega_invariant = -1.0
         dis_bands = []
         Udis = []
-        
+
     Uml = np.frombuffer(io.read_record(), dtype=np.complex128).reshape((n_wann, n_wann, n_kpts), order="F")
     M = np.frombuffer(io.read_record(), dtype=np.complex128).reshape((n_wann, n_wann, n_bvec, n_kpts), order="F")
 
@@ -303,5 +302,4 @@ def parse_chk_file(filename):
         "r": [r[:, iw] for iw in range(n_wann)],
         "spreads": spreads
     }
-    
-    
+

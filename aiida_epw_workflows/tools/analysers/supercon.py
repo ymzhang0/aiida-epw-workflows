@@ -1,5 +1,7 @@
+from doctest import FAIL_FAST
 from email import message
 from re import S
+import re
 from socket import NI_NOFQDN
 from pathlib import Path
 
@@ -60,6 +62,20 @@ class EpwSuperConWorkChainState(Enum):
     A2F_EXCEPTED = 908
     ISO_EXCEPTED = 909
     ANISO_EXCEPTED = 910
+    PW_RELAX_KILLED = 911
+    PW_BANDS_KILLED = 912
+    B2W_W90_INTP_SCF_KILLED = 913
+    B2W_W90_INTP_NSCF_KILLED = 914
+    B2W_W90_INTP_PW2WAN_KILLED = 915
+    B2W_W90_INTP_WANNIER_KILLED = 916
+    B2W_PH_BASE_KILLED = 917
+    B2W_EPW_BASE_KILLED = 918
+    B2W_MATDYN_BASE_KILLED = 919
+    BANDS_KILLED = 920
+    A2F_CONV_KILLED = 921
+    A2F_KILLED = 922
+    ISO_KILLED = 923
+    ANISO_KILLED = 924
     PW_RELAX_FINISHED_OK = 1001
     PW_BANDS_FINISHED_OK = 1002
     B2W_W90_INTP_SCF_FINISHED_OK = 1003
@@ -106,6 +122,7 @@ class EpwSuperConWorkChainAnalyser:
         workchain: orm.WorkChainNode,
         excepted_state: EpwSuperConWorkChainState,
         failed_state: EpwSuperConWorkChainState,
+        killed_state: EpwSuperConWorkChainState,
         finished_ok_state: EpwSuperConWorkChainState,
         namespace: str,
         ) -> tuple[EpwSuperConWorkChainState, str]:
@@ -123,6 +140,9 @@ class EpwSuperConWorkChainAnalyser:
         elif workchain.process_state == ProcessState.EXCEPTED:
             state = excepted_state
             message = f'has excepted at {namespace}'
+        elif workchain.process_state == ProcessState.KILLED:
+            state = killed_state
+            message = f'has killed at {namespace}'
         elif workchain.process_state == ProcessState.FINISHED:
             if not workchain.is_finished_ok:
                 state = failed_state
@@ -167,70 +187,76 @@ class EpwSuperConWorkChainAnalyser:
     @property
     def b2w_analyser(self):
         if self.descendants['b2w'] == []:
-            raise ValueError('`b2w` is not found')
+            return None
         else:
             return EpwB2WWorkChainAnalyser(self.descendants['b2w'][-1])
 
     @property
     def b2w_w90_intp(self):
         if self.descendants['b2w'] == []:
-            raise ValueError('`b2w` is not found')
+            raise None
         else:
             return self.b2w_analyser.w90_intp
 
     @property
     def b2w_ph_base(self):
         if self.descendants['b2w'] == []:
-            raise ValueError('`b2w` is not found')
+            raise None
         else:
             return self.b2w_analyser.ph_base
 
     @property
     def b2w_q2r_base(self):
         if self.descendants['b2w'] == []:
-            raise ValueError('`b2w` is not found')
+            raise None
         else:
             return self.b2w_analyser.q2r_base
 
     @property
     def b2w_matdyn_base(self):
         if self.descendants['b2w'] == []:
-            raise ValueError('`b2w` is not found')
+            raise None
         else:
             return self.b2w_analyser.matdyn_base
+    @property
+    def b2w_epw_base(self):
+        if self.descendants['b2w'] == []:
+            raise None
+        else:
+            return self.b2w_analyser.epw_base
 
     @property
-    def bands(self):
+    def epw_bands(self):
         if self.descendants['bands'] == []:
-            raise ValueError('bands is not found')
+            raise None
         else:
             return self.descendants['bands']
 
     @property
     def a2f_conv(self):
-        if self.descendants['a2f_conv'] == []:
-            raise ValueError('a2f_conv is not found')
+        if 'a2f_conv' not in self.descendants or self.descendants['a2f_conv'] == []:
+            return None
         else:
             return self.descendants['a2f_conv']
 
     @property
     def a2f(self):
-        if self.descendants['a2f'] == []:
-            raise ValueError('a2f is not found')
+        if 'a2f' not in self.descendants or self.descendants['a2f'] == []:
+            return None
         else:
             return self.descendants['a2f']
 
     @property
     def iso(self):
         if self.descendants['iso'] == []:
-            raise ValueError('iso is not found')
+            raise None
         else:
             return self.descendants['iso']
 
     @property
     def aniso(self):
         if self.descendants['aniso'] == []:
-            raise ValueError('aniso is not found')
+            return None
         else:
             return self.descendants['aniso']
 
@@ -242,6 +268,7 @@ class EpwSuperConWorkChainAnalyser:
             self.pw_relax[-1],
             EpwSuperConWorkChainState.PW_RELAX_EXCEPTED,
             EpwSuperConWorkChainState.PW_RELAX_FAILED,
+            EpwSuperConWorkChainState.PW_RELAX_KILLED,
             EpwSuperConWorkChainState.PW_RELAX_FINISHED_OK,
             'pw_relax'
         )
@@ -252,6 +279,7 @@ class EpwSuperConWorkChainAnalyser:
             self.pw_bands[0],
             EpwSuperConWorkChainState.PW_BANDS_EXCEPTED,
             EpwSuperConWorkChainState.PW_BANDS_FAILED,
+            EpwSuperConWorkChainState.PW_BANDS_KILLED,
             EpwSuperConWorkChainState.PW_BANDS_FINISHED_OK,
             'pw_bands'
         )
@@ -264,11 +292,12 @@ class EpwSuperConWorkChainAnalyser:
     def check_bands(self):
         """Check the state of the bands workchain."""
         return self.base_check(
-            self.bands[0],
+            self.epw_bands[0],
             EpwSuperConWorkChainState.BANDS_EXCEPTED,
             EpwSuperConWorkChainState.BANDS_FAILED,
+            EpwSuperConWorkChainState.BANDS_KILLED,
             EpwSuperConWorkChainState.BANDS_FINISHED_OK,
-            'bands'
+            'epw_bands'
         )
 
     def check_a2f(self):
@@ -276,6 +305,7 @@ class EpwSuperConWorkChainAnalyser:
             self.a2f[0],
             EpwSuperConWorkChainState.A2F_EXCEPTED,
             EpwSuperConWorkChainState.A2F_FAILED,
+            EpwSuperConWorkChainState.A2F_KILLED,
             EpwSuperConWorkChainState.A2F_FINISHED_OK,
             'a2f'
         )
@@ -297,6 +327,7 @@ class EpwSuperConWorkChainAnalyser:
             self.iso[0],
             EpwSuperConWorkChainState.ISO_EXCEPTED,
             EpwSuperConWorkChainState.ISO_FAILED,
+            EpwSuperConWorkChainState.ISO_KILLED,
             EpwSuperConWorkChainState.ISO_FINISHED_OK,
             'iso'
         )
@@ -306,6 +337,7 @@ class EpwSuperConWorkChainAnalyser:
             self.aniso[0],
             EpwSuperConWorkChainState.ANISO_EXCEPTED,
             EpwSuperConWorkChainState.ANISO_FAILED,
+            EpwSuperConWorkChainState.ANISO_KILLED,
             EpwSuperConWorkChainState.ANISO_FINISHED_OK,
             'aniso'
         )
@@ -314,6 +346,18 @@ class EpwSuperConWorkChainAnalyser:
         """Check the state of the workchain."""
         state = EpwSuperConWorkChainState.UNKNOWN
         message = 'status is not known'
+
+        state, message = self.base_check(
+            self.node,
+            EpwSuperConWorkChainState.EXCEPTED,
+            EpwSuperConWorkChainState.UNKNOWN,
+            EpwSuperConWorkChainState.KILLED,
+            EpwSuperConWorkChainState.FINISHED_OK,
+            'supercon'
+        )
+
+        if state != EpwSuperConWorkChainState.UNKNOWN:
+            return state, message
 
         state, message = self.check_pw_relax()
 
@@ -360,6 +404,46 @@ class EpwSuperConWorkChainAnalyser:
 
         return state, message
 
+    @property
+    def outputs_parameters(self):
+        from ase.spacegroup import get_spacegroup
+        outputs_parameters = {}
+
+        structure = self.structure
+
+        outputs_parameters['Formula'] = structure.get_formula()
+        sg = get_spacegroup(structure.get_ase(), symprec=1e-6)
+        outputs_parameters['Space group'] = f"[{sg.no}] {sg.symbol}"
+        if self.b2w_w90_intp:
+            scf_output_parameters = self.b2w_w90_intp[-1].outputs.scf.output_parameters
+            outputs_parameters['Coarse Fermi energy'] = scf_output_parameters.get('fermi_energy')
+            outputs_parameters['SCF k-points'] = " x ".join(map(str, scf_output_parameters.get('monkhorst_pack_grid')))
+            outputs_parameters['Total energy'] = scf_output_parameters.get('energy')
+            outputs_parameters['Number of electrons'] = scf_output_parameters.get('number_of_electrons')
+            outputs_parameters['WFC cutoff'] = scf_output_parameters.get('wfc_cutoff')
+            outputs_parameters['Degauss'] = scf_output_parameters.get('degauss')
+        if self.b2w_epw_base:
+            iteration_01 = self.get_descendants_by_label(self.b2w_epw_base[-1], 'iteration_01')[0].node
+            outputs_parameters['Coarse k-points'] = " x ".join(map(str, iteration_01.inputs.kpoints.get_kpoints_mesh()[0]))
+            outputs_parameters['Coarse q-points'] = " x ".join(map(str, iteration_01.inputs.qpoints.get_kpoints_mesh()[0]))
+            outputs_parameters['Number of Wannier functions'] = self.b2w_epw_base[-1].outputs.output_parameters.get('nbndsub')
+        if self.iso:
+            outputs_parameters['w log'] = self.iso[-1].outputs.output_parameters.get('w_log')
+            outputs_parameters['lambda'] = self.iso[-1].outputs.output_parameters.get('lambda')
+            outputs_parameters['Allen_Dynes_Tc'] = self.iso[-1].outputs.output_parameters.get('Allen_Dynes_Tc')
+            outputs_parameters['iso_tc'] = self.iso[-1].outputs.Tc_iso.value
+        elif self.a2f:
+            a2f_output_parameters = self.a2f[-1].outputs.output_parameters
+            outputs_parameters['w log'] = a2f_output_parameters.get('w_log')
+            outputs_parameters['lambda'] = a2f_output_parameters.get('lambda')
+            outputs_parameters['Allen_Dynes_Tc'] = a2f_output_parameters.get('Allen_Dynes_Tc')
+        elif self.a2f_conv:
+            a2f_conv_output_parameters = self.a2f_conv[-1].outputs.output_parameters
+            outputs_parameters['w log'] = a2f_conv_output_parameters.get('w_log')
+            outputs_parameters['lambda'] = a2f_conv_output_parameters.get('lambda')
+            outputs_parameters['Allen_Dynes_Tc'] = a2f_conv_output_parameters.get('Allen_Dynes_Tc')
+
+        return outputs_parameters
 
     def get_state(self):
         pk = self.node.pk
@@ -450,13 +534,14 @@ class EpwSuperConWorkChainAnalyser:
                 'source_id': source_id
             })
 
+    @staticmethod
     def get_descendants_by_label(
-        self,
+        workchain: orm.WorkChainNode,
         link_label_filter: str
         ) -> orm.WorkChainNode:
         """Get the descendant workchains of the parent workchain by the link label."""
         try:
-            return self.node.base.links.get_outgoing(
+            return workchain.base.links.get_outgoing(
                 link_label_filter=link_label_filter
                 ).all()
         except AttributeError:
@@ -480,7 +565,7 @@ class EpwSuperConWorkChainAnalyser:
                 ]:
                 message += 'Please check if you really want to clean this workchain.'
                 return message
-        
+
         cleaned_calcs = clean_workdir(self.node, dry_run=dry_run)
         message += f'Cleaned the workchain {self.node.pk}:\n'
         message += '  ' + ' '.join(map(str, cleaned_calcs)) + '\n'
@@ -496,7 +581,7 @@ class EpwSuperConWorkChainAnalyser:
         ) -> tuple[bool, str]:
         """Check if the convergence is reached."""
 
-        a2f_conv_workchains = self.get_descendants_by_label('a2f_conv')
+        a2f_conv_workchains = self.a2f_conv
 
         try:
             prev_allen_dynes = a2f_conv_workchains[-2].outputs.output_parameters['Allen_Dynes_Tc']
@@ -517,9 +602,9 @@ class EpwSuperConWorkChainAnalyser:
         min_freq: float # meV ~ 8.1 cm-1
         ) -> tuple[bool, str]:
         """Check if the epw.x interpolated phonon band structure is stable."""
-
-        epw_bands = self.get_descendants_by_label('epw_bands')
-        ph_bands = epw_bands.outputs.bands.ph_band_structure.get_bands()
+        if self.epw_bands is None:
+            raise ValueError('No epw bands found.')
+        ph_bands = self.epw_bands[-1].outputs.ph_band_structure.get_bands()
         min_freq = numpy.min(ph_bands)
         max_freq = numpy.max(ph_bands)
 
@@ -616,23 +701,29 @@ class EpwSuperConWorkChainAnalyser:
             with open(dirpath / f'{link_label}.freq', 'w') as f:
                 f.write(node.outputs.retrieved.get_object_content('phonon_displacements.dat'))
 
-    def show_bands(self):
-        """Show the bands."""
-        bands = self.bands[0].outputs.bands.band_structure.get_bands()
-        print(bands)
-
+    def show_pw_bands(self):
+        """Show the qe bands."""
+        bands = self.pw_bands[0].outputs.band_structure
+        bands.show_mpl()
 
     def show_eldos(
         self,
         axis = None,
         **kwargs,
         ):
+        if self.a2f:
+            plot_eldos(
+                a2f_workchain = self.a2f[-1],
+                axis = axis,
+                **kwargs,
+            )
+        elif self.a2f_conv:
+            plot_eldos(
+                a2f_workchain = self.a2f_conv[-1],
+                axis = axis,
+                **kwargs,
+            )
 
-        plot_eldos(
-            a2f_workchain = self.a2f[0],
-            axis = axis,
-            **kwargs,
-        )
 
     def show_phdos(
         self,
@@ -640,61 +731,103 @@ class EpwSuperConWorkChainAnalyser:
         **kwargs,
         ):
 
-        plot_phdos(
-            phdos = self.a2f[0].outputs.a2f.phdos,
-            axis = axis,
-            **kwargs,
-        )
-
+        if self.a2f:
+            plot_phdos(
+                a2f_workchain = self.a2f[-1],
+                axis = axis,
+                **kwargs,
+            )
+        elif self.a2f_conv:
+            plot_phdos(
+                a2f_workchain = self.a2f_conv[-1],
+                axis = axis,
+                **kwargs,
+            )
 
     def show_a2f(self, axis=None, **kwargs):
+        if self.a2f:
+            plot_a2f(
+                a2f_workchain = self.a2f[-1],
+                axis = axis,
+                **kwargs,
+            )
+        elif self.a2f_conv:
+            plot_a2f(
+                a2f_workchain = self.a2f_conv[-1],
+                axis = axis,
+                **kwargs,
+            )
 
-        plot_a2f(
-            a2f_workchain = self.a2f[0],
-            axis = axis,
-            **kwargs,
-        )
-
-    def show_epw_interpolated_bands(self, axes=None, **kwargs):
-
-        plot_epw_interpolated_bands(
-            epw_workchain = self.bands[0],
-            axes = axes,
-            **kwargs,
-        )
+    def show_epw_bands(self, axes=None, **kwargs):
+        if self.epw_bands:
+            plot_epw_interpolated_bands(
+                epw_workchain = self.epw_bands[-1],
+                axes = axes,
+                **kwargs,
+            )
 
     def show_gap_function(self, axis=None, **kwargs):
-
-        plot_gap_function(
-            aniso_workchain = self.aniso[0],
-            axis = axis,
-            **kwargs,
+        if self.aniso:
+            plot_gap_function(
+                aniso_workchain = self.aniso[-1],
+                axis = axis,
+                **kwargs,
         )
 
     def plot_all(self):
+        kwargs = {
+            'label_fontsize': 18,
+            'ticklabel_fontsize': 18,
+            'legend_fontsize': 12,
+        }
         from matplotlib import gridspec
         import matplotlib.pyplot as plt
-        fig = plt.figure(figsize=(8, 12))
-        gs = gridspec.GridSpec(3, 2, width_ratios=[4, 1])
+
+        fig = plt.figure(figsize=(18, 8))
+        gs = gridspec.GridSpec(2, 3, width_ratios=[4, 1, 4])
         ax1 = fig.add_subplot(gs[0, 0])
         ax2 = fig.add_subplot(gs[1, 0])
-        ax3 = fig.add_subplot(gs[1, 1])
-        ax4 = fig.add_subplot(gs[0, 1])
-        ax5 = fig.add_subplot(gs[2, 0])
+        ax3 = fig.add_subplot(gs[0, 1])
+        ax4 = fig.add_subplot(gs[1, 1])
+        ax5 = fig.add_subplot(gs[1, 2])
+        ax6 = fig.add_subplot(gs[0, 2])
 
-        plot_epw_interpolated_bands(
-            epw_workchain = self.bands[0],
-            axes=numpy.array([ax1, ax2]),
-        )
+        ax6.axis('off')
+        data = list(self.outputs_parameters.items())
 
-        plot_a2f(
-            a2f_workchain = self.a2f_conv[-1],
-            axis = ax3,
-            show_data = True,
+        the_table = ax6.table(
+            cellText=data,
+            loc='center',
+            cellLoc='left',
             )
 
-        plot_eldos(
-            a2f_workchain = self.a2f_conv[-1],
+        for _, cell in the_table.get_celld().items():
+            cell.set_edgecolor('none')
+        the_table.auto_set_font_size(False)
+        the_table.set_fontsize(kwargs['legend_fontsize'])
+        the_table.scale(1, 1.2)
+
+        self.show_epw_bands(
+            axes=numpy.array([ax1, ax2]),
+            **kwargs,
+        )
+
+        self.show_eldos(
+            axis = ax3,
+            **kwargs,
+            )
+        ax3.set_ylabel("")
+        ax3.set_yticks([], [])
+
+        self.show_a2f(
             axis = ax4,
+            show_data = False,
+            **kwargs,
+            )
+        ax4.set_ylabel("")
+        ax4.set_yticks([], [])
+        self.show_gap_function(
+            axis = ax5,
+            **kwargs,
             )
 

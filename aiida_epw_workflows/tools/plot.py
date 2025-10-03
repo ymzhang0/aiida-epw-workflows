@@ -38,12 +38,14 @@ def plot_eldos(
 
     ax.set_xticks(
         [0, round(numpy.max(dos) * 1.05, 1)],
-        [0, round(numpy.max(dos) * 1.05, 1)],)
+        [0, round(numpy.max(dos) * 1.05, 1)],
+        fontsize=kwargs.get('ticklabel_fontsize', 16),
+        )
     ax.set_yticks([], [])
 
     ax.set_xlim(0, round(numpy.max(dos) * 1.05, 1))
     ax.set_ylim(-2, 2)
-    ax.set_ylabel(r"Energy (eV)")
+    ax.set_ylabel(r"Energy (eV)", fontsize=kwargs.get('label_fontsize', 16))
 
 
     if axis is None:
@@ -73,14 +75,16 @@ def plot_phdos(
     ax.set_xticks(
         [0, round(numpy.max(dos) * 1.05, 1)],
         [0, round(numpy.max(dos) * 1.05, 1)],
+        fontsize=kwargs.get('ticklabel_fontsize', 16),
         )
     ax.set_yticks(
         [0, round(numpy.max(w) * 1.05, 1)],
         [0, round(numpy.max(w) * 1.05, 1)],
+        fontsize=kwargs.get('ticklabel_fontsize', 16),
         )
     ax.set_xlim(0, round(numpy.max(dos) * 1.05, 1))
     ax.set_ylim(0, round(numpy.max(w) * 1.05, 1))
-    ax.set_ylabel(r"$\omega$ [meV]")
+    ax.set_ylabel(r"$\omega$ [meV]", fontsize=kwargs.get('label_fontsize', 16))
 
 
     if axis is None:
@@ -100,13 +104,17 @@ def plot_a2f(
 
     if axis is None:
         from matplotlib import pyplot as plt
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(1, 1, figsize=(4, 8))
     else:
         ax = axis
 
     if plot_dos:
         dos = a2f_workchain.outputs.a2f.phdos
-        plot_phdos(dos, axis=ax)
+        plot_phdos(
+            dos,
+            axis=ax,
+            color='black',
+        )
 
     ax.plot(
         spectral[:, 9],
@@ -120,18 +128,22 @@ def plot_a2f(
         color=kwargs.get('color', 'k'),
         linestyle=kwargs.get('linestyle', '--'),
         label=r"$\lambda$")
+
     ax.set_xticks(
         [0, round(numpy.max(spectral[:, [9, 19]]) * 1.05, 1)],
         [0, round(numpy.max(spectral[:, [9, 19]]) * 1.05, 1)],
+        fontsize=kwargs.get('ticklabel_fontsize', 16),
         )
     ax.set_yticks(
         [0, round(numpy.max(w) * 1.05, 1)],
         [0, round(numpy.max(w) * 1.05, 1)],
+        fontsize=kwargs.get('ticklabel_fontsize', 16),
         )
     ax.set_xlim(0, round(numpy.max(spectral[:, [9, 19]]) * 1.05, 1))
     ax.set_ylim(0, round(numpy.max(w) * 1.05, 1))
     # ax.set_ylabel(r"$\alpha^2F$")
-    ax.set_ylabel(r"$\omega$ [meV]")
+    ax.set_ylabel(r"$\omega$ [meV]", fontsize=kwargs.get('label_fontsize', 16))
+    ax.legend(fontsize=kwargs.get('legend_fontsize', 16))
 
     if show_data and output_parameters:
         lambda_ = output_parameters.get('lambda')
@@ -429,7 +441,7 @@ def plot_epw_interpolated_bands(
 
     if axes is None:
         import matplotlib.pyplot as plt
-        fig, axes = plt.subplots(1, 2, figsize=(8, 6), sharex=True)
+        fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
     elif axes.shape != (2,):
         raise ValueError("axes must be a 2D array")
 
@@ -468,14 +480,14 @@ def plot_epw_interpolated_bands(
 
     axes[0].set_ylim([-2, 2])
     axes[0].set_yticks([-2, 0, 2])
-    axes[0].set_yticklabels([-2, '$E_F$', 2])
-    axes[0].set_ylabel('Energy (eV)')
+    axes[0].set_yticklabels([-2, '$E_F$', 2], fontsize=kwargs.get('ticklabel_fontsize', 16))
+    axes[0].set_ylabel('Energy (eV)', fontsize=kwargs.get('label_fontsize', 16))
     axes[0].set_xlim([explicit_kpoints_linearcoord[0], explicit_kpoints_linearcoord[-1]])
 
     axes[1].set_ylim([min_freq, max_freq*1.05])
     axes[1].set_yticks([numpy.floor(min_freq), numpy.ceil(max_freq*1.05)])
-    axes[1].set_yticklabels([numpy.floor(min_freq), numpy.ceil(max_freq*1.05)])
-    axes[1].set_ylabel('Frequency (meV)')
+    axes[1].set_yticklabels([numpy.floor(min_freq), numpy.ceil(max_freq*1.05)], fontsize=kwargs.get('ticklabel_fontsize', 16))
+    axes[1].set_ylabel('Frequency (meV)', fontsize=kwargs.get('label_fontsize', 16))
     axes[1].set_xlim([explicit_kpoints_linearcoord[0], explicit_kpoints_linearcoord[-1]])
 
     for tick in xticks:
@@ -489,7 +501,7 @@ def plot_epw_interpolated_bands(
     axes[0].set_xticklabels([])
 
     axes[1].set_xticks(xticks)
-    axes[1].set_xticklabels(xticklabels)
+    axes[1].set_xticklabels(xticklabels, fontsize=kwargs.get('ticklabel_fontsize', 16))
 
     axes[1].plot([], [])
 
@@ -591,6 +603,13 @@ def plot_gap_function(
     **kwargs,
     ):
 
+    if axis is None:
+        import matplotlib.pyplot as plt
+        fig, axis = plt.subplots(1, 1, figsize=(8, 6), sharex=True)
+        fig.patch.set_facecolor('white')
+    else:
+        ax = axis
+
     temps = []
     average_deltas = []
     rhos = []
@@ -677,7 +696,6 @@ def plot_gap_function(
 
 
     if well_fit:
-
         final_temps = temps_sorted
         final_rhos  = sorted_rhos
 
@@ -701,8 +719,8 @@ def plot_gap_function(
             max_rho = numpy.max([numpy.max(rho[:,1]), max_rho])
 
         axis.scatter(final_temps, average_deltas_sorted, c = 'r', s=70)
-        axis.set_xlabel('$T$ [K]', fontsize=kwargs.get('label_fontsize', 10))
-        axis.set_ylabel('$\Delta_{nk}$ [meV]', fontsize=kwargs.get('label_fontsize', 10))
+        axis.set_xlabel('$T$ [K]', fontsize=kwargs.get('label_fontsize', 16))
+        axis.set_ylabel('$\Delta_{nk}$ [meV]', fontsize=kwargs.get('label_fontsize', 16))
         axis.set_ylim([0, max_rho])
 
         x_fit = numpy.linspace(numpy.min(temps)*0.7, p_opt[-1]-0.0001, 1000)
@@ -711,11 +729,17 @@ def plot_gap_function(
         axis.plot(x_fit, y_fit, color='red', linestyle='--', linewidth=1.5,)
 
         axis.set_xlim([numpy.min(temps)*0.8, numpy.round(p_opt[-1]*1.2, decimals=0)])
-        axis.set_xticks([numpy.round(numpy.min(temps)*0.8, decimals=0), numpy.round(p_opt[-1]*1.2, decimals=0)],
-                    [numpy.round(numpy.min(temps)*0.8, decimals=0), numpy.round(p_opt[-1]*1.2, decimals=0)], fontsize=kwargs.get('ticklabel_fontsize', 10))
+        axis.set_xticks(
+            [numpy.round(numpy.min(temps)*0.8, decimals=0), numpy.round(p_opt[-1]*1.2, decimals=0)],
+            [numpy.round(numpy.min(temps)*0.8, decimals=0), numpy.round(p_opt[-1]*1.2, decimals=0)],
+            fontsize=kwargs.get('ticklabel_fontsize', 14),
+        )
 
-        axis.set_yticks([0.0, numpy.round(p_opt[1]*1.3, decimals=0)],
-                    [0.0, numpy.round(p_opt[1]*1.3, decimals=0)], fontsize=kwargs.get('ticklabel_fontsize', 10))
+        axis.set_yticks(
+            [0.0, numpy.round(p_opt[1]*1.3, decimals=0)],
+            [0.0, numpy.round(p_opt[1]*1.3, decimals=0)],
+            fontsize=kwargs.get('ticklabel_fontsize', 14),
+        )
 
 
         rprint(f'[bold green]Aniso par:[/bold green] {p_opt}')

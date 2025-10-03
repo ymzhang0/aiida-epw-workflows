@@ -7,7 +7,6 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   aiida_epw_workflows.workflows.controllers
    aiida_epw_workflows.workflows.protocols
 
 Submodules

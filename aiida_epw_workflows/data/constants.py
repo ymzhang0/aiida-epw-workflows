@@ -11,4 +11,4 @@ AU_PS            = AU_SEC * 1.0E+12
 AU_TERAHERTZ     = AU_PS
 MEV_TO_THZ       = 1.0E-3 / AU_TERAHERTZ / AUTOEV /tpi
 THZ_TO_MEV       = 1.0 / MEV_TO_THZ
-THZ_TO_CM        = 33
+THZ_TO_CM        = 33.356

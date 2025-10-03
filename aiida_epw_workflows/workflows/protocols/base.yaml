@@ -17,7 +17,7 @@ default_inputs:
         withmpi: True
     parameters:
       INPUTEPW:
-        degaussw: 0.025
+        degaussw: 0.04
         eps_acoustic: 0.1
         # iverbosity: 1
         muc: 0.13

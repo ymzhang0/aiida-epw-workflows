@@ -33,7 +33,7 @@ def parse_scon_raw_out(
 
 def parse_raw_out(
     wc: orm.WorkChainNode
-):
+    ):
     __ERRORS = [
         (1   , 'KILLED',                               'Job is killed'),
         (2   , 'EXCEPTED',                             'Job is excepted'),
@@ -248,46 +248,6 @@ def get_subprocess_from_epw_wc(
     else:
         raise ValueError('Invalid input workchain')
 
-
-def check_old_aniso_calcjob(calc):
-#    source_db, source_id = old_epw_wc.base.extras.get_many(['source_db', 'source_id'])
-#    print(f'Doing: {source_db}-{source_id}, {old_epw_wc.pk}, {old_epw_wc.inputs.structure.get_formula()} now')
-
-    # structure = structures[(calc.extras['source_db'], calc.extras['source_id'])]
-    # formula = structure.get_formula()
-    # print(f'Calcjob for {formula} anisotropic Tc is: {calc.pk}')
-    print(f'The old calcjob exit with {calc.exit_message}')
-
-    aiida_out = calc.outputs.retrieved.get_object_content('aiida.out')
-
-    match = re.search(r"Estimated Allen-Dynes Tc\s*=\s*([0-9.]+)", aiida_out)
-    if match:
-        print(f"Estimated Allen-Dynes Tc = {float(match.group(1))}")
-
-    ntemps = 0
-    for i in calc.outputs.retrieved.list_object_names():
-        if i.startswith('aiida.imag_aniso_gap0'):
-            ntemps += 1
-
-    return ntemps
-#            print(calc.outputs.retrieved.get_object_content(i))
-
-def check_old_iso_workchain(calc):
-#    source_db, source_id = old_epw_wc.base.extras.get_many(['source_db', 'source_id'])
-#    print(f'Doing: {source_db}-{source_id}, {old_epw_wc.pk}, {old_epw_wc.inputs.structure.get_formula()} now')
-
-    # structure = structures[(calc.extras['source_db'], calc.extras['source_id'])]
-    # formula = structure.get_formula()
-    # print(f'WorkChain for {formula} isotropic Tc is: {calc.pk}')
-    print(f'The old workchain exit with {calc.exit_message}')
-    epw_final = calc.base.links.get_outgoing(link_label_filter='epw_final').first().node
-    aiida_out = epw_final.outputs.retrieved.get_object_content('aiida.out')
-    match = re.search(r"Estimated Allen-Dynes Tc\s*=\s*([0-9.]+)", aiida_out)
-    if match:
-        print(f"Estimated Allen-Dynes Tc = {float(match.group(1))}")
-
-    print(calc.outputs.Tc)
-
 def clean_workdir(node, dry_run=False):
     """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
 
@@ -297,7 +257,8 @@ def clean_workdir(node, dry_run=False):
         if isinstance(called_descendant, orm.CalcJobNode):
             try:
                 if not dry_run:
-                    called_descendant.outputs.remote_folder._clean()  # pylint: disable=protected-access
+                    if 'remote_folder' in node.outputs:
+                        called_descendant.outputs.remote_folder._clean()  # pylint: disable=protected-access
                 cleaned_calcs.append(called_descendant.pk)
             except (IOError, OSError, KeyError):
                 pass

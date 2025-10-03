@@ -1,14 +1,10 @@
-from email import message
 from re import S
 from aiida import orm
 from aiida.common.links import LinkType
 from aiida.engine import ProcessState
-import numpy
-from ..workchains import clean_workdir, get_descendants
 from enum import Enum
-from aiida.tools import delete_nodes
 from collections import OrderedDict
-from ..ph import get_qpoints_and_frequencies, check_stability_ph_base, check_stability_matdyn_base
+from ..ph import check_stability_ph_base, check_stability_matdyn_base
 
 class EpwB2WWorkChainState(Enum):
     """
@@ -230,9 +226,9 @@ class EpwB2WWorkChainAnalyser:
                 state = EpwB2WWorkChainState.EPW_BASE_FINISHED_OK
                 message = 'has finished successfully at epw_base'
 
-        epw_descendants = self.get_descendants(epw_base, LinkType.CALL_CALC)
+        epw_descendants = self.get_descendants_by_link_type(epw_base, LinkType.CALL_CALC)
         max_iter = [int(key.split('_')[-1]) for key in epw_descendants.keys() if 'iteration' in key]
-        remote_folder = self.get_descendants(
+        remote_folder = self.get_descendants_by_link_type(
             epw_descendants[f'iteration_{max_iter[0]:02d}'][-1],
             LinkType.CREATE
         )['remote_folder'][0]

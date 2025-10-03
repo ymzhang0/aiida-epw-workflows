@@ -815,7 +815,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         workchain = self.ctx.workchain_ph
 
         if not workchain.is_finished_ok:
-            self.report(f'Electron-phonon `PhBaseWorkChain` failed with exit status {workchain.exit_status}')
+            self.report(f'`PhBaseWorkChain` failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PHONON
 
         self.ctx.inputs.parent_folder_ph = workchain.outputs.remote_folder

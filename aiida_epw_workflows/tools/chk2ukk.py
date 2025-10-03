@@ -77,7 +77,7 @@ def get_U(chk):
     return U
 
 def get_Udis(chk):
-    
+
     n_kpts = chk.n_kpts
     n_wann = chk.n_wann
 
@@ -134,7 +134,7 @@ def read_chk_bin(filename):
         omega_invariant = -1.0
         dis_bands = []
         Udis = []
-        
+
     Uml = np.frombuffer(io.read_record(), dtype=np.complex128).reshape((n_wann, n_wann, n_kpts), order="F")
     M = np.frombuffer(io.read_record(), dtype=np.complex128).reshape((n_wann, n_wann, n_bvec, n_kpts), order="F")
 
@@ -167,12 +167,12 @@ def read_chk_bin(filename):
         r=[r[:, iw] for iw in range(n_wann)],
         spreads=spreads
     )
-    
-chk = read_chk_bin("aiida.chk")
+
+# chk = read_chk_bin("aiida.chk")
 
 @dataclass
 class Ukk:
-    
+
     ibndstart: int  # index of the first band
     ibndend: int    # index of the last band
     n_kpts: int     # number of k-points
@@ -190,7 +190,7 @@ class Ukk:
 
     # List of Vec3 objects (length = n_wann)
     centers: List[np.ndarray]
-    
+
 def Chk2Ukk(chk, alat):
     n_bands = chk.n_bands
     exclude_bands = chk.exclude_bands
@@ -228,9 +228,9 @@ def Chk2Ukk(chk, alat):
         centers=r_scaled
     )
 
-ukk = Chk2Ukk(chk, 1.0)
+# ukk = Chk2Ukk(chk, 1.0)
 
-def write_epw_ukk(ukk: Ukk = ukk, filukk: str = "aiida.ukk"):
+def write_epw_ukk(ukk: Ukk, filukk: str = "aiida.ukk"):
     with open(filukk, "w") as f:
         # Write ibndstart and ibndend
         f.write(f"{ukk.ibndstart} {ukk.ibndend}\n")
@@ -258,4 +258,4 @@ def write_epw_ukk(ukk: Ukk = ukk, filukk: str = "aiida.ukk"):
             f.write("{:22.12E}  {:22.12E}  {:22.12E}\n".format(vec[0], vec[1], vec[2]))
 
 
-write_epw_ukk(ukk, "aiida.ukk")
+# write_epw_ukk(ukk, "aiida.ukk")

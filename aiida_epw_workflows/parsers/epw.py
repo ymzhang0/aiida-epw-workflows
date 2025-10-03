@@ -315,8 +315,8 @@ class EpwParser(BaseParser):
 
         return lambda_k_pairs_xydata
 
-    @staticmethod
-    def parse_bands(content):
+    # @staticmethod
+    def parse_bands(self, content):
         """Parse the contents of a band structure file."""
         nbnd, nks = (
             int(v) for v in re.search(
@@ -338,12 +338,11 @@ class EpwParser(BaseParser):
             if match_band and number % 2 == 0:
                 bands.append(list(match_band.groups()))
 
-        kpoints_data = orm.KpointsData()
-        kpoints_data.set_kpoints(numpy.array(kpts, dtype=float))
+        kpoints_data = self.node.inputs.kfpoints.clone()
+        # kpoints_data = orm.KpointsData()
+        # kpoints_data.set_kpoints(numpy.array(kpts, dtype=float))
+
         bands = numpy.array(bands, dtype=float)
-
-        # raise ValueError('kpts', numpy.array(kpts, dtype=float).shape, 'bands', bands.shape)
-
         bands_data = orm.BandsData()
         bands_data.set_kpointsdata(kpoints_data)
         bands_data.set_bands(bands, units='meV')
