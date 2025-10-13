@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from aiida import orm
-from aiida.common import AttributeDict, LinkType
+from aiida.common import AttributeDict, LinkType, NotExistentAttributeError
 from aiida.engine import WorkChain, ToContext, if_, while_, append_
 from aiida_quantumespresso.workflows.ph.base import PhBaseWorkChain
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
@@ -1367,7 +1367,7 @@ class EpwSuperConWorkChain(ProtocolMixin, WorkChain):
                 try:
                     called_descendant.outputs.remote_folder._clean()  # pylint: disable=protected-access
                     cleaned_calcs.append(called_descendant.pk)
-                except (IOError, OSError, KeyError):
+                except (IOError, OSError, KeyError, NotExistentAttributeError):
                     pass
 
         return cleaned_calcs

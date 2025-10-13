@@ -60,22 +60,23 @@ class EpwSuperConWorkChainState(Enum):
     B2W_EPW_BASE_EXCEPTED = 906
     BANDS_EXCEPTED = 907
     A2F_EXCEPTED = 908
-    ISO_EXCEPTED = 909
-    ANISO_EXCEPTED = 910
-    PW_RELAX_KILLED = 911
-    PW_BANDS_KILLED = 912
-    B2W_W90_INTP_SCF_KILLED = 913
-    B2W_W90_INTP_NSCF_KILLED = 914
-    B2W_W90_INTP_PW2WAN_KILLED = 915
-    B2W_W90_INTP_WANNIER_KILLED = 916
-    B2W_PH_BASE_KILLED = 917
-    B2W_EPW_BASE_KILLED = 918
-    B2W_MATDYN_BASE_KILLED = 919
-    BANDS_KILLED = 920
-    A2F_CONV_KILLED = 921
-    A2F_KILLED = 922
-    ISO_KILLED = 923
-    ANISO_KILLED = 924
+    A2F_CONV_EXCEPTED = 909
+    ISO_EXCEPTED = 910
+    ANISO_EXCEPTED = 911
+    PW_RELAX_KILLED = 912
+    PW_BANDS_KILLED = 913
+    B2W_W90_INTP_SCF_KILLED = 914
+    B2W_W90_INTP_NSCF_KILLED = 915
+    B2W_W90_INTP_PW2WAN_KILLED = 916
+    B2W_W90_INTP_WANNIER_KILLED = 917
+    B2W_PH_BASE_KILLED = 918
+    B2W_EPW_BASE_KILLED = 919
+    B2W_MATDYN_BASE_KILLED = 920
+    BANDS_KILLED = 921
+    A2F_CONV_KILLED = 922
+    A2F_KILLED = 923
+    ISO_KILLED = 924
+    ANISO_KILLED = 925
     PW_RELAX_FINISHED_OK = 1001
     PW_BANDS_FINISHED_OK = 1002
     B2W_W90_INTP_SCF_FINISHED_OK = 1003
@@ -87,8 +88,9 @@ class EpwSuperConWorkChainState(Enum):
     B2W_FINISHED_OK = 1009
     BANDS_FINISHED_OK = 1010
     A2F_FINISHED_OK = 1011
-    ISO_FINISHED_OK = 1012
-    ANISO_FINISHED_OK = 1013
+    A2F_CONV_FINISHED_OK = 1012
+    ISO_FINISHED_OK = 1013
+    ANISO_FINISHED_OK = 1014
     UNKNOWN = 999
 
 from collections import OrderedDict
@@ -301,25 +303,37 @@ class EpwSuperConWorkChainAnalyser:
         )
 
     def check_a2f(self):
-        return self.base_check(
-            self.a2f[0],
-            EpwSuperConWorkChainState.A2F_EXCEPTED,
-            EpwSuperConWorkChainState.A2F_FAILED,
-            EpwSuperConWorkChainState.A2F_KILLED,
-            EpwSuperConWorkChainState.A2F_FINISHED_OK,
-            'a2f'
-        )
+        if 'a2f' in self.descendants:
+            return self.base_check(
+                self.a2f[0],
+                EpwSuperConWorkChainState.A2F_EXCEPTED,
+                EpwSuperConWorkChainState.A2F_FAILED,
+                EpwSuperConWorkChainState.A2F_KILLED,
+                EpwSuperConWorkChainState.A2F_FINISHED_OK,
+                'a2f'
+            )
+        elif 'a2f_conv' in self.descendants:
+            for a2f_conv_workchain in self.a2f_conv:
+                if a2f_conv_workchain.is_excepted:
+                    state = EpwSuperConWorkChainState.A2F_CONV_EXCEPTED
+                    message += f'has excepted at a2f_conv<{a2f_conv_workchain.pk}>'
+                else:
+                    state = EpwSuperConWorkChainState.A2F_CONV_FAILED
+                    message += f'has failed at a2f_conv<{a2f_conv_workchain.pk}>'
+            return state, message
+        else:
+            return None, None
 
-    def check_a2f_conv(self):
-        for a2f_conv_workchain in self.a2f_conv:
-            if a2f_conv_workchain.is_excepted:
-                state = EpwSuperConWorkChainState.A2F_CONV_EXCEPTED
-                message += f'has excepted at a2f_conv<{a2f_conv_workchain.pk}>'
-            else:
-                state = EpwSuperConWorkChainState.A2F_CONV_FAILED
-                message += f'has failed at a2f_conv<{a2f_conv_workchain.pk}>'
+    # def check_a2f_conv(self):
+    #     for a2f_conv_workchain in self.a2f_conv:
+    #         if a2f_conv_workchain.is_excepted:
+    #             state = EpwSuperConWorkChainState.A2F_CONV_EXCEPTED
+    #             message += f'has excepted at a2f_conv<{a2f_conv_workchain.pk}>'
+    #         else:
+    #             state = EpwSuperConWorkChainState.A2F_CONV_FAILED
+    #             message += f'has failed at a2f_conv<{a2f_conv_workchain.pk}>'
 
-        return state, message
+    #     return state, message
 
     def check_iso(self):
         """Check the state of the iso workchain."""
@@ -359,50 +373,66 @@ class EpwSuperConWorkChainAnalyser:
         if state != EpwSuperConWorkChainState.UNKNOWN:
             return state, message
 
-        state, message = self.check_pw_relax()
+        for check_func, finished_ok_state in (
+            (self.check_pw_relax, EpwSuperConWorkChainState.PW_RELAX_FINISHED_OK),
+            (self.check_pw_bands, EpwSuperConWorkChainState.PW_BANDS_FINISHED_OK),
+            (self.check_b2w, EpwSuperConWorkChainState.B2W_FINISHED_OK),
+            (self.check_bands, EpwSuperConWorkChainState.BANDS_FINISHED_OK),
+            (self.check_a2f, EpwSuperConWorkChainState.A2F_FINISHED_OK),
+            # (self.check_a2f_conv, EpwSuperConWorkChainState.A2F_CONV_FINISHED_OK),
+            (self.check_iso, EpwSuperConWorkChainState.ISO_FINISHED_OK),
+            (self.check_aniso, EpwSuperConWorkChainState.ANISO_FINISHED_OK),
+        ):
+            state, message = check_func()
+            if not state == finished_ok_state:
+                return state, message
 
-        if not state == EpwSuperConWorkChainState.PW_RELAX_FINISHED_OK:
-            return state, message
+        return EpwSuperConWorkChainState.FINISHED_OK, 'has finished successfully'
 
-        state, message = self.check_pw_bands()
+        # state, message = self.check_pw_relax()
 
-        if not state == EpwSuperConWorkChainState.PW_BANDS_FINISHED_OK:
-            return state, message
+        # if not state == EpwSuperConWorkChainState.PW_RELAX_FINISHED_OK:
+        #     return state, message
 
-        state, message = self.check_b2w()
+        # state, message = self.check_pw_bands()
 
-        if not state == EpwSuperConWorkChainState.B2W_FINISHED_OK:
-            return state, message
+        # if not state == EpwSuperConWorkChainState.PW_BANDS_FINISHED_OK:
+        #     return state, message
 
-        state, message = self.check_bands()
+        # state, message = self.check_b2w()
 
-        if not state == EpwSuperConWorkChainState.BANDS_FINISHED_OK:
-            return state, message
+        # if not state == EpwSuperConWorkChainState.B2W_FINISHED_OK:
+        #     return state, message
 
-        state, message = self.check_a2f()
+        # state, message = self.check_bands()
 
-        if not state == EpwSuperConWorkChainState.A2F_FINISHED_OK:
-            return state, message
+        # if not state == EpwSuperConWorkChainState.BANDS_FINISHED_OK:
+        #     return state, message
 
-        state, message = self.check_a2f_conv()
+        # state, message = self.check_a2f()
 
-        if not state == EpwSuperConWorkChainState.A2F_CONV_FINISHED_OK:
-            return state, message
+        # if not state == EpwSuperConWorkChainState.A2F_FINISHED_OK:
+        #     return state, message
 
-        state, message = self.check_iso()
+        # state, message = self.check_a2f_conv()
 
-        if not state == EpwSuperConWorkChainState.ISO_FINISHED_OK:
-            return state, message
+        # if not state == EpwSuperConWorkChainState.A2F_CONV_FINISHED_OK:
+        #     return state, message
 
-        state, message = self.check_aniso()
+        # state, message = self.check_iso()
 
-        if not state == EpwSuperConWorkChainState.ANISO_FINISHED_OK:
-            return state, message
+        # if not state == EpwSuperConWorkChainState.ISO_FINISHED_OK:
+        #     return state, message
 
-        state = EpwSuperConWorkChainState.FINISHED_OK
-        message = 'has finished successfully'
+        # state, message = self.check_aniso()
 
-        return state, message
+        # if not state == EpwSuperConWorkChainState.ANISO_FINISHED_OK:
+        #     return state, message
+
+        # state = EpwSuperConWorkChainState.FINISHED_OK
+        # message = 'has finished successfully'
+
+        # return state, message
 
     @property
     def outputs_parameters(self):
@@ -514,6 +544,61 @@ class EpwSuperConWorkChainAnalyser:
         """Get the remote directory of the aniso workchain."""
         return self.aniso[0].outputs.remote_folder.get_remote_path()
 
+    @staticmethod
+    def get_calcjob_paths(processes_dict, parent_label=''):
+        """
+        Recursively extract all CalcJob remote paths from the nested dictionary created by get_processes_dict.
+
+        :param processes_dict: The dictionary generated by get_processes_dict.
+        :param parent_label: The parent path for building hierarchical labels (used internally for recursion).
+        :return: A flattened dictionary { 'full label': 'remote path' }.
+        """
+        flat_paths = {}
+        for label, sub_dict in processes_dict.items():
+            if not isinstance(sub_dict, dict):
+                continue
+            full_label = f"{parent_label}/{label}" if parent_label else label
+
+            if 'calcjob_node' in sub_dict:
+                calcjob = sub_dict['calcjob_node']
+                remote_path = calcjob.outputs.remote_folder.get_remote_path()
+                print(full_label, remote_path)
+                flat_paths[full_label] = remote_path
+
+            if 'workchain_node' in sub_dict:
+                # Pass the current workchain's subprocess dictionary and the new parent label
+                nested_paths = EpwSuperConWorkChainAnalyser.get_calcjob_paths(
+                    sub_dict,
+                    parent_label=full_label
+                )
+                flat_paths.update(nested_paths)
+
+        return flat_paths
+
+    @staticmethod
+    def get_processes_dict(node):
+        """Get the remote directory of the all workchains."""
+        processes_dict = {}
+        for subprocess in node.called:
+            if 'CalcJobNode' in subprocess.node_type:
+                link_label = subprocess.base.attributes.all['metadata_inputs']['metadata']['call_link_label']
+                processes_dict[link_label] = {'calcjob_node': subprocess}
+
+            elif 'WorkChainNode' in subprocess.node_type:
+                link_label = subprocess.base.attributes.all['metadata_inputs']['metadata']['call_link_label']
+                processes_dict[link_label] = {'workchain_node': subprocess }
+                sub_paths = EpwSuperConWorkChainAnalyser.get_processes_dict(subprocess)
+                processes_dict[link_label].update(sub_paths)
+            else:
+                pass
+
+        return processes_dict
+
+    @property
+    def processes_dict(self):
+        """Get the processes dictionary."""
+        return EpwSuperConWorkChainAnalyser.get_processes_dict(self.node)
+
     @property
     def source(self):
         """Get the source of the workchain."""
@@ -596,7 +681,6 @@ class EpwSuperConWorkChainAnalyser:
         except (AttributeError, IndexError, KeyError):
             return (False, 'Not enough data to check convergence.')
 
-
     def check_stability_epw_bands(
         self,
         min_freq: float # meV ~ 8.1 cm-1
@@ -617,21 +701,43 @@ class EpwSuperConWorkChainAnalyser:
         """Dump the inputs of the workchain."""
 
         if self.source is not None:
-            destpath = destpath / self.source
+            destpath = destpath / f"{self.node.pk}-{self.source}"
 
         print('Writing pw_relax files to ', destpath / 'pw_relax')
-        for node, _, link_label1 in self.pw_relax[0].base.links.get_outgoing(link_type=LinkType.CALL_WORK).all():
-            pw_calculations = node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all()
-            dirpath = destpath / f'pw_relax_{link_label1}'
-            dirpath.mkdir(parents=True, exist_ok=True)
+        try:
+            pw_relaxes = self.pw_relax[0].base.links.get_outgoing(link_type=LinkType.CALL_WORK).all()
+            for node, _, link_label1 in pw_relaxes:
+                pw_calculations = node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all()
+                dirpath = destpath / f'pw_relax_{link_label1}'
+                dirpath.mkdir(parents=True, exist_ok=True)
 
-            for pw_calculation, _, link_label2 in pw_calculations:
-                if not link_label2.startswith('iteration_'):
-                    continue
-                with open(dirpath / f'{link_label2}.in', 'w') as f:
-                    f.write(pw_calculation.base.repository.get_object_content('aiida.in'))
-                with open(dirpath / f'{link_label2}.out', 'w') as f:
-                    f.write(pw_calculation.outputs.retrieved.get_object_content('aiida.out'))
+                for pw_calculation, _, link_label2 in pw_calculations:
+                    if not link_label2.startswith('iteration_'):
+                        continue
+                    with open(dirpath / f'{link_label2}.in', 'w') as f:
+                        f.write(pw_calculation.base.repository.get_object_content('aiida.in'))
+                    with open(dirpath / f'{link_label2}.out', 'w') as f:
+                        f.write(pw_calculation.outputs.retrieved.get_object_content('aiida.out'))
+        except (AttributeError, IndexError):
+            print('pw_relax workchain not found')
+
+        try:
+            pw_bands = self.pw_bands[0].base.links.get_outgoing(link_type=LinkType.CALL_WORK).all()
+            for node, _, link_label1 in pw_bands:
+                pw_calculations = node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all()
+                dirpath = destpath / f'pw_bands_{link_label1}'
+                dirpath.mkdir(parents=True, exist_ok=True)
+
+                for pw_calculation, _, link_label2 in pw_calculations:
+                    if not link_label2.startswith('iteration_'):
+                        continue
+                    with open(dirpath / f'{link_label2}.in', 'w') as f:
+                        f.write(pw_calculation.base.repository.get_object_content('aiida.in'))
+                    with open(dirpath / f'{link_label2}.out', 'w') as f:
+                        f.write(pw_calculation.outputs.retrieved.get_object_content('aiida.out'))
+        except (AttributeError, IndexError):
+            print('pw_bands workchain not found')
+
 
         w90_intp_workchains = self.b2w[0].base.links.get_outgoing(link_label_filter='w90_intp').all()
         scf_workchain = w90_intp_workchains[-1].node.base.links.get_outgoing(link_label_filter='scf').all()[-1]
@@ -672,34 +778,39 @@ class EpwSuperConWorkChainAnalyser:
                 dirpath.mkdir(parents=True, exist_ok=True)
                 with open(dirpath / file, 'w') as f:
                     f.write(node.outputs.retrieved.get_object_content(f"DYN_MAT/{file}"))
+        try:
+            q2r_workchain = self.b2w[0].base.links.get_outgoing(link_label_filter='q2r_base').all()[-1]
+            for node, _, link_label in q2r_workchain.node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all():
+                if not link_label.startswith('iteration_'):
+                    continue
+                dirpath = destpath / 'q2r_base'
+                dirpath.mkdir(parents=True, exist_ok=True)
+                with open(dirpath / f'{link_label}.in', 'w') as f:
+                    f.write(node.base.repository.get_object_content('aiida.in'))
+                with open(dirpath / f'{link_label}.out', 'w') as f:
+                    f.write(node.outputs.retrieved.get_object_content('aiida.out'))
+                with open(dirpath / f'{link_label}.fc', 'w') as f:
+                    f.write(node.outputs.retrieved.get_object_content('real_space_force_constants.dat'))
+        except (AttributeError, IndexError):
+            print('q2r_base workchain not found')
 
-        q2r_workchain = self.b2w[0].base.links.get_outgoing(link_label_filter='q2r_base').all()[-1]
-        for node, _, link_label in q2r_workchain.node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all():
-            if not link_label.startswith('iteration_'):
-                continue
-            dirpath = destpath / 'q2r_base'
-            dirpath.mkdir(parents=True, exist_ok=True)
-            with open(dirpath / f'{link_label}.in', 'w') as f:
-                f.write(node.base.repository.get_object_content('aiida.in'))
-            with open(dirpath / f'{link_label}.out', 'w') as f:
-                f.write(node.outputs.retrieved.get_object_content('aiida.out'))
-            with open(dirpath / f'{link_label}.fc', 'w') as f:
-                f.write(node.outputs.retrieved.get_object_content('real_space_force_constants.dat'))
-
-        matdyn_workchain = self.b2w[0].base.links.get_outgoing(link_label_filter='matdyn_base').all()[-1]
-        for node, _, link_label in matdyn_workchain.node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all():
-            if not link_label.startswith('iteration_'):
-                continue
-            dirpath = destpath / 'matdyn_base'
-            dirpath.mkdir(parents=True, exist_ok=True)
-            with open(dirpath / f'{link_label}.in', 'w') as f:
-                f.write(node.base.repository.get_object_content('aiida.in'))
-            with open(dirpath / f'{link_label}.out', 'w') as f:
-                f.write(node.outputs.retrieved.get_object_content('aiida.out'))
-            with open(dirpath / f'{link_label}.modes', 'w') as f:
-                f.write(node.outputs.retrieved.get_object_content('phonon_displacements.dat'))
-            with open(dirpath / f'{link_label}.freq', 'w') as f:
-                f.write(node.outputs.retrieved.get_object_content('phonon_displacements.dat'))
+        try:
+            matdyn_workchain = self.b2w[0].base.links.get_outgoing(link_label_filter='matdyn_base').all()[-1]
+            for node, _, link_label in matdyn_workchain.node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all():
+                if not link_label.startswith('iteration_'):
+                    continue
+                dirpath = destpath / 'matdyn_base'
+                dirpath.mkdir(parents=True, exist_ok=True)
+                with open(dirpath / f'{link_label}.in', 'w') as f:
+                    f.write(node.base.repository.get_object_content('aiida.in'))
+                with open(dirpath / f'{link_label}.out', 'w') as f:
+                    f.write(node.outputs.retrieved.get_object_content('aiida.out'))
+                with open(dirpath / f'{link_label}.modes', 'w') as f:
+                    f.write(node.outputs.retrieved.get_object_content('phonon_displacements.dat'))
+                with open(dirpath / f'{link_label}.freq', 'w') as f:
+                    f.write(node.outputs.retrieved.get_object_content('phonon_displacements.dat'))
+        except (AttributeError, IndexError):
+            print('matdyn_base workchain not found')
 
     def show_pw_bands(self):
         """Show the qe bands."""
@@ -723,7 +834,6 @@ class EpwSuperConWorkChainAnalyser:
                 axis = axis,
                 **kwargs,
             )
-
 
     def show_phdos(
         self,

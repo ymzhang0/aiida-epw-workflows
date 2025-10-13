@@ -6,6 +6,10 @@ from .intp import EpwBaseIntpWorkChain
 from .base import EpwBaseWorkChain
 from ..tools.calculators import calculate_iso_tc
 
+### Note: We should later add the support for:
+#      Error in routine crit_temp_solver (1):
+#      Convergence (tc_linear) was not reached
+
 
 class EpwIsoWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the superconductivity based on Migdal-Eliashberg theory.
