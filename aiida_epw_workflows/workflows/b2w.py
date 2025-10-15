@@ -765,8 +765,10 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         workchain = self.ctx.workchain_w90_intp
 
         if not workchain.is_finished_ok:
-            self.report(f'`Wannier90BandsWorkChain` failed with exit status {workchain.exit_status}')
+            self.report(f'`Wannier90BandsWorkChain`<{workchain.pk}> failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90
+
+        self.report(f'`Wannier90BandsWorkChain`<{workchain.pk}> finished successfully')
 
         self.ctx.inputs.parent_folder_nscf = workchain.outputs.nscf.remote_folder
         self.ctx.inputs.parent_folder_chk = get_parent_folder_chk_from_w90_workchain(workchain)
@@ -815,9 +817,11 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         workchain = self.ctx.workchain_ph
 
         if not workchain.is_finished_ok:
-            self.report(f'`PhBaseWorkChain` failed with exit status {workchain.exit_status}')
+            self.report(f'`PhBaseWorkChain`<{workchain.pk}> failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PHONON
 
+        self.report(f'`PhBaseWorkChain`<{workchain.pk}> finished successfully')
+        
         self.ctx.inputs.parent_folder_ph = workchain.outputs.remote_folder
         self.ctx.inputs_q2r.q2r.parent_folder = workchain.outputs.remote_folder
 
@@ -864,8 +868,10 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         workchain = self.ctx.workchain_q2r
 
         if not workchain.is_finished_ok:
-            self.report(f'`Q2rBaseWorkChain` failed with exit status {workchain.exit_status}')
+            self.report(f'`Q2rBaseWorkChain`<{workchain.pk}> failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_Q2R
+
+        self.report(f'`Q2rBaseWorkChain`<{workchain.pk}> finished successfully')
 
         self.out_many(
             self.exposed_outputs(
@@ -902,8 +908,10 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         workchain = self.ctx.workchain_matdyn
 
         if not workchain.is_finished_ok:
-            self.report(f'`MatdynBaseWorkChain` failed with exit status {workchain.exit_status}')
+            self.report(f'`MatdynBaseWorkChain`<{workchain.pk}> failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_MATDYN
+
+        self.report(f'`MatdynBaseWorkChain`<{workchain.pk}> finished successfully')
 
         self.out_many(
             self.exposed_outputs(
@@ -950,6 +958,8 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         if not workchain.is_finished_ok:
             self.report(f'`EpwBaseWorkChain` failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_EPW
+
+        self.report(f'`EpwBaseWorkChain`<{workchain.pk}> finished successfully')
 
         self.out_many(
             self.exposed_outputs(

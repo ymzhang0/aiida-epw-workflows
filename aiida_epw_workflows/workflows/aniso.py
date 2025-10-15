@@ -264,8 +264,10 @@ class EpwAnisoWorkChain(EpwBaseIntpWorkChain):
         intp_workchain = self.ctx.workchain_intp
 
         if not intp_workchain.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {intp_workchain.exit_status}')
+            self.report(f'`EpwBaseWorkChain`<{intp_workchain.pk}> failed with exit status {intp_workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_ANISO
+
+        self.report(f'`EpwBaseWorkChain`<{intp_workchain.pk}> finished successfully')
 
         if False:
             return self.handle_temperature_out_of_range(aniso)

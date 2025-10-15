@@ -2,11 +2,12 @@
 from aiida import orm
 from aiida.engine import WorkChain, ToContext, if_
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
+from aiida.common import AttributeDict, LinkType, NotExistentAttributeError
 
 from .b2w import EpwB2WWorkChain
 from .bands import EpwBandsWorkChain
 
-from .bte import EpwBteWorkChain
+from .ibte import EpwIBTEWorkChain
 from .a2f import EpwA2fWorkChain
 
 class EpwTransportWorkChain(ProtocolMixin, WorkChain):
@@ -16,7 +17,7 @@ class EpwTransportWorkChain(ProtocolMixin, WorkChain):
     _B2W_NAMESPACE = EpwB2WWorkChain._NAMESPACE
     _BANDS_NAMESPACE = EpwBandsWorkChain._INTP_NAMESPACE
     _A2F_NAMESPACE = EpwA2fWorkChain._INTP_NAMESPACE
-    _BTE_NAMESPACE = EpwBteWorkChain._INTP_NAMESPACE
+    _IBTE_NAMESPACE = EpwIBTEWorkChain._INTP_NAMESPACE
 
 
     @classmethod
@@ -69,9 +70,9 @@ class EpwTransportWorkChain(ProtocolMixin, WorkChain):
                 cls.run_a2f,
                 cls.inspect_a2f,
             ),
-            if_(cls.should_run_bte)(
-                cls.run_bte,
-                cls.inspect_bte,
+            if_(cls.should_run_ibte)(
+                cls.run_ibte,
+                cls.inspect_ibte,
             ),
             cls.results
         )
@@ -103,11 +104,11 @@ class EpwTransportWorkChain(ProtocolMixin, WorkChain):
             }
         )
         spec.expose_outputs(
-            EpwBteWorkChain,
-            namespace=cls._BTE_NAMESPACE,
+            EpwIBTEWorkChain,
+            namespace=cls._IBTE_NAMESPACE,
             namespace_options={
                 'required': False,
-                'help': 'Outputs from the `EpwBteWorkChain`.'
+                'help': 'Outputs from the `EpwIBTEWorkChain`.'
             }
         )
 
@@ -117,8 +118,8 @@ class EpwTransportWorkChain(ProtocolMixin, WorkChain):
             message='The `bands` sub process failed')
         spec.exit_code(403, 'ERROR_SUB_PROCESS_A2F',
             message='The `a2f` sub process failed')
-        spec.exit_code(405, 'ERROR_SUB_PROCESS_BTE',
-            message='The `bte` sub process failed')
+        spec.exit_code(405, 'ERROR_SUB_PROCESS_IBTE',
+            message='The `ibte` sub process failed')
 
     @classmethod
     def get_protocol_filepath(cls):
@@ -167,8 +168,8 @@ class EpwTransportWorkChain(ProtocolMixin, WorkChain):
 
         for (epw_namespace, epw_workchain_class) in (
             (cls._BANDS_NAMESPACE, EpwBandsWorkChain),
-            (cls._A2F_NAMESPACE, EpwA2FWorkChain),
-            (cls._BTE_NAMESPACE, EpwBteWorkChain),
+            (cls._A2F_NAMESPACE, EpwA2fWorkChain),
+            (cls._IBTE_NAMESPACE, EpwIBTEWorkChain),
         ):
             epw_builder = epw_workchain_class.get_builder_from_protocol(
                 *args,
@@ -206,11 +207,11 @@ class EpwTransportWorkChain(ProtocolMixin, WorkChain):
                     )
                 )
 
-        if self._BTE_NAMESPACE in self.inputs:
-            self.ctx.inputs_bte = AttributeDict(
+        if self._IBTE_NAMESPACE in self.inputs:
+            self.ctx.inputs_ibte = AttributeDict(
                 self.exposed_inputs(
-                    EpwBteWorkChain,
-                    namespace=self._BTE_NAMESPACE
+                    EpwIBTEWorkChain,
+                    namespace=self._IBTE_NAMESPACE
                     )
                 )
 
@@ -332,40 +333,40 @@ class EpwTransportWorkChain(ProtocolMixin, WorkChain):
             )
         )
 
-    def should_run_bte(self):
+    def should_run_ibte(self):
         """Check if the bte workflow should continue or not."""
-        if self._BTE_NAMESPACE in self.inputs:
+        if self._IBTE_NAMESPACE in self.inputs:
             if self.should_run_a2f():
                 a2f_workchain = self.ctx.workchain_a2f
                 parent_folder_epw = a2f_workchain.outputs.remote_folder
-                self.ctx.inputs_bte[self._BTE_NAMESPACE].parent_folder_epw = parent_folder_epw
+                self.ctx.inputs_ibte[self._IBTE_NAMESPACE].parent_folder_epw = parent_folder_epw
             return True
         else:
             return False
 
-    def run_bte(self):
-        """Run the bte workflow."""
-        inputs = self.ctx.inputs_bte
+    def run_ibte(self):
+        """Run the ibte workflow."""
+        inputs = self.ctx.inputs_ibte
         inputs.structure = self.inputs.structure
-        inputs.metadata.call_link_label = self._BTE_NAMESPACE
-        workchain_node = self.submit(EpwBteWorkChain, **inputs)
+        inputs.metadata.call_link_label = self._IBTE_NAMESPACE
+        workchain_node = self.submit(EpwIBTEWorkChain, **inputs)
 
-        self.report(f'launching EpwBteWorkChain<{workchain_node.pk}>')
+        self.report(f'launching EpwIBTEWorkChain<{workchain_node.pk}>')
 
-        return ToContext(workchain_bte=workchain_node)
+        return ToContext(workchain_ibte=workchain_node)
 
-    def inspect_bte(self):
-        """Inspect the bte workflow."""
-        bte_workchain = self.ctx.workchain_bte
-        if not bte_workchain.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {bte_workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_BTE
+    def inspect_ibte(self):
+        """Inspect the ibte workflow."""
+        ibte_workchain = self.ctx.workchain_ibte
+        if not ibte_workchain.is_finished_ok:
+            self.report(f'`epw.x` failed with exit status {ibte_workchain.exit_status}')
+            return self.exit_codes.ERROR_SUB_PROCESS_IBTE
 
         self.out_many(
             self.exposed_outputs(
-                self.ctx.workchain_bte,
-                EpwBteWorkChain,
-                namespace=self._BTE_NAMESPACE
+                self.ctx.workchain_ibte,
+                EpwIBTEWorkChain,
+                namespace=self._IBTE_NAMESPACE
             )
         )
 

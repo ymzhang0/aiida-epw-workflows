@@ -4,6 +4,7 @@ from re import S
 import re
 from socket import NI_NOFQDN
 from pathlib import Path
+from tkinter import E
 
 from aiida import orm
 from aiida.common.links import LinkType
@@ -13,6 +14,7 @@ from ..workchains import clean_workdir
 from enum import Enum
 from aiida.tools import delete_nodes
 from .b2w import EpwB2WWorkChainAnalyser
+from ..calculators import _calculate_iso_tc, check_convergence
 from ..plot import (
     plot_epw_interpolated_bands,
     plot_a2f,
@@ -324,17 +326,6 @@ class EpwSuperConWorkChainAnalyser:
         else:
             return None, None
 
-    # def check_a2f_conv(self):
-    #     for a2f_conv_workchain in self.a2f_conv:
-    #         if a2f_conv_workchain.is_excepted:
-    #             state = EpwSuperConWorkChainState.A2F_CONV_EXCEPTED
-    #             message += f'has excepted at a2f_conv<{a2f_conv_workchain.pk}>'
-    #         else:
-    #             state = EpwSuperConWorkChainState.A2F_CONV_FAILED
-    #             message += f'has failed at a2f_conv<{a2f_conv_workchain.pk}>'
-
-    #     return state, message
-
     def check_iso(self):
         """Check the state of the iso workchain."""
         return self.base_check(
@@ -388,51 +379,6 @@ class EpwSuperConWorkChainAnalyser:
                 return state, message
 
         return EpwSuperConWorkChainState.FINISHED_OK, 'has finished successfully'
-
-        # state, message = self.check_pw_relax()
-
-        # if not state == EpwSuperConWorkChainState.PW_RELAX_FINISHED_OK:
-        #     return state, message
-
-        # state, message = self.check_pw_bands()
-
-        # if not state == EpwSuperConWorkChainState.PW_BANDS_FINISHED_OK:
-        #     return state, message
-
-        # state, message = self.check_b2w()
-
-        # if not state == EpwSuperConWorkChainState.B2W_FINISHED_OK:
-        #     return state, message
-
-        # state, message = self.check_bands()
-
-        # if not state == EpwSuperConWorkChainState.BANDS_FINISHED_OK:
-        #     return state, message
-
-        # state, message = self.check_a2f()
-
-        # if not state == EpwSuperConWorkChainState.A2F_FINISHED_OK:
-        #     return state, message
-
-        # state, message = self.check_a2f_conv()
-
-        # if not state == EpwSuperConWorkChainState.A2F_CONV_FINISHED_OK:
-        #     return state, message
-
-        # state, message = self.check_iso()
-
-        # if not state == EpwSuperConWorkChainState.ISO_FINISHED_OK:
-        #     return state, message
-
-        # state, message = self.check_aniso()
-
-        # if not state == EpwSuperConWorkChainState.ANISO_FINISHED_OK:
-        #     return state, message
-
-        # state = EpwSuperConWorkChainState.FINISHED_OK
-        # message = 'has finished successfully'
-
-        # return state, message
 
     @property
     def outputs_parameters(self):
@@ -494,55 +440,72 @@ class EpwSuperConWorkChainAnalyser:
         else:
             raise ValueError('Source is not set')
 
-    def get_pw_relax_remote_path(self):
-        """Get the remote directory of the pw_relax workchain."""
-        return self.pw_relax[0].outputs.remote_folder.get_remote_path()
+    @property
+    def a2f_results(self):
+        """Get the results of the a2f workchain."""
+        a2f_results = {}
+        if self.a2f:
+            for a2f_workchain in self.a2f:
+                qfpoints_distance = a2f_workchain.inputs.a2f.qfpoints_distance.value
+                a2f_results[qfpoints_distance] = a2f_workchain.outputs.output_parameters
+        elif self.a2f_conv:
+            for a2f_workchain in self.a2f_conv:
+                qfpoints_distance = a2f_workchain.inputs.a2f.qfpoints_distance.value
+                a2f_results[qfpoints_distance] = a2f_workchain.outputs.output_parameters
+        else:
+            print('No a2f workchain found')
+            a2f_results = None
+            
+        return a2f_results
 
-    def get_pw_bands_scf_remote_path(self):
-        """Get the remote directory of the pw_bands workchain."""
-        scf_workchain = self.pw_bands[0].base.links.get_outgoing(link_label_filter='scf').first().node
-        return scf_workchain.outputs.remote_folder.get_remote_path()
+    @property
+    def converged_allen_dynes_Tc(self, threshold=0.1):
+        """Get the results of the a2f workchain."""
+        if not self.a2f_conv:
+            print('No a2f_conv workchain found')
+            return None
+        else:
+            Tcs = [a2f_result.get('Allen_Dynes_Tc') for a2f_result in self.a2f_results.values()]
+            print(Tcs)
+            _, converged_allen_dynes_Tc = check_convergence(
+                Tcs,
+                threshold
+            )
+            return converged_allen_dynes_Tc
+        
+    # TODO: This function is only used temporarily before the error handler of EpwSuperconWorkChain
+    #       is completed.
+    @property
+    def iso_results(self):
+        """Get the results of the iso workchain."""
+        from aiida_epw_workflows.parsers.epw import EpwParser
+        results = {}
+        for iteration, folderdata in self.retrieved['iso']['iso'].items():
+            parsed_stdout, _ = EpwParser.parse_stdout(folderdata.get_object_content('aiida.out'), None)
+            results[iteration] = parsed_stdout
+        
+        return results
 
-    def get_pw_bands_nscf_remote_path(self):
-        """Get the remote directory of the pw_bands workchain."""
-        nscf_workchain = self.pw_bands[0].base.links.get_outgoing(link_label_filter='bands').first().node
-        return nscf_workchain.outputs.remote_folder.get_remote_path()
+    @property
+    def iso_max_eigenvalues(self):
+        """Get the max eigenvalues of the iso workchain."""
+        max_eigenvalues = []
+        for iteration, parsed_stdout in self.iso_results.items():
+            max_eigenvalues.append(parsed_stdout['max_eigenvalue'].get_array('max_eigenvalue'))
+        return numpy.concatenate(max_eigenvalues, axis=1)
 
-    def get_b2w_w90_intp_scf_remote_path(self):
-        """Get the remote directory of the b2w workchain."""
-        return self.b2w[0].outputs.w90_intp.scf.remote_folder.get_remote_path()
-
-    def get_b2w_w90_intp_nscf_remote_path(self):
-        """Get the remote directory of the b2w workchain."""
-        return self.b2w[0].outputs.w90_intp.nscf.remote_folder.get_remote_path()
-
-    def get_b2w_ph_base_remote_path(self):
-        """Get the remote directory of the b2w workchain."""
-        return self.b2w[0].outputs.ph_base.remote_folder.get_remote_path()
-
-    def get_b2w_epw_base_remote_path(self):
-        """Get the remote directory of the b2w workchain."""
-        return self.b2w[0].outputs.epw_base.remote_folder.get_remote_path()
-
-    def get_bands_remote_path(self):
-        """Get the remote directory of the bands workchain."""
-        return self.bands[0].outputs.remote_folder.get_remote_path()
-
-    def get_a2f_conv_remote_path(self):
-        """Get the remote directory of the a2f_conv workchain."""
-        return self.a2f_conv[0].outputs.remote_folder.get_remote_path()
-
-    def get_a2f_remote_path(self):
-        """Get the remote directory of the a2f workchain."""
-        return self.a2f[0].outputs.remote_folder.get_remote_path()
-
-    def get_iso_remote_path(self):
-        """Get the remote directory of the iso workchain."""
-        return self.iso[0].outputs.remote_folder.get_remote_path()
+    # TODO: This function can't treat the case where minimal eigenvalue is larger than 1.0.
+    @property
+    def iso_tc(self):
+        """Get the tc of the iso workchain."""
+        try:
+            return _calculate_iso_tc(self.iso_max_eigenvalues, allow_extrapolation=True)
+        except (AttributeError, KeyError, ValueError):
+            return None
 
     def get_aniso_remote_path(self):
         """Get the remote directory of the aniso workchain."""
-        return self.aniso[0].outputs.remote_folder.get_remote_path()
+        return self.processes_dict['aniso']['aniso']
 
     @staticmethod
     def get_calcjob_paths(processes_dict, parent_label=''):
@@ -562,7 +525,6 @@ class EpwSuperConWorkChainAnalyser:
             if 'calcjob_node' in sub_dict:
                 calcjob = sub_dict['calcjob_node']
                 remote_path = calcjob.outputs.remote_folder.get_remote_path()
-                print(full_label, remote_path)
                 flat_paths[full_label] = remote_path
 
             if 'workchain_node' in sub_dict:
@@ -576,6 +538,27 @@ class EpwSuperConWorkChainAnalyser:
         return flat_paths
 
     @staticmethod
+    def get_retrieved(node):
+        """Get the retrieved of the all workchains."""
+        retrieved = {}
+
+        for subprocess in node.called:
+            if 'CalcJobNode' in subprocess.node_type:
+                link_label = subprocess.base.attributes.all['metadata_inputs']['metadata']['call_link_label']
+                retrieved[link_label] = subprocess.outputs.retrieved if subprocess.outputs.retrieved else None
+
+            elif 'WorkChainNode' in subprocess.node_type:
+                link_label = subprocess.base.attributes.all['metadata_inputs']['metadata']['call_link_label']
+                retrieved[link_label] = {}
+                sub_paths = EpwSuperConWorkChainAnalyser.get_retrieved(subprocess)
+                retrieved[link_label].update(sub_paths)
+            else:
+                pass
+        return retrieved
+
+    # TODO: For link_labels with multiple workchains, the processes_dict will be problematic.
+    #       We need to fix this.
+    @staticmethod
     def get_processes_dict(node):
         """Get the remote directory of the all workchains."""
         processes_dict = {}
@@ -586,7 +569,7 @@ class EpwSuperConWorkChainAnalyser:
 
             elif 'WorkChainNode' in subprocess.node_type:
                 link_label = subprocess.base.attributes.all['metadata_inputs']['metadata']['call_link_label']
-                processes_dict[link_label] = {'workchain_node': subprocess }
+                processes_dict[link_label] = {'workchain_node': subprocess}
                 sub_paths = EpwSuperConWorkChainAnalyser.get_processes_dict(subprocess)
                 processes_dict[link_label].update(sub_paths)
             else:
@@ -598,6 +581,11 @@ class EpwSuperConWorkChainAnalyser:
     def processes_dict(self):
         """Get the processes dictionary."""
         return EpwSuperConWorkChainAnalyser.get_processes_dict(self.node)
+
+    @property
+    def retrieved(self):
+        """Get the retrieved dictionary."""
+        return EpwSuperConWorkChainAnalyser.get_retrieved(self.node)
 
     @property
     def source(self):
@@ -697,120 +685,53 @@ class EpwSuperConWorkChainAnalyser:
         else:
             return (True, max_freq)
 
+    @staticmethod
+    def _dump_inputs(processes_dict, destpath: Path):
+
+        for label, sub_dict in processes_dict.items():
+            if not isinstance(sub_dict, dict):
+                continue
+            full_label = destpath / label
+
+            if 'calcjob_node' in sub_dict:
+                calcjob = sub_dict['calcjob_node']
+                destpath.mkdir(parents=True, exist_ok=True)
+
+                for filename in ['aiida.in', 'aiida.win']:
+                    try:
+                        with open(destpath / filename, 'w') as f:
+                            f.write(calcjob.base.repository.get_object_content(filename))
+                    except FileNotFoundError:
+                        continue
+                
+                for filename in calcjob.outputs.retrieved.list_object_names('DYN_MAT'):
+                    try:
+                        DYN_MAT = destpath / 'DYN_MAT'
+                        DYN_MAT.mkdir(parents=True, exist_ok=True)
+                        with open(DYN_MAT / filename, 'w') as f:
+                            f.write(calcjob.outputs.retrieved.get_object_content(f"DYN_MAT/{filename}"))
+                    except FileNotFoundError:
+                        continue
+
+                for filename in ['aiida.out', 'aiida.fc' 'phonon_frequencies.dat', 'phonon_displacements.dat']:
+                    try:
+                        with open(destpath / filename, 'w') as f:
+                            f.write(calcjob.outputs.retrieved.get_object_content(filename))
+                    except FileNotFoundError:
+                        continue
+
+            if 'workchain_node' in sub_dict:
+                # Pass the current workchain's subprocess dictionary and the new parent label
+                EpwSuperConWorkChainAnalyser._dump_inputs(
+                    sub_dict,
+                    destpath=full_label
+                )
+
     def dump_inputs(self, destpath: Path):
-        """Dump the inputs of the workchain."""
-
-        if self.source is not None:
-            destpath = destpath / f"{self.node.pk}-{self.source}"
-
-        print('Writing pw_relax files to ', destpath / 'pw_relax')
-        try:
-            pw_relaxes = self.pw_relax[0].base.links.get_outgoing(link_type=LinkType.CALL_WORK).all()
-            for node, _, link_label1 in pw_relaxes:
-                pw_calculations = node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all()
-                dirpath = destpath / f'pw_relax_{link_label1}'
-                dirpath.mkdir(parents=True, exist_ok=True)
-
-                for pw_calculation, _, link_label2 in pw_calculations:
-                    if not link_label2.startswith('iteration_'):
-                        continue
-                    with open(dirpath / f'{link_label2}.in', 'w') as f:
-                        f.write(pw_calculation.base.repository.get_object_content('aiida.in'))
-                    with open(dirpath / f'{link_label2}.out', 'w') as f:
-                        f.write(pw_calculation.outputs.retrieved.get_object_content('aiida.out'))
-        except (AttributeError, IndexError):
-            print('pw_relax workchain not found')
-
-        try:
-            pw_bands = self.pw_bands[0].base.links.get_outgoing(link_type=LinkType.CALL_WORK).all()
-            for node, _, link_label1 in pw_bands:
-                pw_calculations = node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all()
-                dirpath = destpath / f'pw_bands_{link_label1}'
-                dirpath.mkdir(parents=True, exist_ok=True)
-
-                for pw_calculation, _, link_label2 in pw_calculations:
-                    if not link_label2.startswith('iteration_'):
-                        continue
-                    with open(dirpath / f'{link_label2}.in', 'w') as f:
-                        f.write(pw_calculation.base.repository.get_object_content('aiida.in'))
-                    with open(dirpath / f'{link_label2}.out', 'w') as f:
-                        f.write(pw_calculation.outputs.retrieved.get_object_content('aiida.out'))
-        except (AttributeError, IndexError):
-            print('pw_bands workchain not found')
-
-
-        w90_intp_workchains = self.b2w[0].base.links.get_outgoing(link_label_filter='w90_intp').all()
-        scf_workchain = w90_intp_workchains[-1].node.base.links.get_outgoing(link_label_filter='scf').all()[-1]
-        for node, _, link_label in scf_workchain.node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all():
-            if not link_label.startswith('iteration_'):
-                continue
-            dirpath = destpath / 'w90_intp_scf'
-            dirpath.mkdir(parents=True, exist_ok=True)
-            with open(dirpath / f'{link_label}.in', 'w') as f:
-                f.write(node.base.repository.get_object_content('aiida.in'))
-            with open(dirpath / f'{link_label}.out', 'w') as f:
-                f.write(node.outputs.retrieved.get_object_content('aiida.out'))
-
-        nscf_workchain = w90_intp_workchains[-1].node.base.links.get_outgoing(link_label_filter='nscf').all()[-1]
-        for node, _, link_label in nscf_workchain.node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all():
-            if not link_label.startswith('iteration_'):
-                continue
-            dirpath = destpath / 'w90_intp_nscf'
-            dirpath.mkdir(parents=True, exist_ok=True)
-            with open(dirpath / f'{link_label}.in', 'w') as f:
-                f.write(node.base.repository.get_object_content('aiida.in'))
-            with open(dirpath / f'{link_label}.out', 'w') as f:
-                f.write(node.outputs.retrieved.get_object_content('aiida.out'))
-
-        ph_workchain = self.b2w[0].base.links.get_outgoing(link_label_filter='ph_base').all()[-1]
-        for node, _, link_label in ph_workchain.node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all():
-            if not link_label.startswith('iteration_'):
-                continue
-            dirpath = destpath / 'ph_base'
-            dirpath.mkdir(parents=True, exist_ok=True)
-            with open(dirpath / f'{link_label}.in', 'w') as f:
-                f.write(node.base.repository.get_object_content('aiida.in'))
-            with open(dirpath / f'{link_label}.out', 'w') as f:
-                f.write(node.outputs.retrieved.get_object_content('aiida.out'))
-
-            for file in node.outputs.retrieved.list_object_names('DYN_MAT'):
-                dirpath = destpath / 'ph_base' / 'DYN_MAT'
-                dirpath.mkdir(parents=True, exist_ok=True)
-                with open(dirpath / file, 'w') as f:
-                    f.write(node.outputs.retrieved.get_object_content(f"DYN_MAT/{file}"))
-        try:
-            q2r_workchain = self.b2w[0].base.links.get_outgoing(link_label_filter='q2r_base').all()[-1]
-            for node, _, link_label in q2r_workchain.node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all():
-                if not link_label.startswith('iteration_'):
-                    continue
-                dirpath = destpath / 'q2r_base'
-                dirpath.mkdir(parents=True, exist_ok=True)
-                with open(dirpath / f'{link_label}.in', 'w') as f:
-                    f.write(node.base.repository.get_object_content('aiida.in'))
-                with open(dirpath / f'{link_label}.out', 'w') as f:
-                    f.write(node.outputs.retrieved.get_object_content('aiida.out'))
-                with open(dirpath / f'{link_label}.fc', 'w') as f:
-                    f.write(node.outputs.retrieved.get_object_content('real_space_force_constants.dat'))
-        except (AttributeError, IndexError):
-            print('q2r_base workchain not found')
-
-        try:
-            matdyn_workchain = self.b2w[0].base.links.get_outgoing(link_label_filter='matdyn_base').all()[-1]
-            for node, _, link_label in matdyn_workchain.node.base.links.get_outgoing(link_type=LinkType.CALL_CALC).all():
-                if not link_label.startswith('iteration_'):
-                    continue
-                dirpath = destpath / 'matdyn_base'
-                dirpath.mkdir(parents=True, exist_ok=True)
-                with open(dirpath / f'{link_label}.in', 'w') as f:
-                    f.write(node.base.repository.get_object_content('aiida.in'))
-                with open(dirpath / f'{link_label}.out', 'w') as f:
-                    f.write(node.outputs.retrieved.get_object_content('aiida.out'))
-                with open(dirpath / f'{link_label}.modes', 'w') as f:
-                    f.write(node.outputs.retrieved.get_object_content('phonon_displacements.dat'))
-                with open(dirpath / f'{link_label}.freq', 'w') as f:
-                    f.write(node.outputs.retrieved.get_object_content('phonon_displacements.dat'))
-        except (AttributeError, IndexError):
-            print('matdyn_base workchain not found')
+        EpwSuperConWorkChainAnalyser._dump_inputs(
+            self.processes_dict,
+            destpath=destpath
+        )
 
     def show_pw_bands(self):
         """Show the qe bands."""

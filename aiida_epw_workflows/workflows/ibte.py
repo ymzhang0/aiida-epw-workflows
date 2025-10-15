@@ -6,14 +6,14 @@ from aiida.engine import calcfunction, ToContext, if_
 
 from .intp import EpwBaseIntpWorkChain
 
-class EpwBteWorkChain(EpwBaseIntpWorkChain):
+class EpwIBTEWorkChain(EpwBaseIntpWorkChain):
     """Work chain to compute the spectral function.
     It will run the `EpwB2WWorkChain` for the electron-phonon coupling matrix on Wannier basis.
     and then the `EpwBaseWorkChain` for interpolation to a fine k/q-grid. the spectral function is computed
     from the interpolated grids.
     """
 
-    _INTP_NAMESPACE = 'bte'
+    _INTP_NAMESPACE = 'ibte'
     _ALL_NAMESPACES = [EpwBaseIntpWorkChain._B2W_NAMESPACE, _INTP_NAMESPACE]
 
     _forced_parameters =  EpwBaseIntpWorkChain._forced_parameters.copy()
@@ -43,7 +43,7 @@ class EpwBteWorkChain(EpwBaseIntpWorkChain):
         spec.inputs.validator = cls.validate_inputs
 
         spec.exit_code(
-            402, 'ERROR_SUB_PROCESS_BTE',
+            402, 'ERROR_SUB_PROCESS_IBTE',
             message='The `epw.x` workflow failed.'
             )
 
@@ -59,14 +59,14 @@ class EpwBteWorkChain(EpwBaseIntpWorkChain):
     @classmethod
     def get_builder_restart(
         cls,
-        from_bte_workchain
+        from_ibte_workchain
         ):
         """Return a builder prepopulated with inputs extracted from the a2f workchain.
         :param from_a2f_workchain: The a2f workchain.
         :return: The builder.
         """
         return super()._get_builder_restart(
-            from_intp_workchain=from_bte_workchain,
+            from_intp_workchain=from_ibte_workchain,
             )
 
 
@@ -155,8 +155,10 @@ class EpwBteWorkChain(EpwBaseIntpWorkChain):
         intp_workchain = self.ctx.workchain_intp
 
         if not intp_workchain.is_finished_ok:
-            self.report(f'`epw.x` failed with exit status {intp_workchain.exit_status}')
-            return self.exit_codes.ERROR_SUB_PROCESS_BTE
+            self.report(f'`EpwBaseWorkChain`<{intp_workchain.pk}> failed with exit status {intp_workchain.exit_status}')
+            return self.exit_codes.ERROR_SUB_PROCESS_IBTE
+
+        self.report(f'`EpwBaseWorkChain`<{intp_workchain.pk}> finished successfully')
 
     def results(self):
         """Only the basic results are retrieved:
