@@ -1,3 +1,4 @@
+from .analysers.base import ProcessTree
 from .analysers.b2w import (
     EpwB2WWorkChainAnalyser,
     EpwB2WWorkChainState,
@@ -38,6 +39,7 @@ from .structure import (
 )
 
 __all__ = [
+    'ProcessTree',
     'EpwB2WWorkChainAnalyser',
     'EpwB2WWorkChainState',
     'EpwSuperConWorkChainAnalyser',
