@@ -201,17 +201,18 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
             cls._INTP_NAMESPACE
             )
 
-        if intp and intp.is_finished_ok:
-            warnings.warn(
-                f"The EpwBaseWorkChain subprocess <{from_intp_workchain.pk}> has already finished.",
-                stacklevel=2
-                )
-            return
-        else:
-            print("EpwBaseWorkChain subprocess is finished, setting the parent folder")
-            builder[cls._INTP_NAMESPACE].parent_folder_epw = intp.inputs.parent_folder_epw
+        if intp:
+            if intp.is_finished_ok:
+                warnings.warn(
+                    f"The EpwBaseWorkChain subprocess <{from_intp_workchain.pk}> has already finished.",
+                    stacklevel=2
+                    )
+                return
+            else:
+                print("EpwBaseWorkChain subprocess is finished, setting the parent folder")
+                builder[cls._INTP_NAMESPACE].parent_folder_epw = intp.inputs.parent_folder_epw
 
-            return builder
+        return builder
 
     @classmethod
     def get_builder_restart_from_b2w(

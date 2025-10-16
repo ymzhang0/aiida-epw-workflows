@@ -150,6 +150,21 @@ class EpwIBTEWorkChain(EpwBaseIntpWorkChain):
 
         self.ctx.inputs.epw.settings = orm.Dict(settings)
 
+        parameters = self.ctx.inputs.epw.parameters.get_dict()
+        
+        if self.inputs.is_polar:
+            parameters['INPUTEPW']['lpolar'] = True
+        if self.inputs.use_serta:
+            parameters['INPUTEPW']['scattering'] = True
+            parameters['INPUTEPW']['scattering_serta'] = True
+        
+        etf_mem = parameters['INPUTEPW']['etf_mem']
+        if etf_mem == 3:
+            parameters['INPUTEPW']['efermi_read'] = True
+            parameters['INPUTEPW']['fermi_energy'] = self.ctx.inputs.parent_folder_epw.creator.outputs.output_parameters['fermi_energy_coarse']
+
+        self.ctx.inputs.epw.parameters = orm.Dict(parameters)
+    
     def inspect_process(self):
         """Verify that the `EpwBaseWorkChain` finished successfully."""
         intp_workchain = self.ctx.workchain_intp

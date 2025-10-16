@@ -31,7 +31,7 @@ default_inputs:
           withmpi: True
       parameters:
         INPUTEPW:
-          ncarrier: -1.0e13
+          ncarrier: -1.0e+13
           mob_maxiter: 300
           broyden_beta: 1.0
           bfieldx: 0.0
