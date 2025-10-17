@@ -945,7 +945,7 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = self._EPW_NAMESPACE
         self.set_target_base(inputs.epw, self._EPW_NAMESPACE)
         workchain_node = self.submit(EpwBaseWorkChain, **inputs)
-        self.report(f'launching `EpwBaseWorkChain`<{workchain_node.pk}>')
+        self.report(f'launching `EpwBaseWorkChain`<{workchain_node.pk}> in {self._NAMESPACE} mode')
 
         return ToContext(workchain_epw=workchain_node)
 
@@ -956,14 +956,13 @@ class EpwB2WWorkChain(ProtocolMixin, WorkChain):
         workchain = self.ctx.workchain_epw
 
         if not workchain.is_finished_ok:
-            self.report(f'`EpwBaseWorkChain` failed with exit status {workchain.exit_status}')
+            self.report(f'`EpwBaseWorkChain`<{workchain.pk}> failed with exit status {workchain.exit_status}')
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_EPW
-
         self.report(f'`EpwBaseWorkChain`<{workchain.pk}> finished successfully')
 
         self.out_many(
             self.exposed_outputs(
-                self.ctx.workchain_epw,
+                workchain,
                 EpwBaseWorkChain,
                 namespace=self._EPW_NAMESPACE,
             ),

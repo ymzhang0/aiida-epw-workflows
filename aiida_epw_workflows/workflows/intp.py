@@ -129,9 +129,6 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
         spec.output('remote_folder', valid_type=orm.RemoteData)
         spec.output('retrieved', valid_type=orm.FolderData)
 
-        spec.exit_code(401, 'ERROR_SUB_PROCESS_B2W',
-            message='The `B2W` sub process failed')
-
     @staticmethod
     def get_descendant(
         intp: orm.WorkChainNode,
@@ -370,7 +367,7 @@ class EpwBaseIntpWorkChain(ProtocolMixin, WorkChain):
 
         self.out_many(
             self.exposed_outputs(
-                self.ctx.workchain_b2w,
+                b2w_workchain,
                 EpwB2WWorkChain,
                 namespace=self._B2W_NAMESPACE
                 )

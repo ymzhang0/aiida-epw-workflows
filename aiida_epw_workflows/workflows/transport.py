@@ -313,9 +313,6 @@ class EpwTransportWorkChain(ProtocolMixin, WorkChain):
         builder.structure = structure
         builder.kfpoints_factor = orm.Int(inputs.get('kfpoints_factor', 1))
         builder.qfpoints_distance = orm.Float(inputs.get('qfpoints_distance', 0.5))
-        # builder.interpolation_distances = orm.List(inputs.get('interpolation_distances', None))
-        # builder.convergence_threshold = orm.Float(inputs['convergence_threshold'])
-        # builder.always_run_final = orm.Bool(inputs.get('always_run_final', True))
         builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
 
         return builder
@@ -567,10 +564,6 @@ class EpwTransportWorkChain(ProtocolMixin, WorkChain):
         inputs.structure = self.ctx.current_structure
         inputs.a2f.qfpoints_distance = self.inputs.qfpoints_distance
 
-        parameters = inputs.a2f.epw.parameters.get_dict()
-        parameters['INPUTEPW']['ephwrite'] = False
-        inputs.a2f.epw.parameters = orm.Dict(parameters)
-
         inputs.metadata.call_link_label = self._A2F_NAMESPACE
         workchain_node = self.submit(EpwA2fWorkChain, **inputs)
 
@@ -597,9 +590,9 @@ class EpwTransportWorkChain(ProtocolMixin, WorkChain):
     def should_run_ibte(self):
         """Check if the ibte workflow should continue or not."""
         if self._IBTE_NAMESPACE in self.inputs:
-            if self.should_run_a2f():
-                a2f_workchain = self.ctx.workchain_a2f
-                parent_folder_epw = a2f_workchain.outputs.a2f.remote_folder
+            if self.should_run_b2w():
+                b2w_workchain = self.ctx.workchain_b2w
+                parent_folder_epw = b2w_workchain.outputs.epw_base.remote_folder
                 self.ctx.inputs_ibte[self._IBTE_NAMESPACE].parent_folder_epw = parent_folder_epw
             return True
         else:

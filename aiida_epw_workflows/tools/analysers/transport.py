@@ -450,12 +450,6 @@ class EpwTransportWorkChainAnalyser(BaseWorkChainAnalyser):
         else:
             return (True, max_freq)
 
-    def dump_inputs(self, destpath: Path):
-        super()._dump_inputs(
-            self.processes_dict,
-            destpath=destpath
-        )
-
     def show_pw_bands(self):
         """Show the qe bands."""
         bands = self.pw_bands[0].outputs.band_structure

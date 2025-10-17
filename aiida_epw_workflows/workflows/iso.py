@@ -46,9 +46,13 @@ class EpwIsoWorkChain(EpwBaseIntpWorkChain):
         spec.output('Tc_iso', valid_type=orm.Float,
                     help='The isotropic Tc interpolated from the a2f file.')
 
+        spec.exit_code(401, 'ERROR_SUB_PROCESS_B2W',
+            message='The `EpwIsoWorkChain` failed at `b2w` step.')
         spec.exit_code(402, 'ERROR_SUB_PROCESS_ISO',
-            message='The `iso` sub process failed')
-
+            message='The `EpwIsoWorkChain` failed at `iso` step.')
+        spec.exit_code(403, 'ERROR_TEMPERATURE_OUT_OF_RANGE',
+            message='There is no gap at some temperature in the `iso` step.')
+            
     @classmethod
     def get_protocol_filepath(cls):
         """Return ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""

@@ -41,11 +41,12 @@ class EpwIBTEWorkChain(EpwBaseIntpWorkChain):
         spec.input('use_serta', valid_type=orm.Bool, default=lambda: orm.Bool(True))
         spec.inputs[cls._INTP_NAMESPACE].validator = cls.validate_inputs
         spec.inputs.validator = cls.validate_inputs
-
+        spec.exit_code(
+            401, 'ERROR_SUB_PROCESS_B2W',
+            message='The `EpwIBTEWorkChain` failed at `b2w` step.')
         spec.exit_code(
             402, 'ERROR_SUB_PROCESS_IBTE',
-            message='The `epw.x` workflow failed.'
-            )
+            message='The `EpwIBTEWorkChain` failed at `ibte` step.')
 
     @classmethod
     def get_protocol_filepath(cls):
@@ -139,13 +140,10 @@ class EpwIBTEWorkChain(EpwBaseIntpWorkChain):
             settings = {}
 
         settings['ADDITIONAL_RETRIEVE_LIST'] = [
-            'aiida.a2f',
-            'aiida.a2f_proj',
-            'out/aiida.dos',
-            'aiida.phdos',
-            'aiida.phdos_proj',
-            'aiida.lambda_FS',
-            'aiida.lambda_k_pairs'
+            'IBTEvel_sup_0.fmt',
+            'inv_tau_0.fmt',
+            'inv_taucb_0.fmt',
+            'm_effective.fmt',
             ]
 
         self.ctx.inputs.epw.settings = orm.Dict(settings)

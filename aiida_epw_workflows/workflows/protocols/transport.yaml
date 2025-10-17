@@ -44,6 +44,7 @@ default_inputs:
         options:
           withmpi: True
   a2f:
+    eliashberg: False
     a2f:
       metadata:
         options:
